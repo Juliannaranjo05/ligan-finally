@@ -1,0 +1,1163 @@
+{
+  "home": "Home",
+  "messages": "Messages",
+  "favoritesHome": "Favorites",
+  "settingsHome": "Settings",
+  "logout": "Log out",
+  "accountMenu": "Account Menu",
+  "idioma": "Language",
+  "iniciarSesion": "Login",
+  "ayuda": "Help",
+  "comenzar": "Start Chatting",
+  "subtitulo": "Video chat with random people instantly",
+  "activa": "Active",
+  "inactiva": "Inactive",
+  "chatear": "Chat",
+  "videollamada": "Video call",
+  "welcomeMessage": "Hello! {{name}} Ready for your next connection?",
+  "instructionText": "Click the button below to start a random video call with a girl online, or call directly to any of the available girls.",
+  "startVideoCall": "Start Video Call",
+  "buyMinutes": "Buy Minutes",
+  "tipOfTheDay": "💡 Tip of the day:",
+  "tipMessage": "Be authentic. The best connections come from a genuine smile.",
+  "activeGirls": "Active Girls",
+  "loadingGirls": "Loading girls...",
+  "noActiveGirls": "No active girls",
+  "girlsWillAppear": "Available girls will appear here when they are online",
+  "online": "Online",
+  "callInProgress": "Call in progress",
+  "callThisGirl": "Call this girl",
+  "messageThisGirl": "Message this girl",
+  "yourHistory": "Your History",
+  "notAvailable": "Not available",
+  "youBlockedUser": "You have blocked {{name}}. You must unblock her to call her.",
+  "userBlockedYou": "{{name}} has blocked you. You cannot make calls to this girl.",
+  "callError": "Call error",
+  "callFailed": "Could not complete the call",
+  "understood": "Understood",
+  "callEnded": "Call ended",
+  "sentMessage": "Sent you a message", 
+  "addedToFavorites": "Added to favorites",
+  "searchUsers": "Search users",
+  "viewStories": "View stories",
+  "buyCoins": "Buy coins",
+  "coinPackages": "Coin packages",
+  "videoMinutes10": "≈ 10 minutes of videochat",
+  "videoMinutes30": "≈ 30 minutes + 50 bonus",
+  "videoMinutes80": "≈ 80 minutes + 200 bonus",
+  "popular": "Popular",
+  "securePayment": "Secure payment • Limited offers",
+  "yourFavorites": "Your Favorites",
+  "favorite": "favorite",
+  "favoritesClient": "favorites",
+  "blockedGirls": "Blocked Girls",
+  "update": "Update",
+  "noFavoritesYet": "You don't have favorites yet",
+  "favoritesWillAppear": "When you add girls as favorites, they will appear here",
+  "searchGirls": "Search girls",
+  "justNow": "Just now",
+  "minutesAgo": "{{minutes}}min ago",
+  "hoursAgo": "{{hours}}h ago",
+  "daysAgo": "{{days}}d ago",
+  "offline": "Offline",
+  "unknown": "Unknown",
+  "block": "Block",
+  "removeFromFavorites": "Remove from favorites",
+  "call": "Call",
+  "loadingFavorites": "Loading favorites...",
+  "errorLoadingFavorites": "Error loading favorites",
+  "retry": "Retry",
+  "blockedGirl": "blocked girl",
+  "blockedMens": "blocked girls",
+  "blockGirl": "Block Girl",
+  "blockingGirl": "Blocking...",
+  "unblockGirl": "Unblock girl",
+  "unblocking": "Unblocking...",
+  "loadingBlockedUsers": "Loading blocked users...",
+  "noBlockedUsers": "You haven't blocked any girl",
+  "blockedUsersWillAppear": "Users you block from chat will appear here",
+  "blocked": "Blocked",
+  "blockReason": "Block reason:",
+  "blockedMinutesAgo": "Blocked {{minutes}}min ago",
+  "blockedHoursAgo": "Blocked {{hours}}h ago",
+  "blockedDaysAgo": "Blocked {{days}}d ago",
+  "blockedOn": "Blocked {{date}}",
+  "blockTip": "Blocked users cannot send you messages or call you. You can unblock them anytime.",
+  "cancel": "Cancel",
+  "forgotPassword": {
+    "title": "Forgot your password?",
+    "emailStepDescription": "Enter your email and we'll send you a code to reset your password",
+    "emailLabel": "Email Address",
+    "emailPlaceholder": "your@email.com",
+    "sendCodeButton": "Send Code",
+    "sending": "Sending...",
+    "linkSentTitle": "Link Sent",
+    "linkSentDescription": "We have sent a reset link to your account at",
+    "checkInboxInstruction": "Check your inbox and click on the link",
+    "understood": "Understood",
+    "resendLink": "Didn't receive the link? Send again",
+    "newPasswordTitle": "New Password",
+    "newPasswordDescription": "Enter your new password",
+    "newPasswordLabel": "New Password",
+    "passwordPlaceholder": "Minimum 8 characters",
+    "confirmPasswordLabel": "Confirm Password",
+    "confirmPasswordPlaceholder": "Repeat your password",
+    "changePasswordButton": "Change Password",
+    "changing": "Changing...",
+    "passwordChangedTitle": "Password Changed!",
+    "passwordChangedDescription": "Your password has been successfully updated.",
+    "closing": "Closing...",
+    "passwordMismatch": "Passwords do not match",
+    "passwordTooShort": "Password must be at least 8 characters"
+  },
+  "searchClients": {
+    "title": "Search Clients",
+    "searchPlaceholder": "Search clients by name...",
+    "loading": "Loading...",
+    "noClientsFound": "No clients found with that name",
+    "noClientsAvailable": "No clients available",
+    "tryDifferentSearch": "Try a different search term",
+    "online": "Online",
+    "offline": "Offline",
+    "message": "Message",
+    "call": "Call",
+    "sendMessage": "Send message",
+    "makeCall": "Make call",
+    "clientFound": "client found",
+    "clientsFound": "clients found",
+    "authTokenError": "Error: Authentication token not found",
+    "invalidTokenError": "Error: Invalid authentication token",
+    "endpointNotFoundError": "Error: Endpoint not found"
+  },
+  "clientInterface": {
+    "greeting": "Hello! {{name}} Ready for your next connection?",
+    "mainDescription": "Click the button below to start a random video call with a girl online, or call directly to any of the available girls.",
+    "checkingBalance": "Checking balance...",
+    "startCall": "Start Video Call",
+    "buyCoins": "Buy Coins",
+    "tipOfTheDay": "💡 Tip of the day:",
+    "dailyTip": "Be authentic. The best connections come from a genuine smile.",
+    "activeGirls": "Active Girls",
+    "loadingGirls": "Loading girls...",
+    "noActiveGirls": "No active girls",
+    "girlsWillAppear": "Available girls will appear here when they are online",
+    "online": "Online",
+    "callInProgress": "Call in progress",
+    "callThisGirl": "Call this girl",
+    "messageThisGirl": "Message this girl",
+    "yourHistory": "Your History",
+    "yourBalance": "Your Balance",
+    "total": "Total:",
+    "minutes": "Minutes:",
+    "status": "Status:",
+    "insufficientBalance": "❌ Insufficient",
+    "minimumBalance": "⚠️ Minimum",
+    "stableBalance": "✅ Stable",
+    "insufficientBalanceTitle": "Insufficient Balance",
+    "insufficientBalanceMessage": "You need at least 30 coins (3 minutes) to start a video call.",
+    "currentStatus": "Current status:",
+    "totalCoins": "Total coins:",
+    "minimumRequired": "Minimum required:",
+    "rechargeNow": "Recharge Now",
+    "cancel": "Cancel",
+    "notAvailable": "Not available",
+    "youBlockedUser": "You have blocked {{name}}. You must unblock her to call her.",
+    "userBlockedYou": "{{name}} has blocked you. You cannot make calls to this girl.",
+    "understood": "Understood",
+    "callError": "Call error",
+    "callFailed": "Could not complete the call",
+    "callRejected": "The girl rejected the call",
+    "callExpired": "The call expired without response",
+    "timeoutExpired": "Waiting time expired",
+    "errorStartingCall": "Error starting call"
+  },
+  "storiesModal": {
+    "loadingStories": "Loading stories...",
+    "noStoriesAvailable": "No stories available at the moment",
+    "errorLoadingStories": "Error loading stories",
+    "likedStory": "❤️ You liked this story",
+    "errorProcessingReaction": "Error processing reaction",
+    "callingUser": "Calling {{name}}...",
+    "cannotCallUser": "You cannot call this user",
+    "callStartError": "Could not start the call",
+    "errorStartingCall": "Error starting call",
+    "callRejected": "The call was rejected",
+    "callExpired": "The call expired without response",
+    "timeoutExpired": "Waiting time expired",
+    "noStoriesTitle": "No stories",
+    "noStoriesMessage": "No stories available at the moment.",
+    "close": "Close",
+    "user": "User",
+    "next": "Next",
+    "restart": "Restart",
+    "storyViewed": "Story viewed",
+    "tapNextToContinue": "Tap \"Next\" to continue",
+    "couldNotVerifyLike": "Could not verify like status",
+    "errorRegisteringView": "Error registering view:"
+  },
+  "searchModels": {
+    "title": "Search Models",
+    "searchPlaceholder": "Search by name...",
+    "loading": "Loading...",
+    "noModelsFound": "No models found with that name",
+    "noModelsAvailable": "No models available",
+    "tryDifferentSearch": "Try a different search term",
+    "online": "Online",
+    "offline": "Offline",
+    "message": "Message",
+    "call": "Call",
+    "sendMessage": "Send message",
+    "makeCall": "Make call",
+    "modelFound": "model found",
+    "modelsFound": "models found",
+    "avatar": "Avatar"
+  },
+  "genero": {
+    "femenino": "Female",
+    "masculino": "Male"
+  },
+  "chicasRelevantes": "Relevant Girls",
+  "frasePrincipal": "Talk to strangers!",
+  "login": {
+    "titulo": "Welcome back!",
+    "subtitulo": "Log in to stay connected",
+    "placeholder_email": "Email or username",
+    "placeholder_contrasena": "Password",
+    "boton_iniciar": "Log in",
+    "loading": "Signing in...",
+    "boton_google": "Log in with Google",
+    "olvidaste_contrasena": "Forgot your password?",
+    "recuerdame": "Remember me",
+    "o": "or",
+    "no_tienes_cuenta": "Don’t have an account?",
+    "registrate": "Sign up here",
+    "titulo_recuperar": "Recover password",
+    "descripcion_recuperar": "Enter your registered email to receive a recovery link.",
+    "boton_enviar_recuperacion": "Send recovery link",
+    "msg_recuperacion_enviada": "An email with instructions has been sent.",
+    "error_recuperacion_invalido": "Invalid or unregistered email.",
+    "error_generico": "An error occurred while sending the email.",
+    "error_credenciales": "Incorrect email or password.",
+    "google_button": "Sign in with Google"
+
+  },
+  "verification": {
+    "title": "Email Verification",
+    "instructions": "Enter the code we sent to your email address.",
+    "buttonVerify": "Verify Code",
+    "resend": "Didn't receive the code? Resend",
+    "resendingShort": "Resending...",
+    "enter6digits": "Please enter all 6 digits.",
+    "emailNotFound": "No email found in memory.",
+    "verifying": "Verifying...",
+    "success": "Email verified successfully.",
+    "codeResent": "Code resent to your email.",
+    "error": "Error verifying the code."
+  },
+  "gender": {
+    "title": "What is your gender?",
+    "female": "Woman",
+    "male": "Man",
+    "continue": "Continue",
+    "saving": "Saving...",
+    "selectRoleError": "Please select a role",
+    "saveError": "Error saving role. Try again.",
+    "defaultClientName": "Client",
+    "enterName": "Enter your name",
+    "namePlaceholder": "Your name",
+    "nameRequired": "Name is required.",
+    "onlyLetters": "Only letters are allowed.",
+    "cancel": "Cancel"
+  },
+  "client": {
+    "greeting": "Hello {{name}}! Ready to make history?",
+    "instructions": "Click below to start a random video call and connect with someone new.",
+    "startCall": "Start Video Call",
+    "uploadStory": "Upload Story",
+    "tipTitle": "Tip of the day:",
+    "tipText": "Smile, relax and let the connections flow. Someone great could be just a click away!",
+    "activeUsers": "Active Users",
+    "yourHistory": "Your History",
+    "loading": "Loading...",
+    "defaultUser": "User",
+    "loadingUsers": "Loading users...",
+    "noActiveUsers": "No active users",
+    "contactsWillAppear": "Your contacts will appear here when they are online",
+    "call": "Call",
+    "message": "Message",
+    "storyPending": "Story Pending Approval",
+    "viewApprovedStory": "View Your Approved Story",
+    "storyRejected": "Story Rejected - Create New",
+    "estado": {
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "status": {
+      "home": {
+        "online": "Online"
+      }
+    },
+    "history": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    },
+    "restrictions": {
+      "pendingApproval": "Story Pending Approval",
+      "activeStory": "Active Story - Waiting",
+      "waitTime": "Wait {{hours}}h {{minutes}}m",
+      "activeRestriction": "Active Restriction",
+      "timeRemaining": "Time remaining: {{hours}}h {{minutes}}m",
+      "pendingApprovalDesc": "Story pending approval",
+      "professionalTip": "Professional Tip",
+      "professionalTipText": "Keep your profile updated and respond quickly to messages to increase your opportunities."
+    },
+    "errors": {
+      "notAvailable": "Not available",
+      "userBlocked": "You have blocked {{name}}. You must unblock them to call them.",
+      "blockedByUser": "{{name}} has blocked you. You cannot make calls to this user.",
+      "understood": "Understood",
+      "callRejected": "The call was rejected",
+      "callExpired": "The call expired without response",
+      "timeoutExpired": "Waiting time expired",
+      "callError": "Error starting call"
+    }
+  },
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "accion": {
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    }
+  },
+  "interfazMensajes": {
+    "searchPlaceholder": "🔍 Search",
+    "previewMessage": "Hi 👋",
+    "yesterday": "Yesterday",
+    "rename": "Change nickname",
+    "block": "Block user",
+    "translate": "Translate messages",
+    "writeMessage": "Write a message",
+    "send": "Send",
+    "inputPlaceholder": "Write a message"
+  },
+  "favorites": {
+    "title": "Your Favorites",
+    "count": "favorite",
+    "countPlural": "favorites",
+    "loading": "Loading favorites...",
+    "updating": "Updating...",
+    "refresh": "Refresh",
+    "noFavorites": "You don't have favorites yet",
+    "noFavoritesDesc": "When you add users as favorites, they will appear here",
+    "searchUsers": "Search users",
+    "errorLoading": "Error loading favorites",
+    "retry": "Retry",
+    "noSession": "No active session",
+    "status": {
+      "online": "Online",
+      "recentlyOnline": "A moment ago",
+      "minutesAgo": "{{minutes}}min ago",
+      "hoursAgo": "{{hours}}h ago",
+      "daysAgo": "{{days}}d ago",
+      "offline": "Offline",
+      "unknown": "Unknown"
+    },
+    "actions": {
+      "chat": "Chat",
+      "call": "Call",
+      "videoCall": "Video Call",
+      "block": "Block",
+      "removeFromFavorites": "Remove from favorites",
+      "unblock": "Unblock user",
+      "cancel": "Cancel"
+    },
+    "dates": {
+      "addedAgo": "Added {{time}} ago",
+      "addedDays": "{{days}} day",
+      "addedDaysPlural": "{{days}} days",
+      "addedWeeks": "{{weeks}} week",
+      "addedWeeksPlural": "{{weeks}} weeks",
+      "addedOn": "Added {{date}}"
+    },
+    "blocking": {
+      "title": "Block User",
+      "confirmTitle": "Block User",
+      "confirmMessage": "Are you sure you want to block this user?",
+      "selectReason": "Select reason:",
+      "consequences": "By blocking this user:",
+      "consequencesList": {
+        "noMessages": "Cannot send you messages",
+        "noCalls": "Cannot make calls to you",
+        "removedFromFavorites": "Will be removed from your favorites",
+        "noOnlineStatus": "Won't see when you're online"
+      },
+      "reasons": {
+        "inappropriate": "Inappropriate behavior",
+        "offensive": "Offensive content",
+        "spam": "Spam or harassment",
+        "requests": "Inappropriate requests",
+        "terms": "Terms violation",
+        "other": "Other reason"
+      },
+      "blocking": "Blocking...",
+      "blockUser": "Block User",
+      "success": "User blocked and removed from favorites",
+      "blocked": "Blocked",
+      "blockedReason": "Block reason:",
+      "blockedAgo": "Blocked {{time}} ago",
+      "unblocking": "Unblocking..."
+    },
+    "blockedUsers": {
+      "title": "Blocked Users",
+      "count": "blocked user",
+      "countPlural": "blocked users",
+      "loading": "Loading blocked users...",
+      "noBlocked": "You haven't blocked any users",
+      "noBlockedDesc": "Users you block from chat will appear here",
+      "unblockSuccess": "User unblocked",
+      "tip": "Blocked users cannot send you messages or call you. You can unblock them anytime."
+    },
+    "calls": {
+      "initiating": "Initiating call...",
+      "calling": "Calling...",
+      "rejected": "The call was rejected",
+      "expired": "The call expired without response",
+      "error": "Call error",
+      "connectionError": "Connection error",
+      "cannotCall": "Could not connect to start the call",
+      "blockedByUser": "{{name}} has blocked you. You cannot make calls to this user.",
+      "userBlocked": "You have blocked {{name}}. You must unblock them to call them.",
+      "notAvailable": "Not available",
+      "understood": "Understood"
+    },
+    "modals": {
+      "close": "Close",
+      "confirm": "Confirm",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "removingFavorite": "Error removing favorite",
+      "blockingUser": "Error blocking user",
+      "unblockingUser": "Error unblocking user",
+      "startingChat": "Connection error",
+      "loadingOnlineUsers": "Error loading online users",
+      "loadingBlockedUsers": "Error loading blocked users"
+    }
+  },
+  "settings": {
+    "title": "Account Settings",
+    "accountSecurity": "Account and Security",
+    "changePassword": "Change password",
+    "logoutAll": "Log out from all devices",
+    "deleteAccount": "Delete account",
+    "enable2FA": "Enable two-factor authentication (2FA)",
+    "profile": "Profile",
+    "uploadPhoto": "Upload profile photo",
+    "takePhoto": "Take photo",
+    "deletePhoto": "Delete profile photo",
+    "editAlias": "Edit alias or visible name",
+    "language": "Preferred language",
+    "payments": "Subscription and Payments",
+    "managePaymentMethod": "Add or remove payment method",
+    "country": "Country of residence (fiscal)",
+    "minimumPayout": "Set minimum payout",
+    "others": "Others",
+    "support": "Support or Help",
+    "terms": "Terms and Conditions",
+    "report": "Report a problem",
+    "modalInstruction": "Here you can implement the form or content for {{item}}."
+  },
+  "subirHistoria": {
+    "titulo": "Upload or record your story",
+    "grabar": "Record story",
+    "subir": "Upload from your device",
+    "publicar": "Publish story",
+    "alerta_grabacion": "Recording function in development or integrate getUserMedia to capture video."
+  },
+  "esperandoVerificacion": {
+    "titulo": "Awaiting Verification",
+    "mensajeLinea1": "Thank you for signing up.",
+    "mensajeLinea2": "We’ll notify you once your account is verified.",
+    "boton": "Verification in Progress"
+  },
+  "videoChat": {
+    "tiempoLlamada": "Call time:",
+    "minutosRestantes": "12 min remaining",
+    "verificado": "Verified",
+    "favorito": "Favorite",
+    "bloquear": "Block",
+    "eligeRegalo": "🎁 Choose a gift to request",
+    "escribeMensaje": "Write a message",
+    "intercambiarCamara": "Switch camera",
+    "siguiente": "Next"
+  },
+  "roulette_cliente": {
+    "titulo": "✨ Ready to start",
+    "estado": "👨‍💻 Guy connected",
+    "camera_label": "Camera",
+    "mic_label": "Microphone",
+    "start_button": "Start",
+    "searching_user": "Looking for girl...",
+    "random_user_notice": "🔗 You'll connect with a random girl",
+    "flip_camera": "Flip camera",
+    "waiting_permissions": "Waiting for permissions..."
+  },
+  "permission_alert": "You need to allow camera and microphone access to continue.",  
+  "userSearch": {
+    "waiting_users": "Waiting for users",
+    "waiting_guy": "Waiting for guy",
+    "waiting_girl": "Waiting for girl",
+    "rouletting": "Rouletting",
+    "connecting": "Connecting!",
+    "searching_new_guy": "Searching for new guy...",
+    "searching_new_girl": "Searching for new girl...",
+    "reconnecting": "Reconnecting...",
+    "starting_roulette": "Starting roulette...",
+    "user_found_connecting": "User found! Connecting...",
+    "preparing_connection": "Preparing secure connection...",
+    "time": "Time:",
+    "checks": "Checks:",
+    "automatic_verification": "⚡ Automatic verification every 7 seconds",
+    "cancel_search": "← Cancel search",
+    "cancel_wait": "← Cancel wait",
+    "back": "← Back",
+    "error_connecting": "Error connecting",
+    "try_again": "Try creating a new room",
+    "try_another_user": "Try searching for another user",
+    "timeout_message": "No user connected after 3 minutes. Try again later.",
+    "timeout_status": "Wait time expired"
+  },
+  "videochat": {
+    "userSkippedYou": "You got skipped!",
+    "clientDisconnected": "The guy left!",
+    "userLeft": "He disconnected!",
+    "sessionEnded": "Session ended!",
+    "connecting": "Connecting...",
+    "redirectingIn": "Redirecting in {{seconds}}s...",
+    "dontWorry": "Don't worry, we'll connect you with another guy"
+  },
+  "time": {
+    "callDuration": "Time"
+  },
+  "status": {
+    "online": "Connected"
+  },
+  "navigation": {
+    "settings": "Settings"
+  },
+  "translation": {
+    "title": "Translation",
+    "translationActive": "Active",
+    "translationInactive": "Inactive"
+  },
+  "controls": {
+    "camera": "Camera",
+    "microphone": "Microphone"
+  },
+  "register": {
+    "title": "Create your account!",
+    "subtitle": "Sign up to start connecting",
+    "emailPlaceholder": "Email address",
+    "passwordPlaceholder": "Password (minimum 6 characters)",
+    "errorFields": "Please fill in all fields.",
+    "errorGeneric": "An error occurred. Please try again.",
+    "loading": "Signing up...",
+    "button": "Sign Up",
+    "haveAccount": "Already have an account?",
+    "loginLink": "Sign in",
+    "errors": {
+      "emailRequired": "Email address is required",
+      "emailInvalid": "Please enter a valid email address",
+      "emailExists": "An account with this email already exists",
+      "passwordRequired": "Password is required",
+      "passwordTooShort": "Password must be at least 6 characters long",
+      "passwordConfirm": "Passwords do not match",
+      "tooManyAttempts": "Too many attempts. Please try again in a few minutes",
+      "generic": "An unexpected error occurred. Please try again"
+    },
+    "hints": {
+      "passwordLength": "{{current}}/{{required}} characters"
+    }
+  },
+  "chat": {
+    "title": "Private Chat",
+    "searchPlaceholder": "Search conversations...",
+    "loading": "Loading...",
+    "noConversations": "No conversations",
+    "selectConversation": "Select a conversation",
+    "selectConversationDesc": "Choose a conversation to view messages",
+    "noMessages": "No messages yet",
+    "messagePlaceholder": "Type a message...",
+    "send": "Send",
+    "videochat": "Videochat",
+    "calling": "Calling...",
+    "blocked": "Blocked",
+    "online": "Online",
+    "offline": "Offline",
+    "you": "You:",
+    "typing": "typing...",
+    "lastSeen": "Last seen",
+    "today": "today",
+    "yesterday": "yesterday",
+    "menu": {
+      "translation": "Translation",
+      "translationActive": "Active",
+      "translationInactive": "Inactive",
+      "addFavorite": "Add Favorite",
+      "removeFavorite": "Remove Favorite",
+      "changeNickname": "Change nickname",
+      "block": "Block",
+      "unblock": "Unblock",
+      "settings": "Settings"
+    },
+    "status": {
+      "blockedByYou": "Blocked by you",
+      "blockedYou": "Blocked you",
+      "mutualBlock": "Mutual block",
+      "userBlocked": "🚫 User Blocked",
+      "userBlockedDesc": "You have blocked {{name}}. They cannot send you messages or call you.",
+      "unblockUser": "Unblock User",
+      "unblocking": "Unblocking...",
+      "confirmUnblock": "Unblock {{name}}?",
+      "cannotSendBlocked": "User blocked - cannot send messages",
+      "userBlockedYou": "This user has blocked you",
+      "cannotSendGiftsBlocked": "User blocked - Cannot send gifts or emojis",
+      "userBlockedYouGifts": "This user blocked you - Cannot send gifts or emojis",
+      "notAvailableBlocked": "Not available - user blocked"
+    },
+    "gifts": {
+      "requestGift": "Gift Request",
+      "giftReceived": "Gift Received!",
+      "giftSent": "Gift Sent",
+      "specialGift": "Special Gift",
+      "coins": "coins",
+      "sentBy": "sent you this gift"
+    },
+    "nickname": {
+      "title": "Change Nickname",
+      "description": "Customize how you want to see {{name}}",
+      "label": "Custom nickname",
+      "charactersCount": "{{current}}/{{max}} characters",
+      "cancel": "Cancel",
+      "save": "Save",
+      "placeholder": "Type a nickname..."
+    },
+    "calls": {
+      "startCall": "Start videochat",
+      "inCall": "Call in progress",
+      "unavailable": "Unavailable",
+      "callActive": "Call active",
+      "requestGifts": "Request gifts",
+      "notAvailableBlocked": "Not available - user blocked"
+    },
+    "notifications": {
+      "newMessage": "New message from {{name}}",
+      "unreadMessages": "You have {{count}} new messages from {{name}}",
+      "giftReceived": "Gift Received!",
+      "giftSent": "Gift Sent",
+      "giftSentDesc": "Your gift has been sent successfully"
+    },
+    "errors": {
+      "loadingConversations": "Error loading conversations",
+      "loadingMessages": "Error loading messages",
+      "sendingMessage": "Error sending message",
+      "sendingGift": "Error sending gift",
+      "savingNickname": "Error saving nickname",
+      "addingFavorite": "Error adding favorite",
+      "blocking": "Error blocking user",
+      "startingCall": "Error starting call",
+      "connectionError": "Connection error",
+      "tryAgain": "Try again"
+    },
+    "actions": {
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "close": "Close",
+      "back": "Back",
+      "understood": "Understood"
+    },
+    "time": {
+      "justNow": "Just now",
+      "minutesAgo": "{{minutes}}min ago",
+      "hoursAgo": "{{hours}}h ago",
+      "daysAgo": "{{days}}d ago"
+    }
+  },
+  "earnings": {
+    "title": "Payment System",
+    "subtitle": "Weekly earnings and payments",
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "tabs": {
+      "thisWeek": "This Week",
+      "pending": "Pending",
+      "paid": "Paid"
+    },
+    "balance": {
+      "general": "General Balance",
+      "available": "Total available balance",
+      "weeklyBreakdown": "This Week Breakdown",
+      "timeEarnings": "Time Based",
+      "giftEarnings": "Gifts",
+      "totalWeekly": "Weekly Total",
+      "chatSessions": "Chat sessions",
+      "giftsReceived": "Gifts received",
+      "sessions": "sessions",
+      "totalHistoric": "Total Historic Earned",
+      "lastEarning": "Last Earning",
+      "none": "None",
+      "loadingBalance": "Loading balance..."
+    },
+    "weekly": {
+      "noEarnings": "No earnings recorded this week",
+      "dailyDetail": "Daily detail",
+      "dayEarnings": "day earnings",
+      "valid": "Valid",
+      "tooShort": "Too Short",
+      "earningPercentage": "60% earning",
+      "page": "Page",
+      "of": "of",
+      "previous": "Previous",
+      "next": "Next",
+      "loadingEarnings": "Loading earnings...",
+      "errorLoadingEarnings": "Error loading weekly earnings",
+      "connectionError": "Connection error"
+    },
+    "pending": {
+      "title": "Total Pending",
+      "subtitle": "payment(s) waiting",
+      "processing": "Processing...",
+      "loadingPending": "Loading pending payments...",
+      "errorLoadingPending": "Error loading pending payments",
+      "allClear": "All clear!",
+      "noPendingPayments": "No pending payments",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessing": "Payments are processed weekly. Your money will arrive soon."
+    },
+    "history": {
+      "title": "Total Paid",
+      "subtitle": "payment(s) completed",
+      "completed": "Completed",
+      "loadingHistory": "Loading history...",
+      "errorLoadingHistory": "Error loading payment history",
+      "noHistory": "No history",
+      "noPayments": "No payments made yet",
+      "week": "Week",
+      "paid": "Paid",
+      "paidOn": "Paid:",
+      "method": "Method:",
+      "reference": "Ref:",
+      "by": "By:",
+      "received": "Received"
+    },
+    "duration": {
+      "lessThanMinute": "< 1 min",
+      "hours": "h",
+      "minutes": "m"
+    },
+    "weekdays": {
+      "monday": "monday",
+      "tuesday": "tuesday",
+      "wednesday": "wednesday",
+      "thursday": "thursday",
+      "friday": "friday",
+      "saturday": "saturday",
+      "sunday": "sunday"
+    }
+  },
+  "preCallLobby": {
+    "title": "Ready to start",
+    "status": "Girl connected",
+    "devices": {
+      "camera": "Camera",
+      "microphone": "Microphone",
+      "defaultCamera": "Camera {{number}}",
+      "defaultMicrophone": "Microphone {{number}}"
+    },
+    "mirror": {
+      "label": "Mirror mode",
+      "enable": "Enable mirror",
+      "disable": "Disable mirror",
+      "active": "Mirror active",
+      "description": "See my image as in a mirror"
+    },
+    "actions": {
+      "start": "Start",
+      "searching": "Searching user...",
+      "preparing": "Preparing...",
+      "connecting": "Connecting..."
+    },
+    "notices": {
+      "randomUser": "You will connect with a random user",
+      "permissionsRequired": "Camera and microphone permissions required",
+      "checkDevices": "Make sure your camera and microphone work properly"
+    },
+    "errors": {
+      "permissionDenied": "You need to allow camera and microphone access to continue.",
+      "cameraInUse": "Error: Camera is being used by another application. Please close other applications that might be using the camera (Zoom, Teams, etc.) and reload the page.",
+      "deviceAccess": "Cannot access camera. Check that it's not being used by another application.",
+      "enumeratingDevices": "Error enumerating devices",
+      "gettingStream": "Error accessing camera/microphone",
+      "retryVideoOnly": "Retrying with video only...",
+      "videoOnlyFailed": "Error even with video only"
+    },
+    "permissions": {
+      "requesting": "Requesting media permissions...",
+      "videoObtained": "Video stream obtained",
+      "tryingMinimal": "Error with video, trying minimal configuration",
+      "combiningStreams": "Video and audio streams combined",
+      "audioError": "Error getting audio, continuing with video only",
+      "granted": "Permissions granted, getting devices...",
+      "streamAssigned": "Initial stream assigned to video"
+    },
+    "deviceSelection": {
+      "selectCamera": "Select your camera",
+      "selectMicrophone": "Select your microphone",
+      "noDevices": "No devices detected",
+      "testCamera": "Test your camera",
+      "testMicrophone": "Test your microphone"
+    }
+  },
+  "header": {
+    "payments_and_coins": "Payments and coins",
+    "home": "Home",
+    "videocall_chat": "Video call chat",
+    "messages": "Messages",
+    "favorites": "Favorites",
+    "account_menu": "Account menu",
+    "settings": "Settings",
+    "logout": "Sign out",
+    "new_messages_count": "{{count}} new messages",
+    "menu": "Menu",
+    "language": "Language"
+  },
+  "seleccion_genero": {
+    "titulo": "What gender are you?",
+    "mujer": "Woman",
+    "hombre": "Man",
+    "continuar": "Continue",
+    "guardando": "Saving...",
+    "cancelar": "Cancel",
+    "placeholder_nombre": "Your name",
+    "modal_nombre_cliente": "Enter your name",
+    "modal_nombre_modelo": "Enter your stage name",
+    "error_seleccionar": "Please select a role",
+    "error_nombre_obligatorio": "Name is required.",
+    "error_solo_letras": "Only letters are allowed.",
+    "error_confirmar_datos": "Could not confirm data. Please try again.",
+    "error_guardar": "Error saving role. Please try again."
+  },
+  "anteveri": {
+    "title": "Ligando",
+    "waiting": {
+      "title": "Waiting for verification",
+      "message": "Thank you for registering.\nWe will notify you when you are verified.",
+      "button": "Verification in progress",
+      "checking": "Checking status...",
+      "waiting_to_check": "Waiting to check..."
+    },
+    "approved": {
+      "title": "Verification approved!",
+      "default_message": "Your account has been successfully verified. You will be redirected in a few seconds...",
+      "button": "Verification completed",
+      "button_redirecting": "Accessing...",
+      "redirect_message": "Redirecting to your dashboard in 2 seconds..."
+    },
+    "rejected": {
+      "title": "Verification rejected",
+      "default_message": "Your verification was rejected. Please try again with clearer documents.",
+      "button": "Try again",
+      "button_redirecting": "Redirecting...",
+      "redirect_message": "You will be redirected to the verification process in 3 seconds..."
+    },
+    "common": {
+      "redirecting": "Redirecting...",
+      "error_message": "Error verifying status. Retrying..."
+    }
+  },
+  "stopverification": {
+    "title": "Identity Verification",
+    "description": "To get started, you must read our documentation and accept our terms.",
+    "startButton": "Start verification",
+    "readDocsButton": "Read documentation",
+    "modal": {
+      "title": "Terms and Conditions",
+      "subtitle": "Join our company",
+      "paragraph1": "By continuing with verification, you accept that the information provided is truthful and that the documents submitted are valid. We reserve the right to reject any suspicious or fraudulent verification attempt.",
+      "paragraph2": "Your data will be used solely to validate your identity for security purposes on the platform.",
+      "paragraph3": "By accepting these terms, you officially become part of our company with all the rights and responsibilities that this entails.",
+      "checkboxLabel": "I agree to become a company member and comply with all established policies",
+      "checkboxRequired": "You must accept to be part of the company to continue",
+      "cancelButton": "Cancel",
+      "acceptButton": "Accept and continue",
+      "readMoreButton": "Read more details"
+    }
+  },
+  "verificacion": {
+    "title": "Verify Identity",
+    "progressLabel": "Verification progress",
+    "steps": {
+      "selfie": {
+        "title": "Selfie",
+        "description": "Clear photo of your face",
+        "uploadText": "Upload selfie",
+        "changeText": "Change image",
+        "icon": "👤"
+      },
+      "document": {
+        "title": "Identity document",
+        "description": "ID card or passport",
+        "uploadText": "Upload identity document",
+        "changeText": "Change image",
+        "icon": "📋"
+      },
+      "selfieDoc": {
+        "title": "Selfie with document",
+        "description": "Your face next to the document",
+        "uploadText": "Upload selfie with document",
+        "changeText": "Change image",
+        "icon": "🤳"
+      }
+    },
+    "video": {
+      "title": "Verification video",
+      "description": "Record a video holding your document",
+      "recordButton": "Record verification video",
+      "recorded": "Video recorded successfully",
+      "icon": "🎥",
+      "modal": {
+        "title": "Record verification video",
+        "instructions": "Instructions:",
+        "steps": [
+          "Keep your face clearly visible",
+          "Hold your identity document in front of the camera",
+          "Make sure there is good lighting",
+          "The document must be readable in the video"
+        ]
+      }
+    },
+    "actions": {
+      "submit": "Submit complete verification",
+      "submitting": "Submitting verification...",
+      "delete": "Delete",
+      "deleteImage": "Delete image",
+      "deleteVideo": "Delete video"
+    },
+    "messages": {
+      "incompleteSteps": "Please complete all steps before submitting.",
+      "invalidVideoType": "Video type '{type}' is not valid. Required: video/webm or video/mp4",
+      "sending": "Sending verification...",
+      "success": "Verification sent successfully. You will be redirected...",
+      "validationError": "Validation errors found:",
+      "fileTooLarge": "Files are too large. Please reduce the video size.",
+      "genericError": "Error sending verification. Please try again."
+    }
+  },"paymentMethods": {
+    "errorLoadingMethods": "Error loading payment methods",
+    "noMethodsAvailable": "Payment Methods Not Available",
+    "noMethodsDescription": "Currently no payment methods are configured. Please contact support.",
+    "selectPaymentMethod": "Select Your Payment Method",
+    "choosePreferredMethod": "Choose your preferred payment method to buy your coins",
+    "idealFor": "IDEAL FOR",
+    "buyCoins": "Buy Coins",
+    "loadingMethods": "Loading payment methods...",
+    "allPaymentsSecure": "All Payments are 100% Secure",
+    "securityDescription": "We use the most trusted and secure payment platforms. Your financial data is protected with bank-level encryption.",
+    "quickComparison": "Quick Comparison",
+    "coinbase": {
+      "description": "Pay with over 100 cryptocurrencies securely",
+      "cryptos": "Bitcoin, Ethereum, USDC and more",
+      "noVolatility": "No volatility (automatic conversion)",
+      "instantConfirmation": "Instant confirmation",
+      "cryptoUsers": "Cryptocurrency users",
+      "internationalPayments": "International payments",
+      "maxPrivacy": "Maximum privacy",
+      "payWithCrypto": "Pay with Crypto"
+    },
+    "wompi": {
+      "description": "Pay with international cards, PSE, Nequi and more methods",
+      "cards": "Visa, Mastercard, debit",
+      "pse": "PSE - All Colombian banks",
+      "otherMethods": "Nequi, Bancolombia Transfer",
+      "colombianUsers": "Users in Colombia",
+      "internationalCards": "International cards",
+      "bankTransfers": "PSE bank transfers",
+      "payWithWompi": "Pay with Wompi"
+    },
+    "comparison": {
+      "cryptocurrencies": "Cryptocurrencies",
+      "international": "International",
+      "noBanks": "No banks",
+      "traditionalCards": "Traditional cards",
+      "pseColombia": "PSE Colombia",
+      "colombianPesos": "Colombian pesos"
+    }
+  },
+  "wompi": {
+    "loading": "Loading Wompi...",
+    "poweredBy": "Powered by Wompi - Secure payments in Colombia",
+    "payWithWompi": "Pay with Wompi",
+    "title": {
+      "buyMinutes": "Buy Minutes",
+      "sendGifts": "Send Gifts"
+    },
+    "errors": {
+      "configurationError": "Configuration error. Try again later.",
+      "createPayment": "Error creating payment",
+      "connectionError": "Connection error. Try again."
+    },
+    "notifications": {
+      "purchaseCompleted": "Purchase completed! {{coins}} coins added (Sandbox)",
+      "paymentCreated": "Payment created. You will be redirected to Wompi in a few seconds.",
+      "paymentCompleted": "Payment completed! {{coins}} coins were added to your account"
+    },
+    "balances": {
+      "currentBalance": "Your current balance",
+      "availableForVideochat": "available for videochat",
+      "availableForGifts": "Available to send gifts"
+    },
+    "status": {
+      "completed": "Completed",
+      "pending": "Pending",
+      "failed": "Failed"
+    },
+    "features": {
+      "cardsAndPSE": "Cards and PSE",
+      "cardsDescription": "Visa, Mastercard, PSE and all banks",
+      "colombian": "100% Colombian",
+      "colombianDescription": "Leading digital payments platform",
+      "securePayment": "Secure Payment",
+      "secureDescription": "PCI DSS certification and encryption",
+      "quickConfirmation": "Quick Confirmation",
+      "quickDescription": "Receive your coins instantly"
+    },
+    "history": {
+      "recentPurchases": "Recent Purchases (Wompi)"
+    },
+    "country": {
+      "colombia": "Colombia"
+    },
+    "verification": {
+      "title": "Payment Verification",
+      "totalToPay": "Total to pay",
+      "alreadyCompleted": "Already completed the payment?",
+      "autoChecking": "Automatically checking every 3 seconds...",
+      "coinsWillAppear": "Coins will appear automatically, or you can check manually:",
+      "checking": "Checking...",
+      "checkNow": "Check Now"
+    },
+    "redirect": {
+      "preparingPayment": "Preparing your payment",
+      "autoRedirect": "You will be automatically redirected to Wompi",
+      "payNow": "Pay now",
+      "redirectedToWompi": "Redirected to Wompi!",
+      "newWindowOpened": "A new window with your payment checkout has opened.",
+      "openWompiAgain": "Open Wompi again"
+    },
+    "process": {
+      "whatHappensNow": "What happens now?",
+      "step1": "We redirect you to the secure Wompi checkout",
+      "step2": "Complete your payment with card, PSE or Nequi",
+      "step3": "Coins are automatically added to your account"
+    },
+    "paymentMethods": {
+      "title": "Payment Methods in Wompi",
+      "cards": {
+        "title": "Cards",
+        "description": "Visa, Mastercard"
+      },
+      "pse": {
+        "title": "PSE",
+        "description": "Colombian Banks"
+      },
+      "nequi": {
+        "title": "Nequi",
+        "description": "Mobile payment"
+      },
+      "bancolombia": {
+        "title": "Bancolombia",
+        "description": "Transfer"
+      }
+    }
+  },
+  "packages": {
+    "mostPopular": "MOST POPULAR",
+    "free": "free",
+    "videochatTime": "videochat time",
+    "perCoin": "per coin",
+    "bonusCoins": "Bonus coins"
+  },
+  "balance": {
+    "purchased": "Purchased",
+    "giftMinutes": "Gift (minutes)",
+    "giftCoins": "Gift coins",
+    "received": "Received",
+    "sent": "Sent"
+  },
+  "buttons": {
+    "buy": "Buy",
+    "send": "Send",
+    "back": "Back"
+  },
+  "common": {
+    "coins": "coins",
+    "minutes": "Minutes",
+    "gifts": "Gifts"
+  },"gifts": {
+      "sendGift": "Send Gift",
+      "requestGift": "Request Gift", 
+      "forRecipient": "For {{name}}",
+      "requestFrom": "Request from {{name}}",
+      "clickToSend": "Click to send",
+      "clickToRequest": "Click to request",
+      "yourBalance": "Your balance: {{balance}} coins",
+      "optionalMessage": "Optional message to accompany your gift:",
+      "optionalRequestMessage": "Optional message (will appear with your request):",
+      "placeholderGift": "Ex: You're amazing! 💖",
+      "placeholderRequest": "Ex: Please! 🥺",
+      "characters": "{{current}}/{{max}} characters",
+      "giftsAvailable": "{{count}} gifts available",
+      "insufficient": "Missing {{amount}}",
+      "confirmSend": "Send {{giftName}} to {{recipientName}}?\nCost: {{price}} coins\nYour current balance: {{balance}} coins",
+      "giftSent": "{{giftName}} sent to {{recipientName}}! 🎉",
+      "requestSent": "{{giftName}} request sent to {{recipientName}}! 🎁",
+      "sendingGift": "Sending gift...",
+      "sendingRequest": "Sending request...",
+      "invalidGiftId": "Error: Invalid gift ID",
+      "invalidRecipientId": "Error: Invalid recipient ID", 
+      "insufficientBalance": "Not enough coins. You need {{required}} but have {{current}}.",
+      "processingError": "Error processing gift"
+    },
+    "disconnect": {
+      "modelSkippedYou": "The model skipped to the next",
+      "searchedOtherClient": "Searched for another client",
+      "modelDisconnected": "The model disconnected",
+      "endedVideoCall": "Ended the video call",
+      "modelLeft": "The model left the room",
+      "leftSession": "Left the session",
+      "balanceExhausted": "Balance exhausted",
+      "ranOutOfCoins": "You've run out of coins",
+      "sessionEnded": "Session ended",
+      "connectionLost": "Connection lost",
+      "details": "Details",
+      "dontWorryClient": "Don't worry!",
+      "connectingWithOther": "Connecting with another model...",
+      "inSeconds": "In {{seconds}}s",
+      "connecting": "Connecting...",
+      "keepSufficientCoins": "Keep sufficient coins",
+      "beRespectful": "Always be respectful",
+      "eachConnectionUnique": "Each connection is unique"
+    }
+}

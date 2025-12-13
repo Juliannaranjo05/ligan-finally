@@ -1,0 +1,33 @@
+[0;1;32m●[0m apache2.service - The Apache HTTP Server
+     Loaded: loaded (]8;;file://vmi2748123/usr/lib/systemd/system/apache2.service/usr/lib/systemd/system/apache2.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Sat 2025-08-09 14:41:55 CEST; 1min 39s ago
+       Docs: ]8;;https://httpd.apache.org/docs/2.4/https://httpd.apache.org/docs/2.4/]8;;
+    Process: 117066 ExecStart=/usr/sbin/apachectl start (code=exited, status=0/SUCCESS)
+   Main PID: 117069 (apache2)
+      Tasks: 20 (limit: 57766)
+     Memory: 91.3M (peak: 95.6M)
+        CPU: 10.690s
+     CGroup: /system.slice/apache2.service
+             ├─[0;38;5;245m117069 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117073 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117074 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117075 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117076 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117077 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117078 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117079 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117080 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117081 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117082 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117084 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117085 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117086 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117087 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117088 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117089 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117090 /usr/sbin/apache2 -k start[0m
+             ├─[0;38;5;245m117091 /usr/sbin/apache2 -k start[0m
+             └─[0;38;5;245m117092 /usr/sbin/apache2 -k start[0m
+
+Aug 09 14:41:55 vmi2748123 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+Aug 09 14:41:55 vmi2748123 systemd[1]: Started apache2.service - The Apache HTTP Server.

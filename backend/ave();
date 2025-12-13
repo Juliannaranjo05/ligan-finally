@@ -1,0 +1,20 @@
+[90m= [39m[34;4mApp\Models\CoinPackage[39;24m {#5349
+    [34mid[39m: [35m1[39m,
+    [34mname[39m: "[32m15 Minutos[39m",
+    [34mdescription[39m: "[32mPerfecto para comenzar[39m",
+    [34mcoins[39m: [35m150[39m,
+    [34mbonus_coins[39m: [35m0[39m,
+    [34mprice[39m: "[32m7.25[39m",
+    [34moriginal_price[39m: "[32m7.25[39m",
+    [34mregular_price[39m: "[32m0.40[39m",
+    [34mis_first_time_only[39m: [35m0[39m,
+    [34mminutes[39m: [35m15[39m,
+    [34mtype[39m: "[32mminutes[39m",
+    [34mis_active[39m: [35m1[39m,
+    [34mis_popular[39m: [35m0[39m,
+    [34msort_order[39m: [35m1[39m,
+    [34mdiscount_percentage[39m: [35m0[39m,
+    [34mcreated_at[39m: "[32m2025-08-08 06:28:38[39m",
+    [34mupdated_at[39m: "[32m2025-08-14 14:41:15[39m",
+  }
+

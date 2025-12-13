@@ -1,0 +1,422 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use App\Models\UserOnlineStatus;     // ← Línea 67 (o donde esté el modelo)
+use App\Models\ChatSession;
+
+class HeartbeatController extends Controller
+{
+    public function updateHeartbeat(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'error' => 'No autenticado'], 401);
+            }
+
+            $activityType = $request->input('activity_type', 'browsing');
+            $roomName = $request->input('room');
+            
+            Log::info('💓 Heartbeat recibido', [
+                'user_id' => $user->id,
+                'activity_type' => $activityType,
+                'room' => $roomName,
+                'timestamp' => now()->toISOString()
+            ]);
+
+            // 🔥 VALIDACIONES ESPECÍFICAS PARA VIDEOCHAT
+            if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
+                if (!$roomName) {
+                    Log::warning('⚠️ Heartbeat de videochat sin room_name', [
+                        'user_id' => $user->id,
+                        'activity_type' => $activityType
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Room name requerido para videochat'], 400);
+                }
+                
+                // Verificar que la sesión existe y el usuario pertenece a ella
+                $session = ChatSession::where('room_name', $roomName)
+                    ->whereIn('status', ['active', 'waiting'])
+                    ->where(function($query) use ($user) {
+                        $query->where('cliente_id', $user->id)
+                            ->orWhere('modelo_id', $user->id);
+                    })
+                    ->first();
+                    
+                if (!$session) {
+                    Log::warning('⚠️ Usuario enviando heartbeat para sesión inexistente', [
+                        'user_id' => $user->id,
+                        'room_name' => $roomName,
+                        'activity_type' => $activityType
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false, 
+                        'error' => 'Sesión no encontrada',
+                        'action' => 'redirect_to_search'
+                    ], 404);
+                }
+                
+                // Actualizar timestamp de la sesión
+                $session->touch();
+            }
+
+            // Actualizar o crear estado online
+            UserOnlineStatus::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'is_online' => true,
+                    'last_seen' => now(),
+                    'activity_type' => $activityType,
+                    'current_room' => $roomName,
+                    'updated_at' => now()
+                ]
+            );
+
+            // 🔥 CLEANUP AUTOMÁTICO: Finalizar sesiones de usuarios inactivos
+            if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
+                $this->cleanupInactiveVideoSessions($roomName, $user->id);
+            }
+
+            return response()->json([
+                'success' => true,
+                'timestamp' => now()->toISOString(),
+                'activity_type' => $activityType
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error procesando heartbeat', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    // 🔥 NUEVA FUNCIÓN: Limpiar sesiones inactivas automáticamente
+    private function cleanupInactiveVideoSessions($currentRoomName, $currentUserId)
+    {
+        try {
+            Log::info('🧹 Iniciando cleanup automático de sesiones inactivas', [
+                'current_room' => $currentRoomName,
+                'current_user' => $currentUserId
+            ]);
+
+            // Buscar sesiones activas donde hay usuarios sin heartbeat reciente
+            $activeSessions = ChatSession::where('status', 'active')
+                ->where('updated_at', '>=', now()->subMinutes(10)) // Solo sesiones relativamente recientes
+                ->get();
+
+            foreach ($activeSessions as $session) {
+                // Saltar la sesión actual del usuario
+                if ($session->room_name === $currentRoomName) {
+                    continue;
+                }
+
+                $shouldCleanup = false;
+                $inactiveUsers = [];
+
+                // Verificar cliente
+                if ($session->cliente_id) {
+                    $clienteActive = UserOnlineStatus::where('user_id', $session->cliente_id)
+                        ->where('last_seen', '>=', now()->subSeconds(60)) // 60 segundos de tolerancia
+                        ->where('activity_type', 'videochat_client')
+                        ->exists();
+
+                    if (!$clienteActive) {
+                        $inactiveUsers[] = "cliente_{$session->cliente_id}";
+                        $shouldCleanup = true;
+                    }
+                }
+
+                // Verificar modelo
+                if ($session->modelo_id) {
+                    $modeloActive = UserOnlineStatus::where('user_id', $session->modelo_id)
+                        ->where('last_seen', '>=', now()->subSeconds(60)) // 60 segundos de tolerancia
+                        ->where('activity_type', 'videochat')
+                        ->exists();
+
+                    if (!$modeloActive) {
+                        $inactiveUsers[] = "modelo_{$session->modelo_id}";
+                        $shouldCleanup = true;
+                    }
+                }
+
+                // Limpiar sesión si hay usuarios inactivos
+                if ($shouldCleanup) {
+                    Log::warning('🧹 Finalizando sesión con usuarios inactivos', [
+                        'session_id' => $session->id,
+                        'room_name' => $session->room_name,
+                        'inactive_users' => $inactiveUsers
+                    ]);
+
+                    $session->update([
+                        'status' => 'ended',
+                        'ended_at' => now(),
+                        'end_reason' => 'users_inactive_cleanup'
+                    ]);
+
+                    // Notificar a usuarios activos restantes
+                    $this->notifyRemainingUsers($session, $inactiveUsers);
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error en cleanup automático', [
+                'error' => $e->getMessage(),
+                'current_room' => $currentRoomName
+            ]);
+        }
+    }
+
+    // 🔥 NOTIFICAR A USUARIOS RESTANTES CUANDO HAY CLEANUP
+    private function notifyRemainingUsers($session, $inactiveUsers)
+    {
+        try {
+            $activeUsers = [];
+            
+            // Identificar usuarios que siguen activos
+            if ($session->cliente_id) {
+                $clienteActive = UserOnlineStatus::where('user_id', $session->cliente_id)
+                    ->where('last_seen', '>=', now()->subSeconds(60))
+                    ->exists();
+                    
+                if ($clienteActive && !in_array("cliente_{$session->cliente_id}", $inactiveUsers)) {
+                    $activeUsers[] = [
+                        'id' => $session->cliente_id,
+                        'role' => 'cliente'
+                    ];
+                }
+            }
+            
+            if ($session->modelo_id) {
+                $modeloActive = UserOnlineStatus::where('user_id', $session->modelo_id)
+                    ->where('last_seen', '>=', now()->subSeconds(60))
+                    ->exists();
+                    
+                if ($modeloActive && !in_array("modelo_{$session->modelo_id}", $inactiveUsers)) {
+                    $activeUsers[] = [
+                        'id' => $session->modelo_id,
+                        'role' => 'modelo'
+                    ];
+                }
+            }
+
+            // Enviar notificaciones a usuarios activos
+            foreach ($activeUsers as $user) {
+                DB::table('notifications')->insert([
+                    'user_id' => $user['id'],
+                    'type' => 'partner_disconnected_cleanup',
+                    'data' => json_encode([
+                        'message' => 'Tu partner se desconectó inesperadamente',
+                        'room_name' => $session->room_name,
+                        'reason' => 'partner_inactive',
+                        'redirect_url' => '/usersearch',
+                        'redirect_params' => [
+                            'role' => $user['role'],
+                            'from' => 'partner_disconnected',
+                            'action' => 'find_new_partner'
+                        ]
+                    ]),
+                    'read' => false,
+                    'expires_at' => now()->addMinutes(10),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+                
+                Log::info('📨 Notificación de desconexión enviada', [
+                    'user_id' => $user['id'],
+                    'user_role' => $user['role'],
+                    'session_id' => $session->id
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error notificando usuarios restantes', [
+                'error' => $e->getMessage(),
+                'session_id' => $session->id
+            ]);
+        }
+    }
+
+    // 🔥 ENDPOINT PARA VERIFICAR ESTADO GLOBAL DEL USUARIO
+    public function checkUserGlobalStatus(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'error' => 'No autenticado'], 401);
+            }
+
+            // Verificar si tiene sesiones activas
+            $activeSessions = ChatSession::where(function($query) use ($user) {
+                $query->where('cliente_id', $user->id)
+                    ->orWhere('modelo_id', $user->id);
+            })
+            ->whereIn('status', ['active', 'waiting'])
+            ->get();
+
+            $currentStatus = UserOnlineStatus::where('user_id', $user->id)->first();
+
+            $response = [
+                'success' => true,
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'active_sessions_count' => $activeSessions->count(),
+                'current_activity' => $currentStatus ? $currentStatus->activity_type : 'offline',
+                'current_room' => $currentStatus ? $currentStatus->current_room : null,
+                'last_seen' => $currentStatus ? $currentStatus->last_seen->toISOString() : null,
+                'sessions' => []
+            ];
+
+            // Detalles de sesiones activas
+            foreach ($activeSessions as $session) {
+                $response['sessions'][] = [
+                    'id' => $session->id,
+                    'room_name' => $session->room_name,
+                    'status' => $session->status,
+                    'created_at' => $session->created_at->toISOString(),
+                    'user_role_in_session' => $session->cliente_id == $user->id ? 'cliente' : 'modelo'
+                ];
+            }
+
+            // 🔥 DETECTAR INCONSISTENCIAS
+            if ($activeSessions->count() > 1) {
+                Log::warning('⚠️ Usuario con múltiples sesiones activas', [
+                    'user_id' => $user->id,
+                    'sessions_count' => $activeSessions->count(),
+                    'sessions' => $activeSessions->pluck('room_name')->toArray()
+                ]);
+
+                $response['warning'] = 'multiple_active_sessions';
+                $response['action'] = 'cleanup_required';
+            }
+
+            if ($currentStatus && 
+                in_array($currentStatus->activity_type, ['videochat', 'videochat_client']) && 
+                $activeSessions->isEmpty()) {
+                
+                Log::warning('⚠️ Usuario con heartbeat de videochat pero sin sesiones', [
+                    'user_id' => $user->id,
+                    'activity_type' => $currentStatus->activity_type,
+                    'current_room' => $currentStatus->current_room
+                ]);
+
+                $response['warning'] = 'heartbeat_without_session';
+                $response['action'] = 'sync_required';
+            }
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error verificando estado global', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error verificando estado'
+            ], 500);
+        }
+    }
+
+    // 🔥 ENDPOINT PARA CLEANUP FORZADO
+    public function forceUserCleanup(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'error' => 'No autenticado'], 401);
+            }
+
+            $reason = $request->input('reason', 'manual_cleanup');
+            
+            Log::info('🧹 Iniciando cleanup forzado', [
+                'user_id' => $user->id,
+                'reason' => $reason
+            ]);
+
+            DB::beginTransaction();
+
+            // 1. Finalizar todas las sesiones del usuario
+            $userSessions = ChatSession::where(function($query) use ($user) {
+                $query->where('cliente_id', $user->id)
+                    ->orWhere('modelo_id', $user->id);
+            })
+            ->whereIn('status', ['active', 'waiting'])
+            ->get();
+
+            foreach ($userSessions as $session) {
+                $session->update([
+                    'status' => 'ended',
+                    'ended_at' => now(),
+                    'end_reason' => $reason
+                ]);
+
+                Log::info('✅ Sesión finalizada en cleanup', [
+                    'session_id' => $session->id,
+                    'room_name' => $session->room_name
+                ]);
+            }
+
+            // 2. Actualizar estado del usuario
+            UserOnlineStatus::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'is_online' => true,
+                    'last_seen' => now(),
+                    'activity_type' => 'browsing',
+                    'current_room' => null,
+                    'updated_at' => now()
+                ]
+            );
+
+            // 3. Finalizar sesiones de videochat si existen
+            VideoChatSession::where('user_id', $user->id)
+                ->where('status', 'active')
+                ->update([
+                    'status' => 'ended',
+                    'ended_at' => now(),
+                    'is_consuming' => false,
+                    'end_reason' => $reason
+                ]);
+
+            DB::commit();
+
+            Log::info('✅ Cleanup forzado completado', [
+                'user_id' => $user->id,
+                'sessions_cleaned' => $userSessions->count(),
+                'reason' => $reason
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cleanup completado exitosamente',
+                'sessions_cleaned' => $userSessions->count()
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            
+            Log::error('❌ Error en cleanup forzado', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error en cleanup forzado'
+            ], 500);
+        }
+    }
+}

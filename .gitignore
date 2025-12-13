@@ -1,0 +1,31 @@
+# Archivos de backup
+*.tar.gz
+*.backup
+*backup*
+*.bak
+
+# Archivos temporales y de sistema
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Archivos de configuración local
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Archivos de editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Archivos de error/residuos
+*cambios locales*
+*commitearlos primero*
+

@@ -1,0 +1,36 @@
+# 🔧 Node modules (nunca se debe subir)
+node_modules/
+
+# 📦 Archivos de build (Vite)
+dist/
+
+# ⚙️ Configuración del entorno
+.env
+.env.*.local
+
+# 🧪 Test coverage
+coverage/
+
+# 💻 Configuración local de editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 📄 Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 📂 Sistema de OS
+.DS_Store
+Thumbs.db
+
+# 🔒 Lockfiles (opcional si quieres evitar conflictos entre npm/yarn/pnpm)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 🔄 Vercel local files
+.vercel/
