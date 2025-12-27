@@ -21,6 +21,28 @@ export const GiftsModal = ({
   const [isLoading, setIsLoading] = useState(false);
   const [imageCacheBuster, setImageCacheBuster] = useState(Date.now());
   
+  // 🔥 NORMALIZAR userRole PARA COMPARACIÓN
+  // 🔥 PRIORIDAD 1: Si roomName contiene "modelo", ES MODELO (viene de videochat.jsx de modelo)
+  // 🔥 PRIORIDAD 2: Si userRole es explícitamente "modelo", SIEMPRE ES MODELO
+  // 🔥 PRIORIDAD 3: Si onSendGift es explícitamente undefined Y onRequestGift está definido, ES MODELO
+  // 🔥 PRIORIDAD 4: Si onRequestGift está disponible, ES MODELO
+  const normalizedUserRole = (userRole || '').toLowerCase();
+  const isModeloByRoomName = roomName && roomName.toLowerCase().includes('modelo');
+  const isModeloByUserRole = normalizedUserRole === 'modelo';
+  const isModeloByProps = (onSendGift === undefined && onRequestGift !== undefined) || (onRequestGift && !onSendGift);
+  
+  // 🔥 SI roomName CONTIENE "modelo" O userRole ES "modelo", FORZAR QUE SEA MODELO
+  const effectiveUserRole = (isModeloByRoomName || isModeloByUserRole) ? 'modelo' : (isModeloByProps ? 'modelo' : (userRole || 'cliente'));
+  const normalizedRole = effectiveUserRole?.toLowerCase() || '';
+  const isModelo = normalizedRole === 'modelo';
+  
+  // 🔥 DEBUG: Log solo cuando cambian las props relevantes (no en cada render)
+  useEffect(() => {
+    if (isOpen) {
+      console.log('🎁 [GIFTMODAL] Modal abierto - userRole:', userRole, 'effectiveUserRole:', effectiveUserRole, 'isModelo:', isModelo);
+    }
+  }, [isOpen, userRole, effectiveUserRole, isModelo]);
+  
   // 🔥 FORZAR RECARGA DE IMÁGENES CUANDO SE ABRE EL MODAL
   useEffect(() => {
     if (isOpen) {
@@ -54,8 +76,14 @@ export const GiftsModal = ({
 
       let result;
 
-      if (userRole === 'modelo') {
-        // 🔥 MODELO: PEDIR REGALO (funcionalidad existente)
+      // 🔥 USAR isModelo QUE YA ESTÁ DEFINIDO ARRIBA
+      if (isModelo) {
+        // 🔥 MODELO: SOLO PEDIR REGALO (NO ENVIAR)
+        if (!onRequestGift) {
+          alert('Función de solicitar regalo no disponible');
+          setIsLoading(false);
+          return;
+        }
         
         result = await onRequestGift(
           giftId,              // ✅ ID del regalo
@@ -71,7 +99,7 @@ export const GiftsModal = ({
           alert(`${t('error')}: ${result.error}`);
         }
 
-      } else if (userRole === 'cliente') {
+      } else {
         // 🔥 CLIENTE: ENVIAR REGALO DIRECTAMENTE
         
         // Verificar saldo suficiente
@@ -125,22 +153,22 @@ export const GiftsModal = ({
   };
 
   if (!isOpen) return null;
-
+  
   // 🎯 TÍTULOS DINÁMICOS TRADUCIDOS
-  const title = userRole === 'modelo' ? t('gifts.requestGift') : t('gifts.sendGift');
-  const subtitle = userRole === 'modelo' 
+  const title = isModelo ? t('gifts.requestGift') : t('gifts.sendGift');
+  const subtitle = isModelo 
     ? t('gifts.requestFrom', { name: recipientName })
     : t('gifts.forRecipient', { name: recipientName });
   
-  const buttonText = userRole === 'modelo' 
+  const buttonText = isModelo 
     ? t('gifts.clickToRequest')
     : t('gifts.clickToSend');
 
-  const messagePlaceholder = userRole === 'modelo'
+  const messagePlaceholder = isModelo
     ? t('gifts.placeholderRequest')
     : t('gifts.placeholderGift');
 
-  const messageLabel = userRole === 'modelo'
+  const messageLabel = isModelo
     ? t('gifts.optionalRequestMessage')
     : t('gifts.optionalMessage');
 
@@ -158,7 +186,7 @@ export const GiftsModal = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center shadow-lg shadow-[#ff007a]/20">
-                {userRole === 'modelo' ? (
+                {isModelo ? (
                   <Gift size={20} className="sm:w-6 sm:h-6 text-white" />
                 ) : (
                   <Heart size={20} className="sm:w-6 sm:h-6 text-white" />
@@ -167,7 +195,7 @@ export const GiftsModal = ({
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-white">{title}</h2>
                 <p className="text-[#ff007a] text-xs">{subtitle}</p>
-                {userRole === 'cliente' && (
+                {!isModelo && (
                   <p className="text-yellow-400 text-xs">
                     {t('gifts.yourBalance', { balance: userBalance })}
                   </p>
@@ -211,8 +239,8 @@ export const GiftsModal = ({
         >
           <div className="grid grid-cols-2 gap-3">
             {gifts.map((gift) => {
-              // 🔥 VERIFICAR SI EL CLIENTE TIENE SALDO SUFICIENTE
-              const canAfford = userRole === 'modelo' || userBalance >= gift.price;
+              // 🔥 VERIFICAR SI EL CLIENTE TIENE SALDO SUFICIENTE (modelo siempre puede pedir)
+              const canAfford = isModelo || userBalance >= gift.price;
               
               return (
                 <div
@@ -281,13 +309,13 @@ export const GiftsModal = ({
                     }`}>
                       <Sparkles size={8} />
                       {gift.price}
-                      {userRole === 'cliente' && !canAfford && (
+                      {!isModelo && !canAfford && (
                         <span className="ml-1 text-red-300">💸</span>
                       )}
                     </div>
 
                     {/* Indicador de saldo insuficiente */}
-                    {userRole === 'cliente' && !canAfford && (
+                    {!isModelo && !canAfford && (
                       <div className="mt-1 text-xs text-red-400 line-clamp-1">
                         {t('gifts.insufficient', { amount: gift.price - userBalance })}
                       </div>
@@ -304,7 +332,7 @@ export const GiftsModal = ({
           <div className="flex items-center justify-center text-xs text-white/60">
             <span>
               ✨ {t('gifts.giftsAvailable', { count: gifts.length })} - {buttonText}
-              {userRole === 'cliente' && (
+              {!isModelo && (
                 <span className="ml-2 text-yellow-400">
                   💰 {t('gifts.yourBalance', { balance: userBalance })}
                 </span>
@@ -319,7 +347,7 @@ export const GiftsModal = ({
             <div className="bg-[#0a0d10] border border-[#ff007a]/30 rounded-lg p-6 flex items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ff007a]"></div>
               <span className="text-white font-medium">
-                {userRole === 'modelo' ? t('gifts.sendingRequest') : t('gifts.sendingGift')}
+                {isModelo ? t('gifts.sendingRequest') : t('gifts.sendingGift')}
               </span>
             </div>
           </div>

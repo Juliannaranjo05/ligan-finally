@@ -662,21 +662,21 @@ const StoriesModal = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50 overflow-hidden">
         {/* 🔄 CONTENEDOR PRINCIPAL CENTRADO - 70% ANCHO EN DESKTOP, 100% EN MÓVIL */}
-        <div className="w-full md:w-[70%] h-full flex flex-col">
+        <div className="w-full md:w-[70%] h-screen flex flex-col overflow-hidden">
           {/* Header con información de la modelo */}
-          <div className="flex items-center justify-between p-4">
+          <div className="flex items-center justify-between p-2 md:p-3 flex-shrink-0">
             {/* Info de la modelo */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-xs md:text-sm">
                 {getInitial(currentStory.user?.display_name || currentStory.user?.nickname || currentStory.user?.name)}
               </div>
               <div>
-                <p className="text-white font-semibold text-sm">
+                <p className="text-white font-semibold text-xs md:text-sm">
                   {currentStory.user?.display_name || currentStory.user?.nickname || currentStory.user?.name || 'Usuario'}
                 </p>
-                <p className="text-white/60 text-xs">
+                <p className="text-white/60 text-[10px] md:text-xs">
                   {new Date(currentStory.created_at).toLocaleDateString()}
                 </p>
               </div>
@@ -685,14 +685,14 @@ const StoriesModal = ({
             {/* Botón cerrar */}
             <button
               onClick={onClose}
-              className="w-10 h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/70 transition-colors"
+              className="w-8 h-8 md:w-10 md:h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/70 transition-colors flex-shrink-0"
             >
-              <X className="w-5 h-5 text-white" />
+              <X className="w-4 h-4 md:w-5 md:h-5 text-white" />
             </button>
           </div>
 
           {/* Barra de progreso */}
-          <div className="flex gap-1 px-4 mb-4">
+          <div className="flex gap-1 px-2 md:px-3 mb-2 flex-shrink-0">
             {stories.map((_, index) => (
               <div
                 key={index}
@@ -713,9 +713,9 @@ const StoriesModal = ({
           </div>
 
           {/* 📱 CONTENIDO: HISTORIA + PANEL LATERAL (RESPONSIVE) */}
-          <div className="flex flex-col md:flex-row flex-1">
+          <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
             {/* HISTORIA - OCUPA EL ESPACIO PRINCIPAL */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-h-0 overflow-hidden">
               {/* Área clickeable para pausa/play */}
               <div
                 className="absolute inset-x-12 inset-y-0 z-5"
@@ -739,18 +739,18 @@ const StoriesModal = ({
 
               {/* BOTÓN PARA SALTAR HISTORIA COMPLETADA - RESPONSIVE */}
               {progress >= 100 && (
-                <div className="absolute bottom-8 md:bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+                <div className="absolute bottom-4 md:bottom-4 left-1/2 transform -translate-x-1/2 z-20">
                   <button
                     onClick={nextStory}
-                    className="bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 py-2 rounded-full font-semibold shadow-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 text-sm"
+                    className="bg-[#ff007a] hover:bg-[#e6006e] text-white px-3 py-1.5 rounded-full font-semibold shadow-lg transition-all duration-200 hover:scale-105 flex items-center gap-1.5 text-xs md:text-sm"
                   >
                     {currentStoryIndex < stories.length - 1 ? (
                       <>
-                        {t('storiesModal.next')} <ChevronRight className="w-4 h-4" />
+                        {t('storiesModal.next')} <ChevronRight className="w-3 h-3 md:w-4 md:h-4" />
                       </>
                     ) : (
                       <>
-                        {t('storiesModal.restart')} <RotateCcw className="w-4 h-4" />
+                        {t('storiesModal.restart')} <RotateCcw className="w-3 h-3 md:w-4 md:h-4" />
                       </>
                     )}
                   </button>
@@ -763,7 +763,7 @@ const StoriesModal = ({
                   <video
                     ref={videoRef}
                     src={fileUrl}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     autoPlay
                     muted={isMuted}
                     loop={false}
@@ -782,7 +782,7 @@ const StoriesModal = ({
                   <img
                     src={fileUrl}
                     alt="Historia"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 )}
               </div>
@@ -810,17 +810,18 @@ const StoriesModal = ({
 
             {/* 📱 PANEL CON ACCIONES - LATERAL EN DESKTOP, ABAJO EN MÓVIL */}
             <div className="
-              w-full h-20 md:w-20 md:h-full 
+              w-full h-16 md:w-16 md:h-full 
               bg-black/50 backdrop-blur-sm 
               flex flex-row md:flex-col 
               items-center justify-center md:justify-center
-              gap-4 md:gap-6 
+              gap-2 md:gap-4 
               border-t md:border-t-0 md:border-l border-white/10 
               md:rounded-r-lg
-              px-4 md:px-0
+              px-2 md:px-0
+              flex-shrink-0
             ">
               {/* 📱 LAYOUT MÓVIL: HORIZONTAL */}
-              <div className="md:hidden flex items-center justify-between w-full">
+              <div className="md:hidden flex items-center justify-between w-full gap-1">
                 {/* Controles de video */}
                 {isVideo && (
                   <button
@@ -831,44 +832,44 @@ const StoriesModal = ({
                         videoRef.current.muted = !isMuted;
                       }
                     }}
-                    className="w-12 h-12 bg-black/70 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                    className="w-8 h-8 bg-black/70 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors flex-shrink-0"
                   >
                     {isMuted ? (
-                      <VolumeX className="w-5 h-5 text-white" />
+                      <VolumeX className="w-4 h-4 text-white" />
                     ) : (
-                      <Volume2 className="w-5 h-5 text-white" />
+                      <Volume2 className="w-4 h-4 text-white" />
                     )}
                   </button>
                 )}
 
                 {/* Estadísticas móvil */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
-                    <Eye className="w-4 h-4 text-blue-400" />
-                    <span className="text-white text-xs font-semibold">{viewsCount}</span>
+                    <Eye className="w-3 h-3 text-blue-400" />
+                    <span className="text-white text-[10px] font-semibold">{viewsCount}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Heart className={`w-4 h-4 ${hasLiked ? 'text-red-500 fill-red-500' : 'text-white/60'}`} />
-                    <span className="text-white text-xs font-semibold">{likesCount}</span>
+                    <Heart className={`w-3 h-3 ${hasLiked ? 'text-red-500 fill-red-500' : 'text-white/60'}`} />
+                    <span className="text-white text-[10px] font-semibold">{likesCount}</span>
                   </div>
                 </div>
 
                 {/* Botones de acción móvil */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {/* Botón de like */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleLike();
                     }}
-                    className={`w-10 h-10 rounded-full transition-all duration-200 flex items-center justify-center ${
+                    className={`w-8 h-8 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 ${
                       hasLiked 
                         ? 'bg-red-500/20 border border-red-500/40' 
                         : 'bg-white/10 hover:bg-white/20 border border-white/20'
                     }`}
                   >
                     <Heart 
-                      className={`w-5 h-5 ${
+                      className={`w-4 h-4 ${
                         hasLiked ? 'text-red-500 fill-red-500' : 'text-white'
                       }`} 
                     />
@@ -880,9 +881,9 @@ const StoriesModal = ({
                       e.stopPropagation();
                       handleMessage();
                     }}
-                    className="w-10 h-10 bg-[#2b2d31] hover:bg-[#373a3f] rounded-full flex items-center justify-center transition-colors border border-[#ff007a]/30"
+                    className="w-8 h-8 bg-[#2b2d31] hover:bg-[#373a3f] rounded-full flex items-center justify-center transition-colors border border-[#ff007a]/30 flex-shrink-0"
                   >
-                    <MessageSquare className="w-4 h-4 text-[#ff007a]" />
+                    <MessageSquare className="w-3 h-3 text-[#ff007a]" />
                   </button>
 
                   {/* Botón de llamada */}
@@ -892,26 +893,26 @@ const StoriesModal = ({
                       handleCall();
                     }}
                     disabled={isCallActive}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
                       isCallActive
                         ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
                         : 'bg-[#ff007a] hover:bg-[#e6006e] text-white'
                     }`}
                   >
-                    <Phone className="w-5 h-5" />
+                    <Phone className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Indicador de posición móvil */}
-                <div className="bg-black/70 backdrop-blur-sm rounded-full px-2 py-1">
-                  <span className="text-white text-xs font-mono">
+                <div className="bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 flex-shrink-0">
+                  <span className="text-white text-[10px] font-mono">
                     {currentStoryIndex + 1}/{stories.length}
                   </span>
                 </div>
               </div>
 
               {/* 🖥️ LAYOUT DESKTOP: VERTICAL */}
-              <div className="hidden md:flex md:flex-col md:items-center md:gap-6">
+              <div className="hidden md:flex md:flex-col md:items-center md:gap-3 md:py-2">
                 {/* Controles de video */}
                 {isVideo && (
                   <button
@@ -922,26 +923,26 @@ const StoriesModal = ({
                         videoRef.current.muted = !isMuted;
                       }
                     }}
-                    className="w-12 h-12 bg-black/70 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                    className="w-10 h-10 bg-black/70 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/80 transition-colors flex-shrink-0"
                   >
                     {isMuted ? (
-                      <VolumeX className="w-5 h-5 text-white" />
+                      <VolumeX className="w-4 h-4 text-white" />
                     ) : (
-                      <Volume2 className="w-5 h-5 text-white" />
+                      <Volume2 className="w-4 h-4 text-white" />
                     )}
                   </button>
                 )}
 
                 {/* Estadísticas desktop */}
                 <div className="text-center">
-                  <div className="flex flex-col items-center gap-1 mb-3">
-                    <Eye className="w-5 h-5 text-blue-400" />
-                    <span className="text-white text-xs font-semibold">{viewsCount}</span>
+                  <div className="flex flex-col items-center gap-0.5 mb-2">
+                    <Eye className="w-4 h-4 text-blue-400" />
+                    <span className="text-white text-[10px] font-semibold">{viewsCount}</span>
                   </div>
                   
-                  <div className="flex flex-col items-center gap-1">
-                    <Heart className={`w-5 h-5 ${hasLiked ? 'text-red-500 fill-red-500' : 'text-white/60'}`} />
-                    <span className="text-white text-xs font-semibold">{likesCount}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <Heart className={`w-4 h-4 ${hasLiked ? 'text-red-500 fill-red-500' : 'text-white/60'}`} />
+                    <span className="text-white text-[10px] font-semibold">{likesCount}</span>
                   </div>
                 </div>
 
@@ -951,14 +952,14 @@ const StoriesModal = ({
                     e.stopPropagation();
                     handleLike();
                   }}
-                  className={`w-12 h-12 rounded-full transition-all duration-200 flex items-center justify-center ${
+                  className={`w-10 h-10 rounded-full transition-all duration-200 flex items-center justify-center flex-shrink-0 ${
                     hasLiked 
                       ? 'bg-red-500/20 border border-red-500/40' 
                       : 'bg-white/10 hover:bg-white/20 border border-white/20'
                   }`}
                 >
                   <Heart 
-                    className={`w-6 h-6 ${
+                    className={`w-5 h-5 ${
                       hasLiked ? 'text-red-500 fill-red-500' : 'text-white'
                     }`} 
                   />
@@ -970,9 +971,9 @@ const StoriesModal = ({
                     e.stopPropagation();
                     handleMessage();
                   }}
-                  className="w-12 h-12 bg-[#2b2d31] hover:bg-[#373a3f] rounded-full flex items-center justify-center transition-colors border border-[#ff007a]/30"
+                  className="w-10 h-10 bg-[#2b2d31] hover:bg-[#373a3f] rounded-full flex items-center justify-center transition-colors border border-[#ff007a]/30 flex-shrink-0"
                 >
-                  <MessageSquare className="w-5 h-5 text-[#ff007a]" />
+                  <MessageSquare className="w-4 h-4 text-[#ff007a]" />
                 </button>
 
                 {/* Botón de llamada */}
@@ -982,18 +983,18 @@ const StoriesModal = ({
                     handleCall();
                   }}
                   disabled={isCallActive}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
                     isCallActive
                       ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
                       : 'bg-[#ff007a] hover:bg-[#e6006e] text-white'
                   }`}
                 >
-                  <Phone className="w-5 h-5" />
+                  <Phone className="w-4 h-4" />
                 </button>
 
                 {/* Indicador de posición */}
-                <div className="bg-black/70 backdrop-blur-sm rounded-full px-2 py-1">
-                  <span className="text-white text-xs font-mono">
+                <div className="bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 flex-shrink-0">
+                  <span className="text-white text-[10px] font-mono">
                     {currentStoryIndex + 1}/{stories.length}
                   </span>
                 </div>

@@ -38,8 +38,6 @@ const DesktopChatPanel = ({
     currentLanguage: globalCurrentLanguage 
   } = useGlobalTranslation();
 
-  // 🔥 ESTADO PARA MODAL DE CONFIGURACIÓN Y TRADUCCIÓN
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState(() => {
     return localStorage.getItem('selectedLanguage') || globalCurrentLanguage || 'es';
   });
@@ -321,8 +319,22 @@ const playAlternativeGiftSound = useCallback(async () => {
         return true;
       });
 
-      // Ordenar cronológicamente
-      const sortedMessages = uniqueMessages;
+      // 🔥 ORDENAMIENTO CRONOLÓGICO CORRECTO
+      const sortedMessages = uniqueMessages.slice().sort((a, b) => {
+        // Usar created_at o timestamp como fuente principal de ordenamiento
+        const timeA = new Date(a.created_at || a.timestamp).getTime();
+        const timeB = new Date(b.created_at || b.timestamp).getTime();
+        
+        // 🔥 ORDEN ASCENDENTE: los más antiguos primero
+        if (timeA !== timeB) {
+          return timeA - timeB; // ← CAMBIO CLAVE: timeA - timeB (no timeB - timeA)
+        }
+        
+        // Si tienen el mismo timestamp, usar ID como desempate
+        const idA = typeof a.id === 'string' ? parseInt(a.id) : a.id;
+        const idB = typeof b.id === 'string' ? parseInt(b.id) : b.id;
+        return idA - idB; // ← ORDEN ASCENDENTE por ID también
+      });
 
       // 🔥 DETECTAR NUEVOS REGALOS ANTES DE ACTUALIZAR
       if (stableMessages.length > 0) {
@@ -616,6 +628,196 @@ const playAlternativeGiftSound = useCallback(async () => {
     );
   }, [translations, translatingIds, localTranslationEnabled]);
 
+  // 🔥 FUNCIÓN MEJORADA PARA DETECTAR REGALOS
+  const isGiftMessage = useCallback((msg) => {
+    // 🔥 PRIMERO: Verificar si tiene datos de regalo en extra_data o gift_data
+    let hasGiftData = false;
+    if (msg.extra_data) {
+      try {
+        const extraData = typeof msg.extra_data === 'string' ? JSON.parse(msg.extra_data) : msg.extra_data;
+        if (extraData && (extraData.gift_name || extraData.gift_image || extraData.gift_price)) {
+          hasGiftData = true;
+        }
+      } catch (e) {
+        // Si no se puede parsear, continuar con otras verificaciones
+      }
+    }
+    if (msg.gift_data) {
+      try {
+        const giftData = typeof msg.gift_data === 'string' ? JSON.parse(msg.gift_data) : msg.gift_data;
+        if (giftData && (giftData.gift_name || giftData.gift_image || giftData.gift_price)) {
+          hasGiftData = true;
+        }
+      } catch (e) {
+        // Si no se puede parsear, continuar con otras verificaciones
+      }
+    }
+    
+    const result = (
+      // Tipos específicos de regalo
+      msg.type === 'gift_request' || 
+      msg.type === 'gift_sent' || 
+      msg.type === 'gift_received' || 
+      msg.type === 'gift' ||
+      msg.type === 'gift_rejected' ||
+      // 🔥 Si tiene datos de regalo, es un regalo
+      hasGiftData ||
+      // Texto que indica regalo
+      (msg.text && (
+        msg.text.includes('🎁 Solicitud de regalo') ||
+        msg.text.includes('Solicitud de regalo') ||
+        msg.text.includes('🎁 Enviaste:') ||
+        msg.text.includes('🎁 Recibiste:') ||
+        msg.text.includes('Enviaste:') ||
+        msg.text.includes('Recibiste:') ||
+        msg.text.includes('Te envió:') ||
+        msg.text.includes('Te envio:') ||
+        msg.text.includes('Regalo recibido') ||
+        msg.text.includes('Regalo enviado') ||
+        msg.text.includes('Rechazaste una solicitud')
+      )) ||
+      // Mensaje heredado con campo message
+      (msg.message && (
+        msg.message.includes('🎁 Solicitud de regalo') ||
+        msg.message.includes('Solicitud de regalo') ||
+        msg.message.includes('🎁 Enviaste:') ||
+        msg.message.includes('🎁 Recibiste:') ||
+        msg.message.includes('Enviaste:') ||
+        msg.message.includes('Recibiste:') ||
+        msg.message.includes('Te envió:') ||
+        msg.message.includes('Te envio:')
+      ))
+    );
+    
+    return result;
+  }, []);
+
+  // 🔥 FUNCIÓN HELPER PARA PARSING SEGURO DE JSON
+  const parseGiftData = useCallback((msg) => {
+    let giftData = {};
+    
+    // Intentar obtener de extra_data primero
+    if (msg.extra_data) {
+      try {
+        if (typeof msg.extra_data === 'string') {
+          giftData = JSON.parse(msg.extra_data);
+        } else if (typeof msg.extra_data === 'object') {
+          giftData = { ...msg.extra_data };
+        }
+      } catch (e) {
+        console.warn('Error parsing extra_data:', e);
+      }
+    }
+    
+    // Fallback a gift_data
+    if (!giftData.gift_name && msg.gift_data) {
+      try {
+        if (typeof msg.gift_data === 'string') {
+          const parsed = JSON.parse(msg.gift_data);
+          giftData = { ...giftData, ...parsed };
+        } else if (typeof msg.gift_data === 'object') {
+          giftData = { ...giftData, ...msg.gift_data };
+        }
+      } catch (e) {
+        console.warn('Error parsing gift_data:', e);
+      }
+    }
+    
+    // 🔥 DEBUG: Log para ver qué datos se están extrayendo
+    if (msg.type === 'gift_received' || msg.extra_data || msg.gift_data) {
+      console.log('🔍 [PARSE] Mensaje:', {
+        type: msg.type,
+        has_extra_data: !!msg.extra_data,
+        has_gift_data: !!msg.gift_data,
+        parsed_gift_name: giftData.gift_name,
+        parsed_gift_image: giftData.gift_image,
+        parsed_gift_price: giftData.gift_price
+      });
+    }
+    
+    // Extraer datos del texto si no hay JSON
+    if (!giftData.gift_name && (msg.text || msg.message)) {
+      const text = msg.text || msg.message;
+      
+      // Para solicitudes: "🎁 Solicitud de regalo: Nombre del Regalo"
+      const requestMatch = text.match(/Solicitud de regalo:\s*(.+?)(?:\s*-|$)/);
+      if (requestMatch) {
+        giftData.gift_name = requestMatch[1].trim();
+        giftData.gift_price = giftData.gift_price || 10;
+      }
+      
+      // Para enviados: "🎁 Enviaste: Nombre del Regalo"
+      const sentMatch = text.match(/Enviaste:\s*(.+?)(?:\s*-|$)/);
+      if (sentMatch) {
+        giftData.gift_name = sentMatch[1].trim();
+      }
+      
+      // Para recibidos: "🎁 Recibiste: Nombre del Regalo" o "Te envió: Nombre del Regalo"
+      const receivedMatch = text.match(/(?:Recibiste:|Te envió:|Te envio:)\s*(.+?)(?:\s*-|$)/);
+      if (receivedMatch) {
+        giftData.gift_name = receivedMatch[1].trim();
+      }
+    }
+    
+    // Valores por defecto
+    return {
+      gift_name: giftData.gift_name || 'Regalo Especial',
+      gift_price: giftData.gift_price || 10,
+      gift_image: giftData.gift_image || null,
+      request_id: giftData.request_id || msg.id,
+      security_hash: giftData.security_hash || null,
+      original_message: giftData.original_message || '',
+      ...giftData
+    };
+  }, []);
+
+  const buildCompleteImageUrl = (imagePath) => {
+    if (!imagePath) {
+      return null;
+    }
+    
+    // Si ya es una URL completa
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      // Si ya tiene parámetros, no agregar más
+      return imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
+    }
+    
+    const baseUrl = import.meta.env.VITE_API_BASE_URL;
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    
+    // Limpiar backslashes de Windows
+    const cleanPath = imagePath.replace(/\\/g, '/');
+    
+    let finalUrl;
+    let fileName;
+    
+    if (cleanPath.startsWith('storage/')) {
+      // Codificar el nombre del archivo para caracteres especiales
+      const pathParts = cleanPath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
+    } else if (cleanPath.startsWith('/')) {
+      // Codificar el nombre del archivo
+      const pathParts = cleanPath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
+    } else {
+      // image.png -> http://domain.com/storage/gifts/image.png
+      fileName = cleanPath;
+      const encodedFileName = encodeURIComponent(cleanPath);
+      finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
+    }
+    
+    // Agregar hash del nombre del archivo como versión para invalidar caché
+    // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+    const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+    return `${finalUrl}?v=${version}`;
+  };
+
   // 🔥 FUNCIÓN PARA LIMITAR NOMBRE A 8 CARACTERES
   const truncateName = (name, maxLength = 8) => {
     if (!name) return '';
@@ -676,10 +878,6 @@ const playAlternativeGiftSound = useCallback(async () => {
     setTranslations(new Map());
     setTranslatingIds(new Set());
     processedMessageIdsRef.current = new Set(); // ¡IMPORTANTE!
-    
-        
-    // Cerrar modal
-    setShowSettingsModal(false);
   };
 
   return (
@@ -747,17 +945,6 @@ const playAlternativeGiftSound = useCallback(async () => {
               <UserX size={18} />
             </button>
 
-            {/* 🔥 BOTÓN DE CONFIGURACIÓN */}
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              className="
-                relative p-2 rounded-lg transition-all duration-300 hover:scale-110 group overflow-hidden
-                bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 shadow-lg
-              "
-              title="Configuración"
-            >
-              <Settings size={18} />
-            </button>
           </div>
         </div>
       </div>
@@ -788,231 +975,452 @@ const playAlternativeGiftSound = useCallback(async () => {
             </div>
           ) : (
             <div className="flex flex-col">
-            {stableMessages.slice().reverse().map((msg, index) => (
-              <div key={msg.id} className="space-y-3">
-                  {/* 🎁 RENDERIZAR MENSAJES DE REGALO SEGÚN TU CÓDIGO */}
-                  {(msg.type === 'gift_request' || msg.type === 'gift_sent' || msg.type === 'gift_received' || msg.type === 'gift') && (
-                    <div className="relative">
-                      {/* Renderizar según el tipo específico */}
-                      {msg.type === 'gift' && (
-                        <div className="flex items-center gap-2 text-yellow-400">
-                          <Gift size={16} />
-                          <span>Envió: {msg.text || msg.message}</span>
-                        </div>
-                      )}
+            {stableMessages.map((msg, index) => {
+              // 🔥 CONTROL DE LOGGING - Solo log si no se ha procesado antes
+              if (!processedMessageIdsRef.current.has(msg.id)) {
+                processedMessageIdsRef.current.add(msg.id);
+              }
 
-                      {/* 🔥 AGREGAR GIFT_REQUEST QUE FALTABA */}
-                      {msg.type === 'gift_request' && (() => {
-                        const giftData = msg.gift_data || msg.extra_data || {};
-                        let finalGiftData = giftData;
-                        
-                        if (typeof msg.extra_data === 'string') {
-                          try {
-                            finalGiftData = JSON.parse(msg.extra_data);
-                          } catch (e) {
-                            finalGiftData = giftData;
-                          }
-                        }
-                        
-                        // Construir URL de imagen
-                        let imageUrl = null;
-                        if (finalGiftData.gift_image) {
-                          const imagePath = finalGiftData.gift_image;
-                          const baseUrl = import.meta.env.VITE_API_BASE_URL;
-                          const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+              // 🔥 VERIFICAR SI ES MENSAJE DE REGALO
+              const isGift = isGiftMessage(msg);
+
+              return (
+              <div key={`${msg.id}-${index}`} className="space-y-3">
+                  
+                  {/* 🔥 RENDERIZADO DE REGALOS - FLUJO CRONOLÓGICO CORREGIDO */}
+                  {isGift && (() => {
+                    const giftData = parseGiftData(msg);
+                    const imageUrl = buildCompleteImageUrl(giftData.gift_image);
+
+                    // 🔥 DETERMINAR TIPO DE REGALO Y QUIÉN LO ENVIÓ (DESDE PERSPECTIVA DE MODELO)
+                    const isFromCurrentUser = msg.user_id === userData?.id || 
+                                            msg.user_name === userData?.name ||
+                                            msg.senderRole === 'modelo' ||
+                                            msg.user_role === 'modelo' ||
+                                            msg.type === 'local';
+
+                    // Para modelo: gift_request viene del cliente (cliente pide regalo)
+                    const isRequestFromClient = (msg.type === 'gift_request') && !isFromCurrentUser;
+                    // 🔥 NUEVO: gift_request enviado por la modelo (modelo pide regalo al cliente)
+                    const isRequestFromModel = (msg.type === 'gift_request') && isFromCurrentUser;
+                    // gift_received es cuando la modelo recibe un regalo del cliente
+                    const isGiftReceivedByModel = (msg.type === 'gift_received') && 
+                                                  (msg.user_role === 'cliente' || msg.senderRole === 'cliente' || !isFromCurrentUser);
+                    // gift_sent sería cuando la modelo envía algo (raro)
+                    const isGiftSentByModel = (msg.type === 'gift_sent') && isFromCurrentUser;
+                    const isRejectedByModel = (msg.type === 'gift_rejected') && isFromCurrentUser;
+                    
+                    // 🔥 DEBUG: Log para ver qué está pasando
+                    if (giftData.gift_name) {
+                      console.log('🎁 [MODELO] Regalo detectado:', {
+                        type: msg.type,
+                        gift_name: giftData.gift_name,
+                        gift_image: giftData.gift_image,
+                        gift_price: giftData.gift_price,
+                        isFromCurrentUser,
+                        user_role: msg.user_role,
+                        senderRole: msg.senderRole,
+                        isGiftReceivedByModel,
+                        hasReceivedGiftData: giftData.gift_name && !isFromCurrentUser
+                      });
+                    }
+
+                    // 🔥 1. SOLICITUD DE REGALO (viene del cliente - cliente pide regalo a modelo)
+                    if (isRequestFromClient || 
+                        (!isFromCurrentUser && (
+                          (msg.text && msg.text.includes('Solicitud de regalo')) ||
+                          (msg.message && msg.message.includes('Solicitud de regalo'))
+                        ))) {
+                      
+                      return (
+                        <div className="space-y-2">
                           
-                          if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-                            imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
-                          } else {
-                            const cleanPath = imagePath.replace(/\\/g, '');
-                            let finalUrl;
-                            let fileName;
-                            if (cleanPath.startsWith('storage/')) {
-                              const pathParts = cleanPath.split('/');
-                              fileName = pathParts.pop();
-                              const directory = pathParts.join('/');
-                              const encodedFileName = encodeURIComponent(fileName);
-                              finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
-                            } else if (cleanPath.startsWith('/')) {
-                              const pathParts = cleanPath.split('/');
-                              fileName = pathParts.pop();
-                              const directory = pathParts.join('/');
-                              const encodedFileName = encodeURIComponent(fileName);
-                              finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
-                            } else {
-                              fileName = cleanPath;
-                              const encodedFileName = encodeURIComponent(cleanPath);
-                              finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
-                            }
-                            // Agregar nombre del archivo como versión para invalidar caché cuando cambie
-                            const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
-                            imageUrl = `${finalUrl}?v=${version}`;
-                          }
-                        }
-                        
-                        return (
-                          <div className="bg-gradient-to-br from-[#ff007a]/20 via-[#cc0062]/20 to-[#990047]/20 rounded-xl p-4 max-w-xs border border-[#ff007a]/30 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center justify-center gap-2 mb-3">
-                              <div className="bg-gradient-to-r from-[#ff007a] to-[#cc0062] rounded-full p-2">
-                                <Gift size={16} className="text-white" />
+                          {/* 🔥 HEADER DEL MENSAJE (como los mensajes normales) */}
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <div className="message-avatar bg-gradient-to-br from-[#ff007a] to-[#ff007a]/70 rounded-full flex items-center justify-center">
+                                <span className="text-white avatar-text font-bold">
+                                  {otherUser?.name?.charAt(0)?.toUpperCase() || 'C'}
+                                </span>
                               </div>
-                              <span className="text-pink-100 text-sm font-semibold">Solicitud de Regalo</span>
+                              <span className="username-text text-[#ff007a] font-medium">
+                                {safeGetDisplayName()}
+                              </span>
                             </div>
-                            
-                            {imageUrl && (
+                          </div>
+
+                          {/* 🔥 CARD DE REGALO CON ANCHO LIMITADO */}
+                          <div className="flex justify-start">
+                            <div className="bg-gradient-to-br from-[#ff007a]/20 via-[#cc0062]/20 to-[#990047]/20 rounded-xl gift-card-request border border-[#ff007a]/30 shadow-lg backdrop-blur-sm">
+                              <div className="flex items-center justify-center gap-2 mb-3">
+                                <div className="bg-gradient-to-r from-[#ff007a] to-[#cc0062] rounded-full gift-icon-container">
+                                  <Gift size={16} className="text-white" />
+                                </div>
+                                <span className="text-pink-100 gift-title font-semibold">
+                                  Te pide un regalo
+                                </span>
+                              </div>
+                              
                               <div className="mb-3 flex justify-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
-                                  <img
-                                    src={imageUrl}
-                                    alt={finalGiftData.gift_name || 'Regalo'}
-                                    className="w-12 h-12 object-contain"
-                                    loading="lazy"
-                                    decoding="async"
-                                    key={`gift-request-modelo-${finalGiftData.gift_name}-${imageUrl}`}
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                                      if (fallback) fallback.style.display = 'flex';
-                                    }}
-                                  />
-                                  <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
+                                <div className="gift-image-container bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
+                                  {imageUrl ? (
+                                    <img
+                                      src={imageUrl}
+                                      alt={giftData.gift_name || 'Regalo'}
+                                      className="gift-image object-contain"
+                                      loading="lazy"
+                                      decoding="async"
+                                      key={`gift-${giftData.gift_name}-${imageUrl}`}
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                                        if (fallback) fallback.style.display = 'flex';
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
                                     <Gift size={20} className="text-purple-300" />
                                   </div>
                                 </div>
                               </div>
-                            )}
-                            
-                            <div className="text-center space-y-2">
-                              {/* 🔥 NOMBRE DEL REGALO */}
-                              <p className="text-white font-bold text-base">
-                                {finalGiftData.gift_name || 'Regalo Especial'}
-                              </p>
                               
-                              {/* 🔥 PRECIO DEL REGALO */}
-                              {finalGiftData.gift_price && (
-                                <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg px-3 py-1 border border-amber-300/30">
-                                  <span className="text-amber-200 font-bold text-sm">
-                                    ✨ {finalGiftData.gift_price} monedas
+                              <div className="text-center space-y-2">
+                                <p className="text-white font-bold gift-name-text">
+                                  {giftData.gift_name}
+                                </p>
+                                
+                                <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg gift-price-container border border-amber-300/30">
+                                  <span className="text-amber-200 font-bold gift-price-text">
+                                    ✨ {giftData.gift_price} monedas
                                   </span>
                                 </div>
-                              )}
-                              
-                              {/* 🔥 MENSAJE ORIGINAL */}
-                              {finalGiftData.original_message && (
-                                <div className="bg-black/20 rounded-lg p-2 mt-3 border-l-4 border-[#ff007a]">
-                                  <p className="text-purple-100 text-xs italic">
-                                    💭 "{finalGiftData.original_message}"
-                                  </p>
+                                <div className="text-left">
+                                  <span className="timestamp-text text-gray-500 font-medium">
+                                    {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
                                 </div>
-                              )}
+                              </div>
                             </div>
                           </div>
-                        );
-                      })()}
+                        </div>
+                      );
+                    }
 
-                      {msg.type === 'gift_received' && (() => {
-                        
-                        const receivedGiftData = msg.gift_data || msg.extra_data || {};
-                        let finalReceivedGiftData = receivedGiftData;
-                        
-                        if (typeof msg.extra_data === 'string') {
-                          try {
-                            finalReceivedGiftData = JSON.parse(msg.extra_data);
-                          } catch (e) {
-                            finalReceivedGiftData = receivedGiftData;
-                          }
-                        }
-                        
-                        // Construir URL de imagen
-                        let receivedImageUrl = null;
-                        if (finalReceivedGiftData.gift_image) {
-                          const imagePath = finalReceivedGiftData.gift_image;
-                          const baseUrl = import.meta.env.VITE_API_BASE_URL;
-                          const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+                    // 🔥 2. REGALO RECIBIDO (la modelo recibe regalo del cliente) - PRIORIDAD ALTA
+                    // Detectar si es un regalo recibido: tiene tipo gift_received O tiene datos de regalo y no es del usuario actual
+                    const hasReceivedGiftData = giftData.gift_name && !isFromCurrentUser;
+                    const isFromClient = msg.user_role === 'cliente' || msg.senderRole === 'cliente' || msg.user_role === 'client';
+                    
+                    // 🔥 PRIORIDAD: Si tiene datos de regalo y viene de un cliente, es regalo recibido
+                    // También verificar si el mensaje tiene información de regalo aunque no tenga el tipo
+                    const hasGiftInfo = giftData.gift_name || giftData.gift_image || giftData.gift_price;
+                    
+                    if (msg.type === 'gift_received' ||
+                        isGiftReceivedByModel ||
+                        (hasGiftInfo && !isFromCurrentUser && (isFromClient || !msg.user_role)) ||
+                        (hasReceivedGiftData && !isFromCurrentUser) ||
+                        (!isFromCurrentUser && (
+                          (msg.text && (msg.text.includes('Recibiste:') || msg.text.includes('Te envió:') || msg.text.includes('Te envio:'))) ||
+                          (msg.message && (msg.message.includes('Recibiste:') || msg.message.includes('Te envió:') || msg.message.includes('Te envio:')))
+                        ))) {
+                      
+                      // Obtener nombre del usuario que envió el regalo
+                      const senderName = msg.user_name || otherUser?.name || safeGetDisplayName() || 'Usuario';
+                      
+                      return (
+                        <div className="space-y-2">
                           
-                          if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-                            receivedImageUrl = imagePath;
-                          } else {
-                            const cleanPath = imagePath.replace(/\\/g, '');
-                            if (cleanPath.startsWith('storage/')) {
-                              receivedImageUrl = `${cleanBaseUrl}/${cleanPath}`;
-                            } else if (cleanPath.startsWith('/')) {
-                              receivedImageUrl = `${cleanBaseUrl}${cleanPath}`;
-                            } else {
-                              receivedImageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
-                            }
-                          }
-                        }
-                        
-                        return (
-                          <div className="bg-gradient-to-br from-green-900/40 via-emerald-900/40 to-teal-900/40 rounded-xl p-4 max-w-xs border border-green-300/30 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center justify-center gap-2 mb-3">
-                              <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full p-2">
+                          {/* 🔥 HEADER DEL MENSAJE (como los mensajes normales) */}
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <div className="message-avatar bg-gradient-to-br from-[#ff007a] to-[#ff007a]/70 rounded-full flex items-center justify-center">
+                                <span className="text-white avatar-text font-bold">
+                                  {senderName.charAt(0).toUpperCase() || 'C'}
+                                </span>
+                              </div>
+                              <span className="username-text text-[#ff007a] font-medium">
+                                {senderName}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 🔥 CARD DE REGALO RECIBIDO */}
+                          <div className="flex justify-start">
+                            <div className="bg-gradient-to-br from-green-900/40 via-emerald-900/40 to-teal-900/40 rounded-xl gift-card-received border border-green-300/30 shadow-lg backdrop-blur-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full gift-icon-container">
+                                  <Gift size={16} className="text-white" />
+                                </div>
+                                <span className="text-green-100 gift-title font-semibold">🎉 ¡Regalo Recibido!</span>
+                              </div>
+                              
+                              <div className="mb-3 flex justify-center">
+                                <div className="gift-image-container bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-green-300/30">
+                                  {imageUrl ? (
+                                    <img
+                                      src={imageUrl}
+                                      alt={giftData.gift_name}
+                                      className="gift-image object-contain"
+                                      loading="lazy"
+                                      decoding="async"
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                                        if (fallback) fallback.style.display = 'flex';
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
+                                    <Gift size={20} className="text-green-300" />
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="text-center space-y-2">
+                                <p className="text-white font-bold gift-name-text">
+                                  {giftData.gift_name}
+                                </p>
+                                
+                                <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg gift-price-container border border-green-300/30">
+                                  <span className="text-green-200 font-bold gift-price-text">
+                                    💰 {giftData.gift_price} monedas
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* 🔥 TIMESTAMP DEL MENSAJE */}
+                              <div className="text-left mt-3">
+                                <span className="timestamp-text text-gray-500 font-medium">
+                                  {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // 🔥 3. SOLICITUD DE REGALO ENVIADA POR LA MODELO (modelo pide regalo al cliente)
+                    if (isRequestFromModel || 
+                        (isFromCurrentUser && (
+                          (msg.text && (msg.text.includes('Pediste:') || msg.text.includes('Pediste un regalo'))) ||
+                          (msg.message && (msg.message.includes('Pediste:') || msg.message.includes('Pediste un regalo')))
+                        ))) {
+                      
+                      return (
+                        <div className="flex justify-end">
+                          <div className="bg-gradient-to-br from-purple-900/40 via-purple-800/40 to-purple-900/40 rounded-xl gift-card-request border border-purple-300/30 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full gift-icon-container">
                                 <Gift size={16} className="text-white" />
                               </div>
-                              <span className="text-green-100 text-sm font-semibold">¡Regalo Recibido!</span>
+                              <span className="text-purple-100 gift-title font-semibold">🎁 Pediste un regalo</span>
                             </div>
                             
-                            {receivedImageUrl && (
-                              <div className="mb-3 flex justify-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-green-300/30">
+                            <div className="mb-3 flex justify-center">
+                              <div className="gift-image-container bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
+                                {imageUrl ? (
                                   <img
-                                    src={receivedImageUrl}
-                                    alt={finalReceivedGiftData.gift_name || 'Regalo'}
-                                    className="w-12 h-12 object-contain"
+                                    src={imageUrl}
+                                    alt={giftData.gift_name || 'Regalo'}
+                                    className="gift-image object-contain"
                                     loading="lazy"
                                     decoding="async"
-                                    key={`gift-received-modelo-${finalReceivedGiftData.gift_name}-${receivedImageUrl}`}
+                                    key={`gift-request-${giftData.gift_name}-${imageUrl}`}
                                     onError={(e) => {
                                       e.target.style.display = 'none';
                                       const fallback = e.target.parentNode.querySelector('.gift-fallback');
                                       if (fallback) fallback.style.display = 'flex';
                                     }}
                                   />
-                                  <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
-                                    <Gift size={20} className="text-green-300" />
+                                ) : null}
+                                <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
+                                  <Gift size={20} className="text-purple-300" />
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="text-center space-y-2">
+                              <p className="text-white font-bold gift-name-text">
+                                {giftData.gift_name}
+                              </p>
+                              
+                              <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 rounded-lg gift-price-container border border-purple-300/30">
+                                <span className="text-purple-200 font-bold gift-price-text">
+                                  ✨ {giftData.gift_price} monedas
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* 🔥 TIMESTAMP DEL MENSAJE */}
+                            <div className="text-right mt-3">
+                              <span className="timestamp-text text-gray-500 font-medium">
+                                {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // 🔥 4. REGALO ENVIADO (la modelo envía algo - raro)
+                    if (isGiftSentByModel || 
+                        (isFromCurrentUser && (
+                          (msg.text && msg.text.includes('Enviaste:')) ||
+                          (msg.message && msg.message.includes('Enviaste:'))
+                        ))) {
+                      
+                      return (
+                        <div className="flex justify-end">
+                          <div className="bg-gradient-to-br from-[#ff007a]/20 via-[#cc0062]/20 to-[#990047]/20 rounded-xl gift-card-sent border border-[#ff007a]/30 shadow-lg backdrop-blur-sm">                              
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full gift-icon-container">
+                                <Gift size={16} className="text-white" />
+                              </div>
+                              <span className="text-blue-100 gift-title font-semibold">Regalo Enviado</span>
+                            </div>
+                            
+                            {imageUrl && (
+                              <div className="mb-3 flex justify-center">
+                                <div className="gift-image-container bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-blue-300/30">
+                                  <img
+                                    src={imageUrl}
+                                    alt={giftData.gift_name}
+                                    className="gift-image object-contain"
+                                    loading="lazy"
+                                    decoding="async"
+                                    key={`gift-sent-${giftData.gift_name}-${imageUrl}`}
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                                      if (fallback) fallback.style.display = 'flex';
+                                    }}
+                                  />
+                                  <div className="gift-fallback hidden gift-fallback-icon items-center justify-center">
+                                    <Gift size={20} className="text-blue-300" />
                                   </div>
                                 </div>
                               </div>
                             )}
                             
                             <div className="text-center space-y-2">
-                              {/* 🔥 NOMBRE DEL REGALO */}
-                              <p className="text-white font-bold text-base">
-                                {finalReceivedGiftData.gift_name || 'Regalo Especial'}
+                              <p className="text-white font-bold gift-name-text">
+                                {giftData.gift_name}
                               </p>
                               
-                              {/* 🔥 PRECIO DEL REGALO */}
-                              {finalReceivedGiftData.gift_price && (
-                                <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg px-3 py-1 border border-green-300/30">
-                                  <span className="text-green-200 font-bold text-sm">
-                                    💰 {finalReceivedGiftData.gift_price} monedas
-                                  </span>
-                                </div>
-                              )}
+                              <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg gift-price-container border border-blue-300/30">
+                                <span className="text-blue-200 font-bold gift-price-text">
+                                  💰 {giftData.gift_price} monedas
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* 🔥 TIMESTAMP DEL MENSAJE */}
+                            <div className="text-right mt-3">
+                              <span className="timestamp-text text-gray-500 font-medium">
+                                {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
                             </div>
                           </div>
-                        );
-                      })()}
+                        </div>
+                      );
+                    }
 
-                    </div>
-                  )}
+                    // 🔥 5. REGALO RECHAZADO
+                    if (isRejectedByModel || 
+                        (isFromCurrentUser && (
+                          (msg.text && msg.text.includes('Rechazaste')) ||
+                          (msg.message && msg.message.includes('Rechazaste'))
+                        ))) {
+                      
+                      return (
+                        <div className="flex justify-end">
+                          <div className="bg-gradient-to-br from-red-900/40 via-red-800/40 to-red-900/40 rounded-xl gift-card-rejected border border-red-400/30 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-full gift-icon-container">
+                                <Gift size={14} className="text-white" />
+                              </div>
+                              <span className="text-red-100 gift-title font-semibold">❌ Regalo rechazado</span>
+                            </div>
+                            
+                            {/* 🔥 TIMESTAMP DEL MENSAJE */}
+                            <div className="text-right mt-2">
+                              <span className="timestamp-text text-gray-500 font-medium">
+                                {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // 🔥 5. FALLBACK PARA OTROS TIPOS DE REGALO
+                    return (
+                      <div className="flex justify-center">
+                        <div className="bg-gradient-to-br from-purple-900/40 via-purple-800/40 to-purple-900/40 rounded-xl gift-card-fallback border border-purple-400/30 shadow-lg backdrop-blur-sm">
+                          <div className="flex items-center justify-center gap-2 mb-3">
+                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full gift-icon-container">
+                              <Gift size={16} className="text-white" />
+                            </div>
+                            <span className="text-purple-100 gift-title font-semibold">🎁 Actividad de Regalo</span>
+                          </div>
+                          
+                          <div className="text-center">
+                            <p className="text-white message-text">
+                              {msg.text || msg.message || 'Actividad de regalo'}
+                            </p>
+                          </div>
+                          
+                          {/* 🔥 TIMESTAMP DEL MENSAJE */}
+                          <div className="text-center mt-3">
+                            <span className="timestamp-text text-gray-500 font-medium">
+                              {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   
                   {/* 🔥 MENSAJES NORMALES REDISEÑADOS */}
-                  {!['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(msg.type) && (
+                  {!isGift && (
                     <div className={`flex ${msg.type === 'local' ? 'justify-end' : 'justify-start'} group`}>
                       {msg.type === 'local' ? (
                         <div className="w-full space-y-2">
                           <div className="text-right">
-                            <span className="text-xs text-gray-400 font-medium">Tú</span>
+                            <span className="username-text text-gray-400 font-medium">Tú</span>
                           </div>
                           <div className="flex justify-end">
-                            <div className="relative bg-gradient-to-br from-[#ff007a] to-[#ff007a]/80 px-4 py-3 rounded-2xl rounded-br-md text-white shadow-lg border border-[#ff007a]/20 hover:shadow-xl hover:scale-[1.02] transition-all duration-200 max-w-[70%]">
-                              {renderMessageWithTranslation(msg, msg.type === 'local')}
+                            <div className="relative bg-gradient-to-br from-[#ff007a] to-[#ff007a]/80 message-bubble-own text-white shadow-lg border border-[#ff007a]/20 hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
+                              <span className="text-white message-text leading-relaxed font-medium break-words">
+                                {msg.type === 'emoji' ? (
+                                  <div className="emoji-text">{renderMessageWithTranslation(msg, msg.type === 'local')}</div>
+                                ) : (
+                                  <span className="text-white">{renderMessageWithTranslation(msg, msg.type === 'local')}</span>
+                                )}
+                              </span>
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className="text-xs text-gray-500 font-medium">
+                            <span className="timestamp-text text-gray-500 font-medium">
                               {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
                                 hour: '2-digit',
                                 minute: '2-digit'
@@ -1022,41 +1430,43 @@ const playAlternativeGiftSound = useCallback(async () => {
                         </div>
                       ) : msg.type === 'system' ? (
                         <div className="w-full flex justify-center">
-                          <div className="bg-gradient-to-r from-[#00ff66]/10 to-[#00ff66]/5 border border-[#00ff66]/30 px-4 py-3 rounded-2xl max-w-[90%] backdrop-blur-sm">
+                          <div className="bg-gradient-to-r from-[#00ff66]/10 to-[#00ff66]/5 border border-[#00ff66]/30 message-bubble-system backdrop-blur-sm">
                             <div className="flex items-center gap-2 mb-1">
-                              <div className="w-2 h-2 bg-[#00ff66] rounded-full animate-pulse"></div>
-                              <span className="text-[#00ff66] text-xs font-semibold">🎰 Sistema</span>
+                              <div className="system-indicator bg-[#00ff66] rounded-full animate-pulse"></div>
+                              <span className="text-[#00ff66] username-text font-semibold">🎰 Sistema</span>
                             </div>
-                            <p className="text-[#00ff66] text-sm leading-relaxed">
+                            <p className="text-[#00ff66] message-text leading-relaxed">
                               <span className="text-[#00ff66]">
-                                {msg.text || msg.message}
+                                {renderMessageWithTranslation(msg, false)}
                               </span>
                             </p>
                           </div>
                         </div>
                       ) : (
-                        <div className="max-w-[70%] space-y-2">
+                        <div className="message-bubble-max space-y-2">
                           <div className="text-left">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 bg-gradient-to-br from-[#ff007a] to-[#ff007a]/70 rounded-full flex items-center justify-center">
-                                <span className="text-white text-xs font-bold">
+                              <div className="message-avatar bg-gradient-to-br from-[#ff007a] to-[#ff007a]/70 rounded-full flex items-center justify-center">
+                                <span className="text-white avatar-text font-bold">
                                   {otherUser?.name?.charAt(0)?.toUpperCase() || 'C'}
                                 </span>
                               </div>
-                              <span className="text-xs text-[#ff007a] font-medium">
-                                {msg.senderRole === 'chico' ? truncateName(otherUser?.name || 'Chico', 8) : 'Usuario'}
+                              <span className="username-text text-[#ff007a] font-medium">
+                                {msg.user_name || (msg.senderRole === 'chico' || msg.user_role === 'cliente' ? safeGetDisplayName() : 'Usuario')}
                               </span>
                             </div>
                           </div>
-                          <div className="bg-gradient-to-br from-gray-800/90 to-slate-800/90 px-4 py-3 rounded-2xl rounded-bl-md text-white shadow-lg border border-gray-600/30 backdrop-blur-sm hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
-                            {msg.type === 'emoji' ? (
-                              <div className="text-2xl">{msg.text || msg.message}</div>
-                            ) : (
-                              renderMessageWithTranslation(msg, false)
-                            )}
+                          <div className="bg-gradient-to-br from-gray-800/90 to-slate-800/90 message-bubble-other text-white shadow-lg border border-gray-600/30 backdrop-blur-sm hover:shadow-xl hover:scale-[1.02] transition-all duration-200" style={{ maxWidth: '250px', width: 'fit-content', wordBreak: 'break-word', overflowWrap: 'break-word', boxSizing: 'border-box' }}>
+                            <span className="text-gray-100 message-text leading-relaxed break-words inline-block" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+                              {msg.type === 'emoji' ? (
+                                <div className="emoji-text">{renderMessageWithTranslation(msg, false)}</div>
+                              ) : (
+                                <span className="text-white">{renderMessageWithTranslation(msg, false)}</span>
+                              )}
+                            </span>
                           </div>
                           <div className="text-left">
-                            <span className="text-xs text-gray-500 font-medium">
+                            <span className="timestamp-text text-gray-500 font-medium">
                               {new Date(msg.timestamp || msg.created_at).toLocaleTimeString('es-ES', {
                                 hour: '2-digit',
                                 minute: '2-digit'
@@ -1068,7 +1478,8 @@ const playAlternativeGiftSound = useCallback(async () => {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+            })}
               {/* Elemento invisible para hacer scroll automático */}
               <div ref={messagesEndRef} />
             </div>
@@ -1077,7 +1488,7 @@ const playAlternativeGiftSound = useCallback(async () => {
       </div>
       
       {/* 🔥 INPUT DE CHAT REDISEÑADO PARA MODELO */}
-      <div className="relative border-t border-gray-700/50 p-3">
+      <div className="relative border-t border-gray-700/50 input-section">
         <div className="relative space-y-4">
           {/* Input principal - COMPLETAMENTE EXPANDIDO */}
           <div className="flex items-end gap-2">
@@ -1092,7 +1503,7 @@ const playAlternativeGiftSound = useCallback(async () => {
                 maxLength={200}
                 className="
                   w-full bg-gradient-to-r from-gray-800/60 to-slate-800/60 backdrop-blur-sm 
-                  px-4 py-3 rounded-xl outline-none text-white text-sm
+                  message-input rounded-xl outline-none text-white
                   border border-gray-600/30 focus:border-[#ff007a]/50 
                   transition-all duration-300 focus:bg-gray-800/80
                   placeholder-gray-400 focus:placeholder-gray-300
@@ -1102,8 +1513,8 @@ const playAlternativeGiftSound = useCallback(async () => {
               
               {/* Contador de caracteres */}
               {mensaje.length > 150 && (
-                <div className="absolute -top-8 right-2">
-                  <div className={`px-2 py-1 rounded-md backdrop-blur-sm text-xs font-medium border ${
+                <div className="absolute char-counter">
+                  <div className={`counter-badge backdrop-blur-sm font-medium border ${
                     mensaje.length > 190 
                       ? 'bg-red-500/20 text-red-300 border-red-400/30' 
                       : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
@@ -1119,7 +1530,7 @@ const playAlternativeGiftSound = useCallback(async () => {
               onClick={() => setShowGiftsModal(true)}
               disabled={!otherUser}
               className={`
-                flex-shrink-0 p-2 rounded-lg transition-all duration-300 hover:scale-110 group overflow-hidden
+                relative button-container rounded-lg transition-all duration-300 hover:scale-110 group overflow-hidden
                 ${!otherUser 
                   ? 'bg-gray-800/50 text-gray-500 opacity-50 cursor-not-allowed' 
                   : 'bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 shadow-lg'
@@ -1127,7 +1538,7 @@ const playAlternativeGiftSound = useCallback(async () => {
               `}
               title="Pedir regalo"
             >
-              <Gift size={14} />
+              <Gift size={18} />
             </button>
             
             <button 
@@ -1136,7 +1547,7 @@ const playAlternativeGiftSound = useCallback(async () => {
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 setMensaje(prev => prev + randomEmoji);
               }}
-              className="flex-shrink-0 p-2 rounded-lg transition-all duration-300 hover:scale-110 bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30"
+              className="flex-shrink-0 input-button rounded-lg transition-all duration-300 hover:scale-110 bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30"
             >
               <Smile size={14} />
             </button>
@@ -1146,7 +1557,7 @@ const playAlternativeGiftSound = useCallback(async () => {
               onClick={enviarMensaje}
               disabled={!mensaje.trim()}
               className={`
-                flex-shrink-0 relative p-2 rounded-lg transition-all duration-300 group overflow-hidden
+                flex-shrink-0 relative input-button rounded-lg transition-all duration-300 group overflow-hidden
                 ${mensaje.trim() 
                   ? 'bg-gradient-to-r from-[#ff007a] to-[#ff007a]/80 text-white hover:from-[#ff007a] hover:to-[#ff007a] hover:scale-105 shadow-lg shadow-[#ff007a]/30' 
                   : 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
@@ -1159,119 +1570,6 @@ const playAlternativeGiftSound = useCallback(async () => {
         </div>
       </div>
 
-      {/* 🔥 MODAL DE CONFIGURACIÓN */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-          <div className="bg-gradient-to-b from-[#0a0d10] to-[#131418] rounded-xl border border-[#ff007a]/30 shadow-2xl w-72 max-h-[75vh] overflow-hidden">
-            {/* Header del modal */}
-            <div className="flex items-center justify-between p-2.5 border-b border-gray-700/50">
-              <div className="flex items-center gap-2">
-                <div className="p-1 bg-[#ff007a]/20 rounded-lg border border-[#ff007a]/30">
-                  <Settings size={14} className="text-[#ff007a]" />
-                </div>
-                <h2 className="text-sm font-bold text-white">Traductor</h2>
-              </div>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-200"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            {/* Contenido del modal */}
-            <div className="p-2.5 overflow-y-auto max-h-[calc(75vh-80px)]">
-              {/* Advertencia temporal */}
-              <div className="mb-2.5 p-2 bg-amber-500/10 border border-amber-400/30 rounded-lg">
-                <div className="flex items-start gap-1.5">
-                  <div className="w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-xs text-white font-bold">!</span>
-                  </div>
-                  <div>
-                    <h4 className="text-amber-300 font-semibold text-xs mb-0.5">Solo para esta conversación</h4>
-                    <p className="text-amber-200/80 text-xs leading-tight">
-                      Para traducción permanente: 
-                      <span className="font-semibold text-amber-100"> Configuración → Idiomas</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sección de idioma */}
-              <div className="mb-2.5">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Globe size={12} className="text-[#ff007a]" />
-                  <h3 className="text-xs font-semibold text-white">Cambiar Idioma</h3>
-                </div>
-
-                {/* Estado actual */}
-                <div className="mb-2.5 p-2 bg-gray-800/50 rounded-lg border border-gray-600/30">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-300">Actual:</span>
-                    <div className="px-1.5 py-0.5 rounded-full text-xs font-medium bg-[#ff007a]/20 text-[#ff007a] border border-[#ff007a]/30">
-                      {languages.find(l => l.code === currentLanguage)?.name || 'Español'}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Lista de idiomas */}
-                <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto custom-scroll">
-                  {languages.map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLanguageChange(lang.code)}
-                      className={`
-                        w-full flex items-center gap-1 p-1.5 rounded-lg transition-all duration-200
-                        hover:bg-[#ff007a]/10 hover:border-[#ff007a]/30 border text-left
-                        ${currentLanguage === lang.code 
-                          ? 'bg-[#ff007a]/20 border-[#ff007a]/50 text-white' 
-                          : 'bg-gray-800/50 border-gray-600/30 text-gray-300 hover:text-white'
-                        }
-                      `}
-                    >
-                      <span className="text-xs">{lang.flag}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs truncate">{lang.name}</p>
-                      </div>
-                      {currentLanguage === lang.code && (
-                        <div className="w-1 h-1 bg-[#ff007a] rounded-full"></div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Información adicional */}
-              <div className="p-2 bg-blue-500/10 border border-blue-400/30 rounded-lg">
-                <div className="flex items-start gap-1.5">
-                  <Settings size={10} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-blue-300 font-semibold text-xs mb-0.5">Configuración Permanente</h4>
-                    <p className="text-blue-200/80 text-xs leading-tight">
-                      Menú → Configuración → Idiomas
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-2 border-t border-gray-700/50 bg-gray-900/50">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-gray-500">
-                  Temporal
-                </div>
-                <button
-                  onClick={() => setShowSettingsModal(false)}
-                  className="px-2.5 py-1 bg-[#ff007a] text-white text-xs font-medium rounded-lg hover:bg-[#ff007a]/90 transition-colors"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* 🎁 AUDIO INVISIBLE PARA REGALOS - NUEVO */}
       <div className="hidden">
@@ -1282,279 +1580,807 @@ const playAlternativeGiftSound = useCallback(async () => {
       </div>
       
       {/* 🔥 ESTILOS PARA SCROLL PERSONALIZADO */}
-    <style jsx>{`
-      /* 🔥 SCROLL PERSONALIZADO */
-      .custom-scroll {
-        scroll-behavior: smooth;
-      }
-      
-      .custom-scroll::-webkit-scrollbar {
-        width: 8px;
-      }
-      
-      .custom-scroll::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 4px;
-        margin: 8px 0;
-      }
-      
-      .custom-scroll::-webkit-scrollbar-thumb {
-        background: linear-gradient(to bottom, #ff007a, #ff007a);
-        border-radius: 4px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      
-      .custom-scroll::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(to bottom, #e6006d, #e6006d);
-      }
+      <style jsx>{`
+        .custom-scroll {
+          scroll-behavior: smooth;
+        }
+        
+        .custom-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 4px;
+          margin: 8px 0;
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(to bottom, #ff007a, #ff007a);
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to bottom, #e6006d, #e6006d);
+        }
+      `}</style>
 
-      /* 🔥 RESPONSIVE DESIGN - TODAS LAS PANTALLAS */
-      
-      /* Pantallas Extra Grandes (2560px+) - 4K */
-      @media (min-width: 2560px) {
-        .chat-panel-responsive {
-          width: 380px;
-          min-width: 380px;
-          max-width: 380px;
+      {/* 🔥 MEDIA QUERIES RESPONSIVAS PARA TODAS LAS PANTALLAS */}
+      <style jsx>{`
+        /* 🔥 RESPONSIVE DESIGN - TODAS LAS PANTALLAS */
+        
+        /* Pantallas Extra Grandes (2560px+) - 4K */
+        @media (min-width: 2560px) {
+          .chat-panel-responsive {
+            width: 380px;
+            min-width: 380px;
+            max-width: 380px;
+          }
+          .messages-container {
+            max-height: 500px;
+          }
+          .avatar-size {
+            width: 48px;
+            height: 48px;
+          }
+          .header-text {
+            font-size: 1.125rem;
+          }
+          .message-text {
+            font-size: 0.95rem;
+          }
+          .gift-name-text {
+            font-size: 1.125rem;
+          }
+          .empty-icon {
+            width: 80px;
+            height: 80px;
+          }
+          .empty-title {
+            font-size: 1.25rem;
+          }
+          .empty-text {
+            font-size: 1rem;
+          }
         }
-        .messages-container {
-          max-height: 500px;
-        }
-        .avatar-size {
-          width: 48px;
-          height: 48px;
-        }
-        .header-text {
-          font-size: 1.125rem;
-        }
-        .message-text {
-          font-size: 0.95rem;
-        }
-        .gift-name-text {
-          font-size: 1.125rem;
-        }
-        .empty-icon {
-          width: 80px;
-          height: 80px;
-        }
-        .empty-title {
-          font-size: 1.25rem;
-        }
-        .empty-text {
-          font-size: 1rem;
-        }
-      }
 
-      /* Pantallas Grandes (1920px-2559px) - Full HD */
-      @media (min-width: 1920px) and (max-width: 2559px) {
-        .chat-panel-responsive {
-          width: 350px;
-          min-width: 350px;
-          max-width: 350px;
+        /* Pantallas Grandes (1920px-2559px) - Full HD */
+        @media (min-width: 1920px) and (max-width: 2559px) {
+          .chat-panel-responsive {
+            width: 350px;
+            min-width: 350px;
+            max-width: 350px;
+          }
+          .messages-container {
+            max-height: 450px;
+          }
+          .avatar-size {
+            width: 44px;
+            height: 44px;
+          }
+          .header-text {
+            font-size: 1.0625rem;
+          }
+          .message-text {
+            font-size: 0.9rem;
+          }
+          .gift-name-text {
+            font-size: 1.0625rem;
+          }
+          .empty-icon {
+            width: 72px;
+            height: 72px;
+          }
+          .empty-title {
+            font-size: 1.125rem;
+          }
+          .empty-text {
+            font-size: 0.95rem;
+          }
         }
-        .messages-container {
-          max-height: 450px;
-        }
-        .avatar-size {
-          width: 44px;
-          height: 44px;
-        }
-        .header-text {
-          font-size: 1.0625rem;
-        }
-        .message-text {
-          font-size: 0.9rem;
-        }
-        .gift-name-text {
-          font-size: 1.0625rem;
-        }
-        .empty-icon {
-          width: 72px;
-          height: 72px;
-        }
-        .empty-title {
-          font-size: 1.125rem;
-        }
-        .empty-text {
-          font-size: 0.95rem;
-        }
-      }
 
-      /* Pantallas Desktop Estándar (1440px-1919px) - QHD */
-      @media (min-width: 1440px) and (max-width: 1919px) {
-        .chat-panel-responsive {
-          width: 320px;
-          min-width: 320px;
-          max-width: 320px;
+        /* Pantallas Desktop Estándar (1440px-1919px) - QHD */
+        @media (min-width: 1440px) and (max-width: 1919px) {
+          .chat-panel-responsive {
+            width: 280px;
+            min-width: 240px;
+            max-width: 280px;
+          }
+          .avatar-size {
+            width: 40px;
+            height: 40px;
+          }
+          .header-text {
+            font-size: 1rem;
+          }
+          .message-text {
+            font-size: 0.875rem;
+          }
+          .gift-name-text {
+            font-size: 1rem;
+          }
+          .empty-icon {
+            width: 64px;
+            height: 64px;
+          }
+          .empty-title {
+            font-size: 1.0625rem;
+          }
+          .empty-text {
+            font-size: 0.875rem;
+          }
         }
-        .messages-container {
-          max-height: 400px;
-        }
-        .avatar-size {
-          width: 40px;
-          height: 40px;
-        }
-        .header-text {
-          font-size: 1rem;
-        }
-        .message-text {
-          font-size: 0.875rem;
-        }
-        .gift-name-text {
-          font-size: 1rem;
-        }
-        .empty-icon {
-          width: 64px;
-          height: 64px;
-        }
-        .empty-title {
-          font-size: 1.0625rem;
-        }
-        .empty-text {
-          font-size: 0.875rem;
-        }
-      }
 
-      /* Pantallas Medianas (1200px-1439px) - HD+ */
-      @media (min-width: 1200px) and (max-width: 1439px) {
-        .chat-panel-responsive {
-          width: 300px;
-          min-width: 300px;
-          max-width: 300px;
+        /* Pantallas Medianas (1200px-1439px) - HD+ */
+        @media (min-width: 1200px) and (max-width: 1439px) {
+          .chat-panel-responsive {
+            width: 300px;
+            min-width: 300px;
+            max-width: 300px;
+          }
+          .messages-container {
+            max-height: 350px;
+          }
+          .avatar-size {
+            width: 36px;
+            height: 36px;
+          }
+          .header-text {
+            font-size: 0.9375rem;
+          }
+          .message-text {
+            font-size: 0.8125rem;
+          }
+          .gift-name-text {
+            font-size: 0.9375rem;
+          }
+          .empty-icon {
+            width: 56px;
+            height: 56px;
+          }
+          .empty-title {
+            font-size: 1rem;
+          }
+          .empty-text {
+            font-size: 0.8125rem;
+          }
         }
-        .messages-container {
-          max-height: 350px;
-        }
-        .avatar-size {
-          width: 36px;
-          height: 36px;
-        }
-        .header-text {
-          font-size: 0.9375rem;
-        }
-        .message-text {
-          font-size: 0.8125rem;
-        }
-        .gift-name-text {
-          font-size: 0.9375rem;
-        }
-        .empty-icon {
-          width: 56px;
-          height: 56px;
-        }
-        .empty-title {
-          font-size: 1rem;
-        }
-        .empty-text {
-          font-size: 0.8125rem;
-        }
-      }
 
-      /* Pantallas Pequeñas Desktop/Laptop (1024px-1199px) - HD */
-      @media (min-width: 1024px) and (max-width: 1199px) {
-        .chat-panel-responsive {
-          width: 280px;
-          min-width: 280px;
-          max-width: 280px;
+        /* Pantallas Pequeñas Desktop/Laptop (1024px-1199px) - HD */
+        @media (min-width: 1024px) and (max-width: 1199px) {
+          .chat-panel-responsive {
+            width: 280px;
+            min-width: 280px;
+            max-width: 280px;
+          }
+          .messages-container {
+            max-height: 320px;
+          }
+          .avatar-size {
+            width: 32px;
+            height: 32px;
+          }
+          .header-text {
+            font-size: 0.875rem;
+          }
+          .message-text {
+            font-size: 0.75rem;
+          }
+          .gift-name-text {
+            font-size: 0.875rem;
+          }
+          .empty-icon {
+            width: 48px;
+            height: 48px;
+          }
+          .empty-title {
+            font-size: 0.9375rem;
+          }
+          .empty-text {
+            font-size: 0.75rem;
+          }
         }
-        .messages-container {
-          max-height: 320px;
-        }
-        .avatar-size {
-          width: 32px;
-          height: 32px;
-        }
-        .header-text {
-          font-size: 0.875rem;
-        }
-        .message-text {
-          font-size: 0.75rem;
-        }
-        .gift-name-text {
-          font-size: 0.875rem;
-        }
-        .empty-icon {
-          width: 48px;
-          height: 48px;
-        }
-        .empty-title {
-          font-size: 0.9375rem;
-        }
-        .empty-text {
-          font-size: 0.75rem;
-        }
-      }
 
-      /* Pantallas Muy Pequeñas Desktop (900px-1023px) */
-      @media (min-width: 900px) and (max-width: 1023px) {
-        .chat-panel-responsive {
-          width: 260px;
-          min-width: 260px;
-          max-width: 260px;
+        /* Pantallas Muy Pequeñas Desktop (900px-1023px) */
+        @media (min-width: 900px) and (max-width: 1023px) {
+          .chat-panel-responsive {
+            width: 260px;
+            min-width: 260px;
+            max-width: 260px;
+          }
+          .messages-container {
+            max-height: 300px;
+          }
+          .avatar-size {
+            width: 28px;
+            height: 28px;
+          }
+          .header-text {
+            font-size: 0.8125rem;
+          }
+          .message-text {
+            font-size: 0.6875rem;
+          }
+          .gift-name-text {
+            font-size: 0.8125rem;
+          }
+          .empty-icon {
+            width: 40px;
+            height: 40px;
+          }
+          .empty-title {
+            font-size: 0.875rem;
+          }
+          .empty-text {
+            font-size: 0.6875rem;
+          }
         }
-        .messages-container {
-          max-height: 300px;
-        }
-        .avatar-size {
-          width: 28px;
-          height: 28px;
-        }
-        .header-text {
-          font-size: 0.8125rem;
-        }
-        .message-text {
-          font-size: 0.6875rem;
-        }
-        .gift-name-text {
-          font-size: 0.8125rem;
-        }
-        .empty-icon {
-          width: 40px;
-          height: 40px;
-        }
-        .empty-title {
-          font-size: 0.875rem;
-        }
-        .empty-text {
-          font-size: 0.6875rem;
-        }
-      }
 
-      /* Pantallas Tablet/Desktop Mini (768px-899px) */
-      @media (min-width: 768px) and (max-width: 899px) {
-        .chat-panel-responsive {
-          width: 240px;
-          min-width: 240px;
-          max-width: 240px;
+        /* Pantallas Tablet/Desktop Mini (768px-899px) */
+        @media (min-width: 768px) and (max-width: 899px) {
+          .chat-panel-responsive {
+            width: 240px;
+            min-width: 240px;
+            max-width: 240px;
+          }
+          .messages-container {
+            max-height: 280px;
+          }
+          .avatar-size {
+            width: 24px;
+            height: 24px;
+          }
+          .header-text {
+            font-size: 0.75rem;
+          }
+          .message-text {
+            font-size: 0.625rem;
+          }
+          .gift-name-text {
+            font-size: 0.75rem;
+          }
+          .empty-icon {
+            width: 36px;
+            height: 36px;
+          }
+          .empty-title {
+            font-size: 0.8125rem;
+          }
+          .empty-text {
+            font-size: 0.625rem;
+          }
         }
-        .messages-container {
-          max-height: 280px;
-        }
-        .avatar-size {
+
+        /* 🔥 ELEMENTOS ESPECÍFICOS RESPONSIVOS */
+        
+        /* Avatar en mensajes */
+        .message-avatar {
           width: 24px;
           height: 24px;
         }
-        .header-text {
-          font-size: 0.75rem;
+        @media (min-width: 1200px) {
+          .message-avatar {
+            width: 28px;
+            height: 28px;
+          }
         }
-        .message-text {
+        @media (min-width: 1920px) {
+          .message-avatar {
+            width: 32px;
+            height: 32px;
+          }
+        }
+
+        /* Texto de avatars */
+        .avatar-text {
           font-size: 0.625rem;
         }
-        .gift-name-text {
+        @media (min-width: 1200px) {
+          .avatar-text {
+            font-size: 0.75rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .avatar-text {
+            font-size: 0.875rem;
+          }
+        }
+
+        /* Usernames */
+        .username-text {
+          font-size: 0.6875rem;
+        }
+        @media (min-width: 1200px) {
+          .username-text {
+            font-size: 0.75rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .username-text {
+            font-size: 0.8125rem;
+          }
+        }
+
+        /* Timestamps */
+        .timestamp-text {
+          font-size: 0.625rem;
+        }
+        @media (min-width: 1200px) {
+          .timestamp-text {
+            font-size: 0.6875rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .timestamp-text {
+            font-size: 0.75rem;
+          }
+        }
+
+        /* Loading indicator */
+        .loading-size {
+          width: 14px;
+          height: 14px;
+        }
+        @media (min-width: 1200px) {
+          .loading-size {
+            width: 16px;
+            height: 16px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .loading-size {
+            width: 18px;
+            height: 18px;
+          }
+        }
+
+        /* Botones del header */
+        .button-container {
+          padding: 6px;
+        }
+        @media (min-width: 1200px) {
+          .button-container {
+            padding: 8px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .button-container {
+            padding: 10px;
+          }
+        }
+
+        /* Input section */
+        .input-section {
+          padding: 10px;
+        }
+        @media (min-width: 1200px) {
+          .input-section {
+            padding: 12px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .input-section {
+            padding: 16px;
+          }
+        }
+
+        /* Message input */
+        .message-input {
+          padding: 8px 12px;
           font-size: 0.75rem;
         }
-        .empty-icon {
+        @media (min-width: 1200px) {
+          .message-input {
+            padding: 10px 14px;
+            font-size: 0.8125rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .message-input {
+            padding: 12px 16px;
+            font-size: 0.875rem;
+          }
+        }
+
+        /* Input buttons */
+        .input-button {
+          padding: 8px;
+        }
+        @media (min-width: 1200px) {
+          .input-button {
+            padding: 10px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .input-button {
+            padding: 12px;
+          }
+        }
+
+        /* Character counter */
+        .char-counter {
+          top: -32px;
+          right: 8px;
+        }
+        @media (min-width: 1200px) {
+          .char-counter {
+            top: -36px;
+            right: 10px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .char-counter {
+            top: -40px;
+            right: 12px;
+          }
+        }
+
+        .counter-badge {
+          padding: 4px 8px;
+          border-radius: 6px;
+          font-size: 0.625rem;
+        }
+        @media (min-width: 1200px) {
+          .counter-badge {
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.6875rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .counter-badge {
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+          }
+        }
+
+        .system-indicator {
+          width: 6px;
+          height: 6px;
+        }
+        @media (min-width: 1200px) {
+          .system-indicator {
+            width: 8px;
+            height: 8px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .system-indicator {
+            width: 10px;
+            height: 10px;
+          }
+        }
+
+        /* Message bubbles */
+        .message-bubble-own {
+          padding: 10px 14px;
+          border-radius: 16px;
+          border-bottom-right-radius: 4px;
+          max-width: 70%;
+        }
+        @media (min-width: 1200px) {
+          .message-bubble-own {
+            padding: 12px 16px;
+            border-radius: 18px;
+            border-bottom-right-radius: 5px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .message-bubble-own {
+            padding: 14px 18px;
+            border-radius: 20px;
+            border-bottom-right-radius: 6px;
+          }
+        }
+
+        .message-bubble-other {
+          padding: 10px 14px;
+          border-radius: 16px;
+          border-bottom-left-radius: 4px;
+        }
+        @media (min-width: 1200px) {
+          .message-bubble-other {
+            padding: 12px 16px;
+            border-radius: 18px;
+            border-bottom-left-radius: 5px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .message-bubble-other {
+            padding: 14px 18px;
+            border-radius: 20px;
+            border-bottom-left-radius: 6px;
+          }
+        }
+
+        .message-bubble-max {
+          max-width: 70%;
+        }
+        @media (min-width: 1200px) {
+          .message-bubble-max {
+            max-width: 75%;
+          }
+        }
+        @media (min-width: 1920px) {
+          .message-bubble-max {
+            max-width: 80%;
+          }
+        }
+
+        .message-bubble-system {
+          padding: 10px 14px;
+          border-radius: 16px;
+          max-width: 90%;
+        }
+        @media (min-width: 1200px) {
+          .message-bubble-system {
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 85%;
+          }
+        }
+        @media (min-width: 1920px) {
+          .message-bubble-system {
+            padding: 14px 18px;
+            border-radius: 20px;
+            max-width: 80%;
+          }
+        }
+
+        /* Emoji text */
+        .emoji-text {
+          font-size: 1.5rem;
+        }
+        @media (min-width: 1200px) {
+          .emoji-text {
+            font-size: 1.75rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .emoji-text {
+            font-size: 2rem;
+          }
+        }
+
+        /* Gift cards */
+        .gift-card-request {
+          padding: 12px;
+          width: 70%;
+        }
+        @media (min-width: 1200px) {
+          .gift-card-request {
+            padding: 14px;
+            width: 75%;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-card-request {
+            padding: 16px;
+            width: 80%;
+          }
+        }
+
+        .gift-card-sent {
+          padding: 12px;
+          width: 70%;
+        }
+        @media (min-width: 1200px) {
+          .gift-card-sent {
+            padding: 14px;
+            width: 75%;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-card-sent {
+            padding: 16px;
+            width: 80%;
+          }
+        }
+
+        .gift-card-received {
+          padding: 10px;
+          max-width: 240px;
+        }
+        @media (min-width: 1200px) {
+          .gift-card-received {
+            padding: 12px;
+            max-width: 260px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-card-received {
+            padding: 14px;
+            max-width: 280px;
+          }
+        }
+
+        .gift-card-rejected {
+          padding: 8px;
+          max-width: 200px;
+        }
+        @media (min-width: 1200px) {
+          .gift-card-rejected {
+            padding: 10px;
+            max-width: 220px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-card-rejected {
+            padding: 12px;
+            max-width: 240px;
+          }
+        }
+
+        .gift-card-fallback {
+          padding: 12px;
+          max-width: 240px;
+        }
+        @media (min-width: 1200px) {
+          .gift-card-fallback {
+            padding: 14px;
+            max-width: 260px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-card-fallback {
+            padding: 16px;
+            max-width: 280px;
+          }
+        }
+
+        /* Gift elements */
+        .gift-icon-container {
+          padding: 6px;
+        }
+        @media (min-width: 1200px) {
+          .gift-icon-container {
+            padding: 7px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-icon-container {
+            padding: 8px;
+          }
+        }
+
+        .gift-title {
+          font-size: 0.75rem;
+        }
+        @media (min-width: 1200px) {
+          .gift-title {
+            font-size: 0.8125rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-title {
+            font-size: 0.875rem;
+          }
+        }
+
+        .gift-image-container {
+          width: 48px;
+          height: 48px;
+        }
+        @media (min-width: 1200px) {
+          .gift-image-container {
+            width: 56px;
+            height: 56px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-image-container {
+            width: 64px;
+            height: 64px;
+          }
+        }
+
+        .gift-image {
           width: 36px;
           height: 36px;
         }
-        .empty-title {
-          font-size: 0.8125rem;
+        @media (min-width: 1200px) {
+          .gift-image {
+            width: 42px;
+            height: 42px;
+          }
         }
-        .empty-text {
-          font-size: 0.625rem;
+        @media (min-width: 1920px) {
+          .gift-image {
+            width: 48px;
+            height: 48px;
+          }
         }
-      }
-    `}</style>
+
+        .gift-fallback-icon {
+          width: 36px;
+          height: 36px;
+        }
+        @media (min-width: 1200px) {
+          .gift-fallback-icon {
+            width: 42px;
+            height: 42px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-fallback-icon {
+            width: 48px;
+            height: 48px;
+          }
+        }
+
+        .gift-price-container {
+          padding: 4px 10px;
+        }
+        @media (min-width: 1200px) {
+          .gift-price-container {
+            padding: 5px 12px;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-price-container {
+            padding: 6px 14px;
+          }
+        }
+
+        .gift-price-text {
+          font-size: 0.75rem;
+        }
+        @media (min-width: 1200px) {
+          .gift-price-text {
+            font-size: 0.8125rem;
+          }
+        }
+        @media (min-width: 1920px) {
+          .gift-price-text {
+            font-size: 0.875rem;
+          }
+        }
+
+        /* 🔥 BREAKPOINTS ESPECIALES PARA PANTALLAS ULTRAWIDE */
+        @media (min-width: 3440px) {
+          .chat-panel-responsive {
+            width: 420px;
+            min-width: 420px;
+            max-width: 420px;
+          }
+          .messages-container {
+            max-height: 600px;
+          }
+          .header-text {
+            font-size: 1.25rem;
+          }
+          .message-text {
+            font-size: 1rem;
+          }
+          .gift-name-text {
+            font-size: 1.25rem;
+          }
+        }
+
+        /* 🔥 AJUSTES PARA PANTALLAS CON POCO ESPACIO VERTICAL */
+        @media (max-height: 800px) {
+          .messages-container {
+            max-height: 250px !important;
+          }
+        }
+        @media (max-height: 600px) {
+          .messages-container {
+            max-height: 200px !important;
+          }
+        }
+
+        /* 🔥 OPTIMIZACIÓN PARA PANTALLAS CON ZOOM */
+        @media (resolution: 2dppx) {
+          .chat-panel-responsive {
+            border-width: 0.5px;
+          }
+          .message-input {
+            border-width: 0.5px;
+          }
+        }
+      `}</style>
     </div>
   );
 };

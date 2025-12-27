@@ -28,8 +28,12 @@ use App\Http\Controllers\GiftSystemController;
 use App\Http\Controllers\VideoChatGiftController;
 use App\Http\Controllers\HeartbeatController;
 use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\AdminSessionController;
 use App\Http\Controllers\ProfileSettingsController;
 use App\Http\Controllers\CoinbaseCommerceController;
+use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminChatController;
 
 
 Route::get('/stories', [StoryController::class, 'getActiveStories']);
@@ -41,34 +45,57 @@ Route::post('/reset-password-with-token', [SecurityController::class, 'resetPass
 Route::get('/verificacion/archivo/{filename}', [VerificacionController::class, 'verArchivo'])
     ->name('verificacion.archivo');
 
+// 📊 RUTAS DE ADMIN - Requieren autenticación de admin (admin.auth)
+Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin')->group(function () {
+    // Verificaciones
+    Route::get('/verificaciones/pendientes', [VerificacionController::class, 'getPendientes']);
+    Route::post('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
+    Route::delete('/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
+    Route::get('/verificaciones/{id}/documento/{tipo}', [VerificacionController::class, 'verDocumento']);
+    Route::get('/verificaciones/stats', [VerificacionController::class, 'getStats']);
+    Route::post('/verificaciones/{id}/observaciones', [VerificacionController::class, 'guardarObservaciones']);
+
+    // Usuarios
+    Route::get('/usuarios', [VerificacionController::class, 'getUsuarios']);
+    Route::delete('/usuarios/{id}', [VerificacionController::class, 'eliminarUsuario']);
+    Route::get('/usuarios/{id}', [VerificacionController::class, 'getUsuario']);
+    Route::put('/usuarios/{id}', [VerificacionController::class, 'actualizarUsuario']);
+
+    // Stories
+    Route::get('/stories/pending', [StoryController::class, 'indexPending']);
+    Route::post('/stories/{id}/approve', [StoryController::class, 'approve']);
+    Route::post('/stories/{id}/reject', [StoryController::class, 'reject']);
+
+    // Coins
+    Route::post('/coins/add-manual', [VideoChatCoinController::class, 'addCoins']);
+    Route::get('/coins/stats', [VideoChatCoinController::class, 'getAdminStats']);
+    Route::get('/coins/transactions', [VideoChatCoinController::class, 'getAdminTransactions']);
+    Route::get('/coins/users-balance', [VideoChatCoinController::class, 'getAdminUsersBalance']);
+
+    // Sessions
+    Route::get('/sessions', [AdminSessionController::class, 'index']);
+    Route::get('/sessions/stats', [AdminSessionController::class, 'getStats']);
+
+    // Chat Admin
+    Route::get('/chat/conversations', [AdminChatController::class, 'getConversations']);
+    Route::get('/chat/conversations/{roomName}/messages', [AdminChatController::class, 'getMessages']);
+    Route::delete('/chat/messages/{messageId}', [AdminChatController::class, 'deleteMessage']);
+    Route::post('/chat/users/{userId}/block', [AdminChatController::class, 'blockUser']);
+    Route::post('/chat/users/{userId}/unblock', [AdminChatController::class, 'unblockUser']);
+    Route::get('/chat/stats', [AdminChatController::class, 'getStats']);
+    Route::get('/chat/search', [AdminChatController::class, 'searchConversations']);
+    Route::get('/chat/messages/search', [AdminChatController::class, 'searchMessages']);
+
+    // Payments y Earnings
+    Route::get('/pending-payments', [SessionEarningsController::class, 'getAllPendingPayments']);
+    Route::post('/payments/{id}/mark-paid', [SessionEarningsController::class, 'markPaymentAsPaid']);
+    Route::get('/earnings/stats', [SessionEarningsController::class, 'getAdminStats']);
+    Route::post('/earnings/fix', [SessionEarningsController::class, 'fixExistingEarnings']);
+    Route::post('/earnings/recalculate', [SessionEarningsController::class, 'recalculateAllEarnings']);
+    Route::post('/weekly-payment', [SessionEarningsController::class, 'processWeeklyPayment']);
+});
+
 Route::middleware(['auth:sanctum'])->group(function () {
-    Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
-        // Obtener verificaciones pendientes
-        Route::get('/verificaciones/pendientes', [VerificacionController::class, 'getPendientes']);
-        
-        // Aprobar verificación
-        Route::post('/verificaciones/{id}/aprobar', [VerificacionController::class, 'aprobar']);
-        
-        // Rechazar verificación
-        Route::delete('/verificaciones/{id}/rechazar', [VerificacionController::class, 'rechazar']);
-        
-        // Ver documento específico
-        Route::get('/verificaciones/{id}/documento/{tipo}', [VerificacionController::class, 'verDocumento']);
-        
-        // Estadísticas de verificaciones
-        Route::get('/verificaciones/stats', [VerificacionController::class, 'getStats']);
-
-        Route::get('/usuarios', [VerificacionController::class, 'getUsuarios']);
-
-        Route::delete('/usuarios/{id}', [VerificacionController::class, 'eliminarUsuario']);
-
-        Route::get('/usuarios/{id}', [VerificacionController::class, 'getUsuario']);
-    
-        // Actualizar usuario
-        Route::put('/usuarios/{id}', [VerificacionController::class, 'actualizarUsuario']);
-
-        Route::post('/verificaciones/{id}/observaciones', [VerificacionController::class, 'guardarObservaciones']);
-    });
     
     // 💓 HEARTBEAT - CRÍTICO para mantener sesión (se ejecuta cada 10s)
     Route::post('/heartbeat', [AuthController::class, 'heartbeat']);
@@ -522,16 +549,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/stories/{id}', [StoryController::class, 'destroy']);
     Route::get('/stories/can-upload', [StoryController::class, 'canUploadNewStory']);
 
+    // Likes de historias
+    Route::post('/stories/{id}/like', [StoryController::class, 'like']);
+    Route::post('/stories/{id}/unlike', [StoryController::class, 'unlike']);
+    Route::get('/stories/{id}/like-status', [StoryController::class, 'likeStatus']);
 
     Route::get('/stories/{id}/views', [StoryController::class, 'getViews']); // Ver estadísticas
 });
 
-// Rutas de administrador
-Route::middleware(['auth:sanctum'])->group(function () {
-    Route::get('/admin/stories/pending', [StoryController::class, 'indexPending']); // Historias pendientes
-    Route::post('/admin/stories/{id}/approve', [StoryController::class, 'approve']); // Aprobar
-    Route::post('/admin/stories/{id}/reject', [StoryController::class, 'reject']); // Rechazar
-});
+// Rutas de administrador - Movidas al grupo admin.auth arriba
 
 Route::middleware(['auth:sanctum'])->prefix('chat')->group(function () {
     Route::get('/conversations', [ChatController::class, 'getConversations']);
@@ -578,6 +604,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
 | Límites bajos para prevenir spam y ataques
 |--------------------------------------------------------------------------
 */
+
+// 🔐 RUTAS DE ADMIN - PÚBLICAS (sin autenticación inicial)
+Route::middleware(['throttle:10,1'])->prefix('admin')->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login']);
+    Route::post('/verify-code', [AdminAuthController::class, 'verifyCode']);
+});
+
+// 📊 RUTAS DE ADMIN DASHBOARD - Requieren autenticación de admin
+Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin/dashboard')->group(function () {
+    Route::get('/stats', [AdminDashboardController::class, 'getStats']);
+});
 
 Route::middleware(['throttle:30,1'])->post('/login', [AuthController::class, 'loginModel']);
 Route::middleware(['throttle:10,1'])->post('/register', [AuthController::class, 'registerModel']);
@@ -714,17 +751,7 @@ Route::middleware(['auth:sanctum', 'only.current.token', 'throttle:30,1'])->grou
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:sanctum', 'admin', 'throttle:30,1'])->prefix('admin')->group(function () {
-    
-    // 📊 Estadísticas de monedas y pagos
-    
-    // 💰 Agregar monedas manualmente
-    Route::post('/coins/add-manual', [VideoChatCoinController::class, 'addCoins']);
-    
-    // 🔄 Gestión de paquetes (si implementas)
-    // Route::post('/coins/packages/create', [CoinPackageController::class, 'store']);
-    // Route::put('/coins/packages/{id}', [CoinPackageController::class, 'update']);
-});
+// Rutas de admin movidas al grupo admin.auth arriba (línea 47)
 
 Route::get('/avatars/{filename}', function (Request $request, $filename) {
     // Verificar token en query parameter

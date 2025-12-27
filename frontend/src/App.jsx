@@ -26,7 +26,7 @@ import HistorySub from "./components/modelo/historysu.jsx";
 import EsperancoCall from "./components/modelo/esperacall.jsx";
 import EsperandoCallCliente from "./components/client/esperacallclient";
 import Videochat from "./components/modelo/videochat.jsx";
-import VideochatClient from "./components/client/videochatclient";
+// VideochatClient importado más abajo con el nombre correcto
 import ConfiPerfil from "./components/modelo/confiperfil.jsx";
 import ConfiClient from "./components/client/configclient.jsx";
 import MessageClient from "./components/client/message.jsx"
@@ -36,6 +36,8 @@ import ResetPasswordPage from './components/verificacion/login/ResetPasswordPage
 
 import RouteGuard from "./routes/blockchat";
 import VerificacionesAdmin from "./components/admin/adminverification";
+import { AdminCodeVerification } from "./components/admin/AdminCodeVerification";
+import AdminDashboardLayout from "./components/admin/dashboard";
 import Homecliente from "./components/client/homecliente";
 import { RateLimitProvider } from './contexts/RateLimitContext.jsx';
 import UserSearch from "./components/search.jsx";
@@ -80,6 +82,9 @@ function App() {
               <Route path="/auth/google/callback" element={<GoogleCallback />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/chat/:slug" element={<ProfileChatRedirect />} />
+              
+              {/* 🔐 RUTAS DE ADMIN - PÚBLICAS (sin protección inicial) */}
+              <Route path="/AdminCodeVerification" element={<AdminCodeVerification />} />
 
 
 
@@ -172,7 +177,7 @@ function App() {
                       path="/videochatclient" 
                       element={
                         <ProtectedPage>
-                          <VideochatClient />
+                          <VideoChatClient />
                         </ProtectedPage>
                       } 
                     />
@@ -291,7 +296,15 @@ function App() {
                       } 
                     />
 
-                    {/* 🛡️ ADMIN - Protegida por ProtectedPage */}
+                    {/* 🛡️ ADMIN - Sin ProtectedPage (tiene su propia validación) */}
+                    <Route 
+                      path="/admin/dashboard" 
+                      element={<AdminDashboardLayout />} 
+                    />
+                    <Route 
+                      path="/admin/dashboard/:section" 
+                      element={<AdminDashboardLayout />} 
+                    />
                     <Route 
                       path="/verificacionesadmin" 
                       element={

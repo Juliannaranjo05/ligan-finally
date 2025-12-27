@@ -99,12 +99,27 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
 
   // 🙏 Solicitar regalo (solo modelos)
   const requestGift = useCallback(async (giftId, message = '') => {
+    console.log('🎁 [useVideoChatGifts] requestGift llamado:', {
+      giftId,
+      message,
+      roomName,
+      currentUserRole: currentUser?.role,
+      currentUserId: currentUser?.id,
+      otherUserId: otherUser?.id,
+      otherUserName: otherUser?.name
+    });
+
     if (!otherUser?.id || currentUser?.role !== 'modelo') {
-            return { success: false, error: 'No autorizado para solicitar regalos' };
+      console.error('❌ [useVideoChatGifts] No autorizado:', {
+        hasOtherUser: !!otherUser?.id,
+        userRole: currentUser?.role
+      });
+      return { success: false, error: 'No autorizado para solicitar regalos' };
     }
 
     if (!roomName) {
-            return { success: false, error: 'Sala no válida' };
+      console.error('❌ [useVideoChatGifts] roomName no válido:', roomName);
+      return { success: false, error: 'Sala no válida' };
     }
 
     if (requestingGift) {
@@ -115,25 +130,58 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
       setRequestingGift(true);
       setLoading(true);
       
+      const requestBody = {
+        room_name: roomName,
+        gift_id: giftId,
+        client_id: otherUser.id,
+        message: message
+      };
+
+      console.log('🎁 [useVideoChatGifts] Enviando solicitud al backend:', {
+        url: `${API_BASE_URL}/api/videochat/gifts/request`,
+        body: requestBody,
+        headers: getAuthHeaders()
+      });
+      
+      // 🔥 VERIFICAR QUE LOS PARÁMETROS ESTÉN CORRECTOS
+      console.log('🔍 [useVideoChatGifts] Verificación de parámetros:', {
+        roomName: roomName,
+        roomNameType: typeof roomName,
+        roomNameLength: roomName?.length,
+        currentUser: {
+          id: currentUser?.id,
+          role: currentUser?.role,
+          name: currentUser?.name
+        },
+        otherUser: {
+          id: otherUser?.id,
+          name: otherUser?.name
+        },
+        giftId: giftId,
+        message: message
+      });
             
       const response = await fetch(`${API_BASE_URL}/api/videochat/gifts/request`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          room_name: roomName,
-          gift_id: giftId,
-          client_id: otherUser.id,
-          message: message
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const responseText = await response.text();
       
+      console.log('🎁 [useVideoChatGifts] Respuesta del backend:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseText: responseText
+      });
+      
       let data;
       try {
         data = JSON.parse(responseText);
+        console.log('🎁 [useVideoChatGifts] Datos parseados:', data);
       } catch (parseError) {
-                return { 
+        console.error('❌ [useVideoChatGifts] Error parseando respuesta:', parseError, responseText);
+        return { 
           success: false, 
           error: 'Respuesta inválida del servidor',
           rawResponse: responseText 
@@ -141,6 +189,7 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
       }
 
       if (response.ok && data.success) {
+        console.log('✅ [useVideoChatGifts] Solicitud exitosa:', data);
                 return { 
           success: true, 
           data: data.data,
@@ -155,12 +204,23 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
           message: data.message
         };
       } else {
+        console.error('❌ [useVideoChatGifts] Error en la respuesta:', {
+          status: response.status,
+          error: data.error,
+          message: data.message,
+          fullResponse: data
+        });
                 
         let errorMessage = 'Error enviando solicitud';
         if (data.error === 'missing_parameters') {
           errorMessage = 'Faltan parámetros requeridos';
         } else if (data.error === 'invalid_session') {
           errorMessage = 'Sesión de videochat no válida';
+          console.error('❌ [useVideoChatGifts] Sesión inválida. Verificar:', {
+            roomName,
+            currentUserId: currentUser?.id,
+            otherUserId: otherUser?.id
+          });
         } else if (data.error === 'duplicate_request') {
           errorMessage = 'Ya existe una solicitud similar reciente';
         } else if (data.message) {

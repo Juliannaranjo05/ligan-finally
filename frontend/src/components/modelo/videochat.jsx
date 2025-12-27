@@ -1425,6 +1425,7 @@ export default function VideoChat() {
   };
 
   const handleRequestGift = async (giftId, recipientId, roomName, message) => {
+    console.log('🎁 [VIDEOCHAT] handleRequestGift llamado con:', { giftId, recipientId, roomName, message });
     try {
       const selectedGift = gifts.find(g => g.id === giftId);
 
@@ -2837,18 +2838,23 @@ export default function VideoChat() {
             />
           </div>
 
-          {/* Modal de regalos */}
-          <GiftsModal
-            isOpen={showGiftsModal}
-            onClose={() => setShowGiftsModal(false)}
-            recipientName={getDisplayName()}
-            recipientId={otherUser?.id}
-            roomName={roomName}
-            userRole="modelo"
-            gifts={gifts}
-            onRequestGift={handleRequestGift}
-            loading={giftLoading}
-          />
+          {/* Modal de regalos - SIEMPRE MODELO */}
+          {showGiftsModal && (
+            <GiftsModal
+              key={`gifts-modal-modelo-${roomName}`}
+              isOpen={showGiftsModal}
+              onClose={() => setShowGiftsModal(false)}
+              recipientName={getDisplayName()}
+              recipientId={otherUser?.id}
+              roomName={roomName}
+              userRole="modelo"
+              gifts={gifts}
+              onRequestGift={handleRequestGift}
+              onSendGift={undefined}
+              userBalance={0}
+              loading={giftLoading}
+            />
+          )}
 
           {/* Configuración de traducción */}
           <TranslationSettings

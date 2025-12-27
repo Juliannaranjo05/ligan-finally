@@ -44,12 +44,24 @@ const TimeDisplayImprovedClient = ({
     const minutos = Math.floor(tiempo / 60).toString().padStart(2, "0");
     const segundos = (tiempo % 60).toString().padStart(2, "0");
     const formatted = `${minutos}:${segundos}`;
-    // 🔥 DEBUG: Log solo cada 10 segundos y solo en desarrollo
-    if (import.meta.env.DEV && tiempo > 0 && tiempo % 10 === 0) {
+    // 🔥 DEBUG: Log cada vez que cambia el tiempo (solo primeros 10 segundos)
+    if (tiempo <= 10 || tiempo % 5 === 0) {
       console.log('⏱️ [TimeDisplayImprovedClient] Formato calculado, tiempo:', tiempo, 'formateado:', formatted);
     }
     return formatted;
   }, [tiempo]);
+  
+  // 🔥 DEBUG: Log cuando cambia la prop tiempo (solo primeros 10 segundos)
+  useEffect(() => {
+    if (tiempo <= 10 || tiempo % 5 === 0) {
+      console.log('⏱️ [TimeDisplayImprovedClient] Prop tiempo recibida:', tiempo, 'formateado:', formatoTiempo);
+    }
+  }, [tiempo, formatoTiempo]);
+  
+  // 🔥 DEBUG: Verificar que el componente se está renderizando
+  useEffect(() => {
+    console.log('⏱️ [TimeDisplayImprovedClient] Componente montado/actualizado, tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
+  }, []);
   
   // 🔥 DEBUG: Log cuando cambia la prop tiempo (solo cada 5 segundos y solo en desarrollo)
   const lastLoggedTime = useRef(0);
@@ -188,6 +200,18 @@ const TimeDisplayImprovedClient = ({
     return name.length > maxLength ? name.substring(0, maxLength) + '…' : name;
   }
 
+  // 🔥 DEBUG: Log directo en el render para verificar que se está renderizando
+  useEffect(() => {
+    console.log('⏱️ [TimeDisplayImprovedClient] Componente montado/actualizado, tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
+  }, [tiempo, formatoTiempo]);
+  
+  // 🔥 DEBUG: Log cada vez que tiempo cambia (primeros 10 segundos o cada 5)
+  useEffect(() => {
+    if ((tiempo <= 10 || tiempo % 5 === 0) && tiempo > 0) {
+      console.log('⏱️ [TimeDisplayImprovedClient] RENDER - tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
+    }
+  }, [tiempo, formatoTiempo]);
+  
   return (
     <>
       {/* 🔥 CONTENEDOR PRINCIPAL CON ANTI-OVERFLOW */}
@@ -196,6 +220,19 @@ const TimeDisplayImprovedClient = ({
         {/* 🔥 VERSIÓN MÓVIL - FULL RESPONSIVE */}
         <div className="mobile-version">
           <div className="mobile-content">
+            {/* 🔥 TIEMPO DE SESIÓN */}
+            <div className="balance-section tiempo-section">
+              <div className="balance-icon-wrapper tiempo-icon">
+                <Clock className="balance-icon" />
+              </div>
+              <div className="balance-info">
+                <div className="balance-label">Tiempo:</div>
+                <div className="balance-value tiempo-value" data-tiempo={tiempo} data-formato={formatoTiempo}>
+                  {formatoTiempo || '00:00'}
+                </div>
+              </div>
+            </div>
+
             {/* 🔥 SALDO DE REGALOS (en lugar de monedas) */}
             <div className="balance-section gifts-section">
               <div className="balance-icon-wrapper gifts-icon">
@@ -322,6 +359,19 @@ const TimeDisplayImprovedClient = ({
           {/* Panel izquierdo - Balances */}
           <div className="left-panel">
             
+            {/* 🔥 TIEMPO DE SESIÓN */}
+            <div className="balance-item tiempo-item">
+              <div className="balance-icon-wrapper tiempo-icon">
+                <Clock className="balance-icon" />
+              </div>
+              <div className="balance-info">
+                <div className="balance-label">Tiempo:</div>
+                <div className="balance-value tiempo-value" data-tiempo={tiempo} data-formato={formatoTiempo}>
+                  {formatoTiempo || '00:00'}
+                </div>
+              </div>
+            </div>
+
             {/* 🔥 Saldo de REGALOS (en lugar de monedas) */}
             <div className="balance-item gifts-item">
               <div className="balance-icon-wrapper gifts-icon">

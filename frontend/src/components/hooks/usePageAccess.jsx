@@ -57,7 +57,22 @@ export function usePageAccess() {
     '/home',
     '/login', 
     '/logout',
-    '/rate-limit-wait'
+    '/rate-limit-wait',
+    '/AdminCodeVerification'
+  ];
+
+  // 🔐 RUTAS DE ADMIN (requieren ligand_admin_id pero no token de usuario)
+  const ADMIN_ROUTES = [
+    '/admin/dashboard',
+    '/admin/dashboard/dashboard',
+    '/admin/dashboard/users',
+    '/admin/dashboard/verificaciones',
+    '/admin/dashboard/coins',
+    '/admin/dashboard/sesiones',
+    '/admin/dashboard/chat',
+    '/admin/dashboard/historias',
+    '/admin/dashboard/pagos',
+    '/admin/dashboard/settings'
   ];
 
   // 📝 RUTAS DE REGISTRO (manejadas por useRegistrationAccess)
@@ -129,6 +144,19 @@ export function usePageAccess() {
 
       // 📝 Si está en ruta de registro, delegar a useRegistrationAccess
       if (REGISTRATION_ROUTES.includes(currentPath)) {
+                setLoading(false);
+        return;
+      }
+
+      // 🔐 Si está en ruta de admin, verificar ligand_admin_id en lugar de token
+      if (ADMIN_ROUTES.some(route => currentPath.startsWith(route) || currentPath === route)) {
+        const adminId = localStorage.getItem('ligand_admin_id');
+        if (!adminId) {
+          // Si no hay admin_id, redirigir a home
+          navigate("/home", { replace: true });
+          return;
+        }
+        // Si hay admin_id, permitir acceso sin verificar token de usuario
                 setLoading(false);
         return;
       }

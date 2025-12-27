@@ -25,13 +25,17 @@ class AdminAuthMiddleware
         if (!$adminId) {
             Log::warning('AdminAuthMiddleware: No se encontró admin_id en la petición', [
                 'url' => $request->url(),
-                'headers' => $request->headers->all()
+                'method' => $request->method(),
+                'headers' => $request->headers->all(),
+                'all_headers' => array_map(function($header) {
+                    return is_array($header) ? $header[0] : $header;
+                }, $request->headers->all())
             ]);
 
             return response()->json([
                 'success' => false,
                 'error' => 'No autenticado',
-                'message' => 'Se requiere autenticación de administrador'
+                'message' => 'Se requiere autenticación de administrador. Asegúrate de que ligand_admin_id esté en localStorage.'
             ], 401);
         }
 

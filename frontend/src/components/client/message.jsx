@@ -2199,8 +2199,8 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
     const hasTranslation = translatedText && translatedText !== originalText && translatedText.trim() !== '';
 
     return (
-      <div className="space-y-1">
-        <div className="text-white">
+      <div className="space-y-1 break-words overflow-wrap-anywhere">
+        <div className="text-white break-words overflow-wrap-anywhere whitespace-pre-wrap">
           {originalText}
           {isTranslating && (
             <span className="ml-2 inline-flex items-center">
@@ -2210,7 +2210,7 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
         </div>
 
         {hasTranslation && (
-          <div className={`text-xs italic border-l-2 pl-2 py-1 ${
+          <div className={`text-xs italic border-l-2 pl-2 py-1 break-words overflow-wrap-anywhere whitespace-pre-wrap ${
             isOwn 
               ? 'border-blue-300 text-blue-200 bg-blue-500/10' 
               : 'border-green-300 text-green-200 bg-green-500/10'
@@ -2513,7 +2513,7 @@ const renderMensaje = useCallback((mensaje) => {
       if (localTranslationEnabled && textoMensaje?.trim()) {
         return renderMessageWithTranslation(mensaje, esUsuarioActual);
       }
-      return <span className="text-white">{textoMensaje}</span>;
+      return <span className="text-white break-words overflow-wrap-anywhere whitespace-pre-wrap">{textoMensaje}</span>;
   }
 }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation]);
 
@@ -3404,7 +3404,7 @@ const renderMensaje = useCallback((mensaje) => {
 
                       return (
                         <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
-                          <div className="flex flex-col max-w-sm">
+                          <div className="flex flex-col max-w-sm md:max-w-md lg:max-w-lg">
                             {!esUsuarioActual && (
                               <div className="flex items-center gap-2 mb-1 px-2">
                                 <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
@@ -3414,7 +3414,7 @@ const renderMensaje = useCallback((mensaje) => {
                               </div>
                             )}
                             <div
-                              className={`relative px-4 py-2 rounded-2xl text-sm ${
+                              className={`relative px-4 py-2 rounded-2xl text-sm break-words overflow-wrap-anywhere ${
                                 mensaje.type === 'gift_request' || mensaje.type === 'gift_sent'
                                   ? '' // Sin fondo para gift_request
                                   : esUsuarioActual

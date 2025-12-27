@@ -471,9 +471,11 @@ class StoryController extends Controller
 
     // MÉTODOS PARA ADMINISTRADORES
 
-    public function indexPending()
+    public function indexPending(Request $request)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        // Validar que el admin_user_id esté presente (agregado por AdminAuthMiddleware)
+        $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+        if (!$adminId) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -487,7 +489,9 @@ class StoryController extends Controller
 
     public function approve($id, Request $request)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        // Validar que el admin_user_id esté presente (agregado por AdminAuthMiddleware)
+        $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+        if (!$adminId) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -498,10 +502,11 @@ class StoryController extends Controller
         }
 
         // 🔧 CORREGIR ESTA PARTE - usar update() en lugar de approve()
+        $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
         $story->update([
             'status' => 'approved',
             'approved_at' => now(),
-            'approved_by' => auth()->id(),
+            'approved_by' => $adminId,
             'expires_at' => now()->addHours(24) // 🚨 ESTO ES CRÍTICO
         ]);
 
@@ -513,7 +518,9 @@ class StoryController extends Controller
 
     public function reject($id, Request $request)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        // Validar que el admin_user_id esté presente (agregado por AdminAuthMiddleware)
+        $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+        if (!$adminId) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -527,11 +534,12 @@ class StoryController extends Controller
             return response()->json(['message' => 'La historia ya fue procesada'], 422);
         }
 
+        $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
         $story->update([
             'status' => 'rejected',
             'rejection_reason' => $request->reason,
             'rejected_at' => now(),
-            'rejected_by' => auth()->id()
+            'rejected_by' => $adminId
         ]);
 
         return response()->json([
@@ -553,6 +561,129 @@ class StoryController extends Controller
             'total_views' => $story->views_count,
             'views' => $story->views()->with('user')->latest('viewed_at')->get()
         ]);
+    }
+
+    /**
+     * Dar like a una historia
+     */
+    public function like($id)
+    {
+        try {
+            if (!auth()->check()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $story = Story::findOrFail($id);
+            $userId = auth()->id();
+
+            // Verificar si ya tiene like
+            $hasLiked = \App\Models\StoryLike::where('story_id', $story->id)
+                ->where('user_id', $userId)
+                ->exists();
+
+            if ($hasLiked) {
+                return response()->json([
+                    'success' => true,
+                    'has_liked' => true,
+                    'likes_count' => $story->fresh()->likes_count,
+                    'message' => 'Ya has dado like a esta historia'
+                ]);
+            }
+
+            // Agregar like usando el método del modelo
+            $result = $story->addLike($userId);
+
+            if ($result) {
+                return response()->json([
+                    'success' => true,
+                    'has_liked' => true,
+                    'likes_count' => $story->fresh()->likes_count,
+                    'message' => 'Like agregado exitosamente'
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No se pudo agregar el like'
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error al dar like a historia: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * Quitar like de una historia
+     */
+    public function unlike($id)
+    {
+        try {
+            if (!auth()->check()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $story = Story::findOrFail($id);
+            $userId = auth()->id();
+
+            // Quitar like usando el método del modelo
+            $result = $story->removeLike($userId);
+
+            return response()->json([
+                'success' => true,
+                'has_liked' => false,
+                'likes_count' => $story->fresh()->likes_count,
+                'message' => 'Like removido exitosamente'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al quitar like de historia: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * Verificar si el usuario ha dado like a una historia
+     */
+    public function likeStatus($id)
+    {
+        try {
+            if (!auth()->check()) {
+                return response()->json([
+                    'success' => false,
+                    'has_liked' => false
+                ]);
+            }
+
+            $story = Story::findOrFail($id);
+            $userId = auth()->id();
+
+            $hasLiked = \App\Models\StoryLike::where('story_id', $story->id)
+                ->where('user_id', $userId)
+                ->exists();
+
+            return response()->json([
+                'success' => true,
+                'has_liked' => $hasLiked,
+                'likes_count' => $story->likes_count
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al verificar like status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'has_liked' => false
+            ], 500);
+        }
     }
 
     public function getActiveStories()

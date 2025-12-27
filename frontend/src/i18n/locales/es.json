@@ -1561,7 +1561,7 @@
       "connectionError": "Error de conexión. Intenta nuevamente."
     },
     "notifications": {
-      "purchaseCompleted": "¡Compra completada! Se agregaron {{coins}} monedas (Sandbox)",
+      "purchaseCompleted": "¡Compra completada! Se agregaron {{coins}} monedas",
       "paymentCreated": "Pago creado. Serás redirigido a Wompi en unos segundos.",
       "paymentCompleted": "¡Pago completado! Se agregaron {{coins}} monedas a tu cuenta"
     },

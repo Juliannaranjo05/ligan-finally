@@ -87,6 +87,13 @@ class WompiController extends Controller
         try {
             $user = auth()->user();
             
+            // 🔥 OBTENER PRECIO POR HORA DEL PAÍS:
+            // 1. Si viene price_per_hour del frontend (país seleccionado), usarlo
+            // 2. Si no, usar precio por defecto de $30/hora (LATAM)
+            $pricePerHour = $request->has('price_per_hour') && $request->input('price_per_hour')
+                ? (float)$request->input('price_per_hour')
+                : 30.0; // Precio por defecto LATAM
+            
             // 🔥 DETECCIÓN DE MONEDA:
             // 1. Si el usuario especifica una moneda manualmente, usarla
             // 2. Si no, detectar automáticamente por IP
@@ -125,12 +132,19 @@ class WompiController extends Controller
                            ($package->is_popular ? '1' : '0');
                 })
                 ->values() // Reindexar el array después de unique
-                ->map(function ($package) use ($hasFirstPurchase, $currency) {
-                    // Precio base en USD (LATAM)
-                    $basePriceUsd = $package->price;
-                    
-                    // Calcular precio según moneda (aplica +10% para USD/EUR)
-                    $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+                ->map(function ($package) use ($hasFirstPurchase, $currency, $pricePerHour) {
+                    // 🔥 LÓGICA DE PRECIOS SEGÚN TIPO DE PAQUETE
+                    if ($package->type === 'gifts') {
+                        // REGALOS: Precio fijo 1 moneda = 1 USD (sin bonos, descuentos ni precios regionales)
+                        $calculatedPriceUsd = $package->price; // Precio exacto = número de monedas
+                        $basePriceUsd = $package->price;
+                    } else {
+                        // MINUTOS: Calcular precio dinámicamente según precio por hora del país
+                        // Precio = (minutos / 60) * precio_por_hora
+                        $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
+                        $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
+                        $basePriceUsd = $package->price; // Precio base original (para referencia)
+                    }
                     
                     // Convertir precios a otras monedas para mostrar
                     $usdToCop = config('wompi.usd_to_cop_rate', 4000);
@@ -143,7 +157,12 @@ class WompiController extends Controller
                     $priceEur = $calculatedPriceUsd * $usdToEur;
                     
                     // Lógica de precios (mantener compatibilidad con descuentos de primera vez)
-                    if ($hasFirstPurchase) {
+                    // Para regalos, no aplicar descuentos
+                    if ($package->type === 'gifts') {
+                        $showPriceCop = $priceCop;
+                        $showDiscount = 0;
+                        $isFirstTimeEligible = false;
+                    } else if ($hasFirstPurchase) {
                         $showPriceCop = $package->regular_price * $usdToCop;
                         $showDiscount = 0;
                         $isFirstTimeEligible = false;
@@ -162,8 +181,9 @@ class WompiController extends Controller
                         'coins' => $package->coins,
                         'bonus_coins' => $package->bonus_coins,
                         'total_coins' => $package->coins + $package->bonus_coins,
-                        'price_usd' => round($calculatedPriceUsd, 2), // Precio calculado según moneda
-                        'price_usd_base' => round($basePriceUsd, 2), // Precio base LATAM
+                        'price_usd' => round($calculatedPriceUsd, 2), // Precio calculado (dinámico para minutos, fijo para regalos)
+                        'price_usd_base' => round($basePriceUsd, 2), // Precio base original (para referencia)
+                        'price_per_hour' => $package->type === 'gifts' ? null : $pricePerHour, // Solo para minutos
                         'price_eur' => round($priceEur, 2),
                         'price_cop' => (int)$showPriceCop, // Mantener para uso interno de Wompi
                         'price_cop_cents' => (int)($showPriceCop * 100), // Para Wompi
@@ -176,7 +196,7 @@ class WompiController extends Controller
                         'usd_to_cop_rate' => $usdToCop,
                         'usd_to_eur_rate' => $usdToEur,
                         'currency' => $currency, // Moneda seleccionada
-                        'price_multiplier' => ($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00 // Multiplicador aplicado
+                        'price_multiplier' => $package->type === 'gifts' ? 1.00 : (($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00) // Regalos siempre 1.00, minutos según región
                     ];
                 });
 
@@ -225,10 +245,16 @@ class WompiController extends Controller
             $request->validate([
                 'package_id' => 'required|exists:coin_packages,id',
                 'currency' => 'nullable|string|max:3', // Opcional: COP, USD, EUR, etc.
+                'price_per_hour' => 'nullable|numeric|min:1', // Precio por hora del país
             ]);
 
             $user = Auth::user();
             $package = CoinPackage::findOrFail($request->package_id);
+            
+            // 🔥 OBTENER PRECIO POR HORA DEL PAÍS:
+            $pricePerHour = $request->has('price_per_hour') && $request->input('price_per_hour')
+                ? (float)$request->input('price_per_hour')
+                : 30.0; // Precio por defecto LATAM
             
             // 🔥 DETECCIÓN DE MONEDA:
             // 1. Si el usuario especifica una moneda manualmente, usarla
@@ -264,9 +290,17 @@ class WompiController extends Controller
                     'created_at' => $recentPendingPurchase->created_at
                 ]);
                 
-                // Calcular precio según moneda
-                $basePriceUsd = $package->price;
-                $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+                // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
+                if ($package->type === 'gifts') {
+                    // REGALOS: Precio fijo 1 moneda = 1 USD
+                    $calculatedPriceUsd = $package->price;
+                    $basePriceUsd = $package->price;
+                } else {
+                    // MINUTOS: Calcular precio dinámicamente según precio por hora del país
+                    $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
+                    $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
+                    $basePriceUsd = $package->price; // Para referencia
+                }
                 $usdToCop = config('wompi.usd_to_cop_rate', 4000);
                 $priceCop = $calculatedPriceUsd * $usdToCop;
                 
@@ -301,9 +335,17 @@ class WompiController extends Controller
                 ], 200);
             }
 
-            // Calcular precio según moneda (aplica +10% para USD/EUR)
-            $basePriceUsd = $package->price; // Precio base LATAM
-            $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+            // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
+            if ($package->type === 'gifts') {
+                // REGALOS: Precio fijo 1 moneda = 1 USD
+                $calculatedPriceUsd = $package->price; // Precio exacto = número de monedas
+                $basePriceUsd = $package->price;
+            } else {
+                // MINUTOS: Calcular precio dinámicamente según precio por hora del país
+                $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
+                $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
+                $basePriceUsd = $package->price; // Precio base original (para referencia)
+            }
             
             // Convertir precio calculado a COP (Wompi siempre procesa en COP)
             $usdToCop = config('wompi.usd_to_cop_rate', 4000);
@@ -343,9 +385,9 @@ class WompiController extends Controller
                     'amount_cop_cents' => $amountInCents,
                     'usd_to_cop_rate' => $usdToCop,
                     'currency_selected' => $currency, // Moneda seleccionada por el usuario
-                    'price_usd_base' => $basePriceUsd, // Precio base LATAM
-                    'price_usd_calculated' => $calculatedPriceUsd, // Precio calculado (con +10% si aplica)
-                    'price_multiplier' => ($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00,
+                    'price_usd_base' => $basePriceUsd, // Precio base (LATAM para minutos, fijo para regalos)
+                    'price_usd_calculated' => $calculatedPriceUsd, // Precio calculado (dinámico para minutos, fijo para regalos)
+                    'price_multiplier' => $package->type === 'gifts' ? 1.00 : (($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00), // Regalos siempre 1.00
                     'created_at' => now()->toISOString(),
                     'environment' => config('app.env'),
                 ])
@@ -1472,72 +1514,144 @@ class WompiController extends Controller
      */
     public function createSandboxPurchase(Request $request)
     {
+        // 🧪 SANDBOX: Usar la misma lógica de createPayment pero con credenciales de sandbox
+        // Esto permite probar el flujo completo de redirección a Wompi sandbox
         try {
+            // Validación de entrada
             $request->validate([
-                'package_id' => 'required|exists:coin_packages,id'
+                'package_id' => 'required|exists:coin_packages,id',
+                'currency' => 'nullable|string|max:3',
+                'price_per_hour' => 'nullable|numeric|min:1',
             ]);
 
             $user = Auth::user();
             $package = CoinPackage::findOrFail($request->package_id);
+            
+            // 🔥 OBTENER PRECIO POR HORA DEL PAÍS (solo para minutos)
+            $pricePerHour = $request->has('price_per_hour') && $request->input('price_per_hour')
+                ? (float)$request->input('price_per_hour')
+                : 30.0;
+            
+            // 🔥 DETECCIÓN DE MONEDA
+            if ($request->has('currency') && $request->input('currency')) {
+                $currency = strtoupper($request->input('currency'));
+            } else {
+                $userIp = $request->ip();
+                $currency = $this->currencyDetectionService->detectCurrencyByIp($userIp);
+            }
+
+            // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
+            if ($package->type === 'gifts') {
+                // REGALOS: Precio fijo 1 moneda = 1 USD
+                $calculatedPriceUsd = $package->price;
+                $basePriceUsd = $package->price;
+            } else {
+                // MINUTOS: Calcular precio dinámicamente según precio por hora del país
+                $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
+                $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
+                $basePriceUsd = $package->price;
+            }
+            
+            // Convertir precio calculado a COP (Wompi siempre procesa en COP)
+            $usdToCop = config('wompi.usd_to_cop_rate', 4000);
+            $priceCop = $calculatedPriceUsd * $usdToCop;
+            
+            // Asegurar que el precio en centavos sea un entero
+            $amountInCents = (int)round($priceCop * 100);
+            
+            // Validar que el monto mínimo sea al menos 1000 COP
+            if ($amountInCents < 100000) {
+                throw new Exception("El monto mínimo para transacciones en Wompi es de $1,000 COP");
+            }
+
+            // Validar límites de transacción
+            $this->validateTransactionLimits($priceCop);
 
             DB::beginTransaction();
 
-            // Crear la orden de compra
+            // Generar referencia única
+            $reference = $this->generateUniqueReference($user->id, $package->id);
+
+            // Crear orden de compra (pendiente, se completará cuando Wompi confirme)
             $purchase = CoinPurchase::create([
                 'user_id' => $user->id,
                 'package_id' => $package->id,
                 'coins' => $package->coins,
                 'bonus_coins' => $package->bonus_coins ?? 0,
                 'total_coins' => $package->coins + ($package->bonus_coins ?? 0),
-                'amount' => $package->price,
+                'amount' => $calculatedPriceUsd,
                 'currency' => 'USD',
                 'payment_method' => 'wompi_sandbox',
-                'status' => 'completed',
-                'transaction_id' => 'sandbox_wompi_' . strtoupper(uniqid()) . '_' . time(),
-                'completed_at' => now(),
+                'status' => 'pending',
+                'transaction_id' => $reference,
                 'payment_data' => json_encode([
+                    'wompi_reference' => $reference,
+                    'amount_cop' => $priceCop,
+                    'amount_cop_cents' => $amountInCents,
+                    'usd_to_cop_rate' => $usdToCop,
+                    'currency_selected' => $currency,
+                    'price_usd_base' => $basePriceUsd,
+                    'price_usd_calculated' => $calculatedPriceUsd,
+                    'price_multiplier' => $package->type === 'gifts' ? 1.00 : (($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00),
                     'sandbox' => true,
+                    'created_at' => now()->toISOString(),
                     'environment' => config('app.env'),
-                    'processed_at' => now()->toISOString(),
-                    'method' => 'wompi_sandbox_test'
                 ])
             ]);
 
-            // Agregar monedas
-            $this->addCoinsToUser($purchase);
+            // Generar firma de integridad usando el monto en centavos como entero
+            $signature = $this->generateIntegritySignature($reference, $amountInCents, 'COP');
+            
+            Log::info("🧪 Pago Wompi Sandbox Widget creado", [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'package_type' => $package->type,
+                'reference' => $reference,
+                'amount_usd' => $calculatedPriceUsd,
+                'amount_cop' => $priceCop,
+                'amount_cop_cents' => $amountInCents,
+                'currency' => $currency,
+                'sandbox' => true
+            ]);
 
             DB::commit();
 
-            Log::info("🧪 Compra sandbox Wompi completada", [
-                'user_id' => $purchase->user_id,
-                'package_type' => $package->type,
-                'coins_added' => $purchase->coins,
-                'bonus_coins_added' => $purchase->bonus_coins,
-                'total_coins_added' => $purchase->total_coins,
-                'environment' => config('app.env')
-            ]);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Compra completada exitosamente (Sandbox)',
-                'transaction_id' => $purchase->transaction_id,
-                'coins_added' => $purchase->coins,
-                'bonus_coins_added' => $purchase->bonus_coins,
-                'total_coins_added' => $purchase->total_coins,
-                'sandbox' => true,
-                'minutes_equivalent' => $package->type === 'gifts' ? 0 : floor($purchase->total_coins / VideoChatCoinController::COST_PER_MINUTE),
-                'type' => $package->type === 'gifts' ? 'gift_coins' : 'minute_coins',
-                'environment' => config('app.env')
+                'message' => 'Pago sandbox creado exitosamente',
+                'purchase_id' => $purchase->id,
+                'wompi_data' => [
+                    'public_key' => $this->wompiConfig['public_key'],
+                    'currency' => 'COP',
+                    'amount_in_cents' => $amountInCents,
+                    'reference' => $reference,
+                    'signature_integrity' => $signature,
+                    'checkout_url' => $this->wompiConfig['checkout_url'],
+                    'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
+                    'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
+                    'customer_email' => $user->email,
+                    'customer_full_name' => $user->name,
+                    'sandbox' => true
+                ],
+                'package_info' => [
+                    'name' => $package->name,
+                    'coins' => $package->coins,
+                    'bonus_coins' => $package->bonus_coins ?? 0,
+                    'total_coins' => $package->coins + ($package->bonus_coins ?? 0),
+                    'price_usd' => $calculatedPriceUsd,
+                    'price_usd_base' => $basePriceUsd,
+                ],
+                'environment' => config('app.env'),
+                'sandbox' => true
             ]);
 
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error('❌ Error procesando pago sandbox Wompi: ' . $e->getMessage());
+            Log::error('❌ Error creando pago sandbox Wompi: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
-                'error' => 'Error procesando el pago sandbox',
-                'environment' => config('app.env')
+                'error' => 'Error creando el pago sandbox: ' . $e->getMessage()
             ], 500);
         }
     }

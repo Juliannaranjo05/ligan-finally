@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-export default function WompiPayment({ onClose }) {
+export default function WompiPayment({ onClose, selectedCountry, onCountryChange }) {
   const { t } = useTranslation();
   const [packages, setPackages] = useState([]);
   const [balance, setBalance] = useState(null);
@@ -42,6 +42,12 @@ export default function WompiPayment({ onClose }) {
   const [redirectCountdown, setRedirectCountdown] = useState(3);
   const [paymentUrl, setPaymentUrl] = useState(null);
   const [showBuyMinutesSidebar, setShowBuyMinutesSidebar] = useState(false);
+  
+  // Obtener país desde localStorage si no viene como prop
+  const country = selectedCountry || (() => {
+    const saved = localStorage.getItem('selected_country');
+    return saved ? JSON.parse(saved) : null;
+  })();
 
   // Debug: Log cuando cambia el estado del sidebar
   useEffect(() => {
@@ -71,8 +77,13 @@ export default function WompiPayment({ onClose }) {
       }
     };
 
-    initializeWompi();
-  }, []);
+    // Solo inicializar si hay un país seleccionado
+    if (country) {
+      initializeWompi();
+    } else {
+      setLoading(false);
+    }
+  }, [country]);
 
   // Polling para verificar estado de compras pendientes - MÁS AGRESIVO
   useEffect(() => {
@@ -158,7 +169,15 @@ export default function WompiPayment({ onClose }) {
 
   const fetchPackages = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/wompi/packages`, {
+      // Enviar país seleccionado en los parámetros
+      const params = new URLSearchParams();
+      if (country) {
+        params.append('country_code', country.code);
+        params.append('currency', country.currency);
+        params.append('price_per_hour', country.pricePerHour.toString());
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/api/wompi/packages?${params.toString()}`, {
         headers: getAuthHeaders()
       });
       const data = await response.json();
@@ -217,7 +236,9 @@ export default function WompiPayment({ onClose }) {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          package_id: pkg.id
+          package_id: pkg.id,
+          currency: country?.currency || 'COP',
+          price_per_hour: country?.pricePerHour || 30
         })
       });
 
@@ -225,20 +246,36 @@ export default function WompiPayment({ onClose }) {
 
       if (data.success) {
         if (config.sandbox) {
-          // SANDBOX: Monedas instantáneas
+          // SANDBOX: Redirigir a Wompi sandbox (mismo flujo que producción)
+          setWompiData(data.wompi_data);
+          setPurchaseId(data.purchase_id);
+          
+          // Crear URL de pago de Wompi sandbox
+          const paymentParams = new URLSearchParams({
+            'public-key': data.wompi_data.public_key,
+            'currency': data.wompi_data.currency || 'COP',
+            'amount-in-cents': data.wompi_data.amount_in_cents,
+            'reference': data.wompi_data.reference,
+            'signature:integrity': data.wompi_data.signature_integrity
+          });
+
+          // Agregar datos opcionales
+          if (data.wompi_data.customer_email) {
+            paymentParams.append('customer-data:email', data.wompi_data.customer_email);
+          }
+          if (data.wompi_data.customer_full_name) {
+            paymentParams.append('customer-data:full-name', data.wompi_data.customer_full_name);
+          }
+          
+          const fullPaymentUrl = `https://checkout.wompi.co/p/?${paymentParams.toString()}`;
+          setPaymentUrl(fullPaymentUrl);
+          setShowPaymentWindow(true);
+          setRedirectCountdown(3);
+          
           showNotification(
-            t('wompi.notifications.purchaseCompleted', { coins: data.total_coins_added }),
+            t('wompi.notifications.paymentCreated') + ' (Sandbox)',
             'success'
           );
-          
-          await Promise.all([
-            fetchBalance(),
-            fetchPurchaseHistory()
-          ]);
-          
-          setTimeout(() => {
-            if (onClose) onClose();
-          }, 2000);
           
         } else {
           // PRODUCCIÓN: Mostrar página de verificación y redirigir
@@ -410,12 +447,38 @@ export default function WompiPayment({ onClose }) {
               </h1>
             </div>
 
-            {/* Badge de Wompi */}
-            <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-500/30 rounded-full px-3 py-2 mb-4 sm:mb-6">
-              <MapPin size={14} className="text-green-400" />
-              <span className="text-green-400 text-xs sm:text-sm font-medium">
-                {t('wompi.poweredBy')}
-              </span>
+            {/* Badge de Wompi y País */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mb-4 sm:mb-6">
+              <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-500/30 rounded-full px-3 py-2">
+                <MapPin size={14} className="text-green-400" />
+                <span className="text-green-400 text-xs sm:text-sm font-medium">
+                  {t('wompi.poweredBy')}
+                </span>
+              </div>
+              {country && (
+                <div className="inline-flex items-center gap-2 bg-[#2b2d31] border border-[#ff007a]/30 rounded-full px-3 py-2">
+                  <span className="text-lg">{country.flag}</span>
+                  <span className="text-white text-xs sm:text-sm font-medium">
+                    {country.name}
+                  </span>
+                  <span className="text-white/60 text-xs">
+                    ${country.pricePerHour}/hora
+                  </span>
+                  {onCountryChange && (
+                    <button
+                      onClick={() => {
+                        if (onCountryChange) {
+                          onCountryChange();
+                        }
+                      }}
+                      className="ml-2 p-1 hover:bg-[#3a3d44] rounded transition-colors"
+                      title="Cambiar país"
+                    >
+                      <X size={12} className="text-white/60 hover:text-white" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {/* Balance */}
             <div className="bg-[#2b2d31] rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-[#ff007a]/20">
@@ -466,30 +529,6 @@ export default function WompiPayment({ onClose }) {
                   </>
                 )}
               </div>
-            </div>
-
-            {/* Botones de acción */}
-            <div className="flex flex-col sm:flex-row gap-4 mt-6 justify-center">
-              <button
-                onClick={() => {
-                  setActivePackageType('minutes');
-                  setShowBuyMinutesSidebar(true);
-                }}
-                className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
-              >
-                <Wallet size={20} />
-                <span>{t('wompi.title.buyMinutes')}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActivePackageType('gifts');
-                  setShowBuyMinutesSidebar(true);
-                }}
-                className="flex-1 bg-[#2b2d31] hover:bg-[#3a3d44] text-white px-6 py-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 border border-gray-600 hover:border-gray-500"
-              >
-                <Gift size={20} />
-                <span>{t('wompi.title.sendGifts')}</span>
-              </button>
             </div>
           </div>
 
@@ -587,15 +626,17 @@ export default function WompiPayment({ onClose }) {
                     </div>
 
                     <div className="mb-4">
-                      {/* Precio principal en COP */}
+                      {/* Precio principal en USD */}
                       <div className="text-lg sm:text-xl font-bold mb-1 text-green-400">
-                        {formatCOP(pkg.price_cop)} COP
+                        ${pkg.price_usd} USD
                       </div>
                       
-                      {/* Precio de referencia en USD */}
-                      <div className="text-sm text-white/60 mb-2">
-                        ≈ ${pkg.price_usd} USD
-                      </div>
+                      {/* Precio en EUR si está disponible */}
+                      {pkg.price_eur && (
+                        <div className="text-sm text-white/60 mb-2">
+                          ≈ €{pkg.price_eur} EUR
+                        </div>
+                      )}
                       
                       {/* Precio por moneda */}
                       <div className="text-xs text-white/40">
@@ -678,7 +719,7 @@ export default function WompiPayment({ onClose }) {
                     </div>
                     <div className="text-left sm:text-right">
                       <div className="font-bold text-green-400 text-sm sm:text-base">
-                        {formatCOP(purchase.amount * (wompiConfig?.usd_to_cop_rate || 4000))}
+                        ${purchase.amount} USD
                       </div>
                       <div className={`text-xs px-2 py-1 rounded-full inline-block ${
                         purchase.status === 'completed'
@@ -752,12 +793,13 @@ export default function WompiPayment({ onClose }) {
                     <span className="text-white font-semibold text-sm sm:text-base">{t('wompi.verification.totalToPay')}:</span>
                     <div className="text-right">
                       <div className="text-xl sm:text-2xl font-bold text-[#ff007a]">
-                        {formatCOP(selectedPackage.price_cop)} COP
+                        ${selectedPackage.price_usd} USD
                       </div>
-                      <div className="text-xs text-white/50 flex items-center gap-1">
-                        <DollarSign size={10} />
-                        ≈ ${selectedPackage.price_usd} USD
-                      </div>
+                      {selectedPackage.price_eur && (
+                        <div className="text-xs text-white/50 flex items-center gap-1">
+                          ≈ €{selectedPackage.price_eur} EUR
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1044,15 +1086,17 @@ export default function WompiPayment({ onClose }) {
                           </div>
 
                           <div className="mb-4">
-                            {/* Precio principal en COP */}
+                            {/* Precio principal en USD */}
                             <div className="text-lg sm:text-xl font-bold mb-1 text-green-400">
-                              {formatCOP(pkg.price_cop)} COP
+                              ${pkg.price_usd} USD
                             </div>
                             
-                            {/* Precio de referencia en USD */}
-                            <div className="text-sm text-white/60 mb-2">
-                              ≈ ${pkg.price_usd} USD
-                            </div>
+                            {/* Precio en EUR si está disponible */}
+                            {pkg.price_eur && (
+                              <div className="text-sm text-white/60 mb-2">
+                                ≈ €{pkg.price_eur} EUR
+                              </div>
+                            )}
                             
                             {/* Precio por moneda */}
                             <div className="text-xs text-white/40">

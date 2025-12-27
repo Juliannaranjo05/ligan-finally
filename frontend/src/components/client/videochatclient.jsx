@@ -737,6 +737,7 @@ export default function VideoChatClient() {
     pendingRequests,
     userBalance: giftBalanceFromHook,
     loading: giftLoading,
+    requestGift,
     acceptGift,
     rejectGift,
     loadGifts,
@@ -895,7 +896,7 @@ export default function VideoChatClient() {
         senderRole: userData.role
       };
       
-      setMessages(prev => [nuevoMensaje, ...prev]);
+      setMessages(prev => [...prev, nuevoMensaje]);
       setMensaje(""); // Limpiar input inmediatamente
       
       // Enviar el mensaje usando chatFunctions
@@ -1146,6 +1147,7 @@ export default function VideoChatClient() {
   // 🔥 REF PARA EVITAR MÚLTIPLOS INTERVALOS DE BALANCE
   const balanceIntervalRef = useRef(null);
   const isLoadingBalanceRef = useRef(false);
+  const hasLoadedBalanceRef = useRef(false); // 🔥 REF PARA EVITAR CARGAS DUPLICADAS DE BALANCE
 
   // 🔥 CARGAR BALANCES INICIALES (COINS Y GIFTS) - CON MANEJO DE ERRORES 500
   useEffect(() => {
@@ -1156,10 +1158,46 @@ export default function VideoChatClient() {
       balanceIntervalRef.current = null;
     }
 
-    // 🔥 VERIFICAR QUE TENEMOS userData.id
-    if (!userData?.id) {
+    // 🔥 CARGAR SALDOS TAN PRONTO COMO HAYA roomName (no esperar userData.id)
+    if (!roomName) {
+      console.log('💰 [BALANCE] Esperando roomName...');
       return;
     }
+    
+    console.log('💰 [BALANCE] Condiciones cumplidas, cargando saldos:', {
+      roomName: roomName,
+      userDataId: userData?.id,
+      userDataName: userData?.name,
+      userDataRole: userData?.role,
+      hasLoadedBalance: hasLoadedBalanceRef.current
+    });
+    
+    // 🔥 EVITAR CARGAS DUPLICADAS
+    if (hasLoadedBalanceRef.current && userData?.id) {
+      console.log('💰 [BALANCE] Ya se cargó el balance, evitando carga duplicada');
+      return;
+    }
+    
+    // 🔥 Si userData.id no está disponible, intentar cargar el usuario primero
+    if (!userData?.id) {
+      console.log('💰 [BALANCE] userData.id no disponible, intentando cargar usuario...');
+      getUser(false).then(user => {
+        if (user && user.id) {
+          console.log('💰 [BALANCE] Usuario cargado:', user.id);
+          setUserData({
+            name: user.name || user.alias || user.username || "",
+            role: user.rol || user.role || "",
+            id: user.id
+          });
+        }
+      }).catch(err => {
+        console.warn('💰 [BALANCE] Error cargando usuario:', err);
+      });
+      return; // 🔥 SALIR SI NO HAY userData.id
+    }
+    
+    // 🔥 MARCAR QUE SE ESTÁ CARGANDO
+    hasLoadedBalanceRef.current = true;
 
     let consecutiveErrors = 0;
     let isMounted = true;
@@ -1227,8 +1265,32 @@ export default function VideoChatClient() {
       }
     };
 
-    // 🔥 CARGAR BALANCES INICIALES (solo una vez)
+    // 🔥 CARGAR BALANCES INICIALES INMEDIATAMENTE (solo una vez)
+    console.log('💰 [BALANCE] Iniciando carga de balances:', {
+      userDataId: userData?.id,
+      roomName: roomName,
+      hasLoadUserBalance: !!loadUserBalance
+    });
     loadBalances();
+    
+    // 🔥 CARGAR SALDO DE REGALOS INMEDIATAMENTE (en paralelo)
+    if (loadUserBalance && typeof loadUserBalance === 'function') {
+      console.log('🎁 [BALANCE] Cargando saldo de regalos...');
+      // Cargar inmediatamente sin esperar
+      loadUserBalance().then(result => {
+        console.log('🎁 [BALANCE] Saldo de regalos cargado:', result);
+        // 🔥 RESETEAR FLAG SI HAY ERROR PARA PERMITIR REINTENTO
+        if (result && result.success === false) {
+          hasLoadedBalanceRef.current = false;
+        }
+      }).catch(err => {
+        console.warn('⚠️ [Balance] Error cargando saldo de regalos:', err);
+        // 🔥 RESETEAR FLAG EN CASO DE ERROR PARA PERMITIR REINTENTO
+        hasLoadedBalanceRef.current = false;
+      });
+    } else {
+      console.warn('⚠️ [BALANCE] loadUserBalance no está disponible');
+    }
     
     // 🔥 ACTUALIZAR CADA 5 MINUTOS (300 segundos) - MUCHO MENOS AGRESIVO
     balanceIntervalRef.current = setInterval(() => {
@@ -1245,7 +1307,7 @@ export default function VideoChatClient() {
       }
       isLoadingBalanceRef.current = false;
     };
-  }, [userData?.id]); // 🔥 SOLO DEPENDENCIA CRÍTICA
+  }, [userData?.id, roomName, loadUserBalance]); // 🔥 DEPENDENCIAS: userData.id, roomName y loadUserBalance
 
   const siguientePersona = useCallback(async () => {
     // 🔥 PROTECCIÓN CONTRA EJECUCIONES MÚLTIPLES
@@ -2730,6 +2792,98 @@ useEffect(() => {
   // 🔥 REEMPLAZA TODA la función handleSendGift en VideoChatClient.jsx
 
 
+// 🔥 FUNCIÓN PARA MODELOS: PEDIR REGALO
+const handleRequestGift = async (giftId, recipientId, roomName, message) => {
+  try {
+    console.log('🎁 [VIDEOCHATCLIENT] handleRequestGift llamado:', {
+      giftId,
+      recipientId,
+      roomName,
+      message,
+      userDataRole: userData?.role,
+      otherUserId: otherUser?.id,
+      currentRoomName: roomName
+    });
+
+    if (!requestGift) {
+      addNotification('error', 'Error', 'Función de solicitar regalo no disponible');
+      return { success: false, error: 'Función de solicitar regalo no disponible' };
+    }
+
+    const selectedGift = availableGifts.find(g => g.id === giftId) || gifts.find(g => g.id === giftId);
+    if (!selectedGift) {
+      addNotification('error', 'Error', 'Regalo no encontrado');
+      return { success: false, error: 'Regalo no encontrado' };
+    }
+
+    // 🔥 VERIFICAR QUE EL USUARIO SEA MODELO
+    if (userData?.role !== 'modelo') {
+      console.error('❌ [VIDEOCHATCLIENT] Usuario no es modelo:', userData?.role);
+      addNotification('error', 'Error', 'Solo los modelos pueden solicitar regalos');
+      return { success: false, error: 'Solo los modelos pueden solicitar regalos' };
+    }
+
+    // 🔥 VERIFICAR QUE TENEMOS roomName Y otherUser
+    if (!roomName) {
+      console.error('❌ [VIDEOCHATCLIENT] roomName no válido:', roomName);
+      addNotification('error', 'Error', 'Sala de videochat no válida');
+      return { success: false, error: 'Sala de videochat no válida' };
+    }
+
+    if (!otherUser?.id) {
+      console.error('❌ [VIDEOCHATCLIENT] otherUser no válido:', otherUser);
+      addNotification('error', 'Error', 'Cliente no encontrado');
+      return { success: false, error: 'Cliente no encontrado' };
+    }
+
+    const result = await requestGift(giftId, message);
+
+    if (result.success) {
+      setShowGiftsModal(false);
+
+      // 🔥 AGREGAR MENSAJE AL CHAT
+      const requestMessage = {
+        id: Date.now(),
+        type: 'gift_request',
+        text: `🎁 Pediste: ${selectedGift.name}`,
+        timestamp: Date.now(),
+        isOld: false,
+        sender: userData.name,
+        senderRole: userData.role,
+        gift_data: {
+          gift_name: selectedGift.name,
+          gift_image: selectedGift.image || selectedGift.image_url || selectedGift.image_path || selectedGift.pic || selectedGift.icon || null,
+          gift_price: selectedGift.price,
+          action_text: "Pediste",
+          recipient_name: otherUser?.name || "Cliente",
+          original_message: message || ""
+        },
+        extra_data: {
+          gift_name: selectedGift.name,
+          gift_image: selectedGift.image || selectedGift.image_url || selectedGift.image_path || selectedGift.pic || selectedGift.icon || null,
+          gift_price: selectedGift.price,
+          action_text: "Pediste",
+          recipient_name: otherUser?.name || "Cliente",
+          original_message: message || ""
+        }
+      };
+
+      setMessages(prev => [requestMessage, ...prev]);
+
+      addNotification('success', '🎁 Solicitud Enviada', `Has solicitado ${selectedGift.name} a ${otherUser?.name || 'el cliente'}`);
+      
+      return { success: true };
+    } else {
+      addNotification('error', 'Error', result.error || 'Error al solicitar regalo');
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    addNotification('error', 'Error', 'Error de conexión al solicitar regalo');
+    return { success: false, error: error.message };
+  }
+};
+
+// 🔥 FUNCIÓN PARA CLIENTES: ENVIAR REGALO
 const handleSendGift = async (giftId, recipientId, roomName, message) => {
   try {
 
@@ -4883,13 +5037,73 @@ useEffect(() => {
     }
   }, [roomName, connected, isMonitoringBalance]);
 
+  // 🔥 INICIAR TIEMPO AUTOMÁTICAMENTE CUANDO HAY roomName (tan pronto como se une a la sala)
   useEffect(() => {
-    const intervalo = setInterval(() => setTiempo((prev) => prev + 1), 1000);
+    // 🔥 INICIAR SI HAY roomName (no depende de otherUser, solo de estar en la sala)
+    const shouldStartTimer = !!roomName;
+    
+    console.log('⏱️ [TIEMPO] Verificando inicio de tiempo:', {
+      otherUserId: otherUser?.id,
+      roomName: roomName,
+      shouldStartTimer: shouldStartTimer,
+      tiempoActual: tiempo
+    });
+    
+    if (!shouldStartTimer) {
+      // Si no hay roomName, resetear pero no iniciar
+      if (tiempoIntervalRef.current) {
+        clearInterval(tiempoIntervalRef.current);
+        tiempoIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // 🔥 INICIAR CONTADOR DE TIEMPO AUTOMÁTICAMENTE
+    if (tiempoIntervalRef.current) {
+      clearInterval(tiempoIntervalRef.current);
+    }
+    
+    // 🔥 RESETEAR TIEMPO AL INICIAR
+    setTiempo(0);
+    console.log('⏱️ [TIEMPO] Iniciando contador de tiempo');
+    
+    tiempoIntervalRef.current = setInterval(() => {
+      setTiempo((prev) => {
+        const nuevoTiempo = prev + 1;
+        // 🔥 LOG CADA SEGUNDO EN LOS PRIMEROS 10 SEGUNDOS PARA DEBUG
+        if (nuevoTiempo <= 10) {
+          console.log('⏱️ [TIEMPO] Tiempo:', nuevoTiempo, 'segundos');
+        } else if (nuevoTiempo % 5 === 0) {
+          // 🔥 DESPUÉS DE 10 SEGUNDOS, LOG CADA 5 SEGUNDOS
+          console.log('⏱️ [TIEMPO] Tiempo transcurrido:', nuevoTiempo, 'segundos');
+        }
+        return nuevoTiempo;
+      });
+    }, 1000);
+    
+    // 🔥 VERIFICAR QUE EL INTERVALO SE CREÓ CORRECTAMENTE
+    console.log('⏱️ [TIEMPO] Intervalo configurado, ref:', tiempoIntervalRef.current);
+    
+    // 🔥 TEST: Verificar que el intervalo funciona después de 1 segundo
+    setTimeout(() => {
+      console.log('⏱️ [TIEMPO] TEST - Verificando intervalo después de 1 segundo, ref:', tiempoIntervalRef.current);
+      if (tiempoIntervalRef.current) {
+        console.log('⏱️ [TIEMPO] TEST - Intervalo todavía activo');
+      } else {
+        console.warn('⏱️ [TIEMPO] TEST - ⚠️ Intervalo fue limpiado prematuramente!');
+      }
+    }, 1000);
+    
+    console.log('⏱️ [TIEMPO] Intervalo creado, tiempo iniciará en 1 segundo');
     
     return () => {
-      clearInterval(intervalo);
+      if (tiempoIntervalRef.current) {
+        clearInterval(tiempoIntervalRef.current);
+        tiempoIntervalRef.current = null;
+        console.log('⏱️ [TIEMPO] Contador detenido');
+      }
     };
-  }, []);
+  }, [roomName]); // 🔥 SOLO DEPENDE DE roomName
 
   useEffect(() => {
     if (otherUser?.id) {
@@ -5170,10 +5384,11 @@ const checkBalanceRealTime = useCallback(async () => {
           recipientName={otherUser?.name}
           recipientId={otherUser?.id}
           roomName={roomName}
-          userRole="cliente"           // ← Cambiar a 'cliente'
+          userRole={userData?.role || 'cliente'}
           gifts={availableGifts}
-          onSendGift={handleSendGift}  // ← Nueva función para enviar
-          userBalance={giftBalance}    // ← Saldo actual
+          onRequestGift={userData?.role === 'modelo' ? handleRequestGift : undefined}
+          onSendGift={userData?.role === 'cliente' ? handleSendGift : undefined}
+          userBalance={giftBalance}
         />
 
         {/* Overlay de notificación de regalo */}
@@ -5600,6 +5815,7 @@ const checkBalanceRealTime = useCallback(async () => {
                   />
                 ) : (
                   <TimeDisplayImprovedClient
+                    tiempo={tiempo}
                     connected={connected}
                     otherUser={otherUser}
                     roomName={roomName}

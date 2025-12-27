@@ -10,7 +10,9 @@ class CoinPackagesSeeder extends Seeder
     public function run()
     {
         // PAQUETES DE MINUTOS - Nueva estructura: 1 minuto = 10 monedas
-        // Precios base (LATAM): USD/EUR aplica +10% dinámicamente
+        // Precios base (LATAM): 60 min = $30 USD
+        // Para USD/EUR: 60 min = $33 USD (se calcula dinámicamente con pricePerHour=33)
+        // Los precios aquí son solo referencia, el cálculo real se hace dinámicamente
         $minutePackages = [
             [
                 'name' => '15 Minutos',
@@ -19,7 +21,7 @@ class CoinPackagesSeeder extends Seeder
                 'minutes' => 15,
                 'coins' => 150,
                 'bonus_coins' => 0, // Sin bono
-                'price' => 7.50, // Precio base LATAM (USD)
+                'price' => 7.50, // Precio base LATAM (15/60 * 30)
                 'regular_price' => 7.50,
                 'original_price' => 7.50,
                 'discount_percentage' => 0,
@@ -34,8 +36,8 @@ class CoinPackagesSeeder extends Seeder
                 'type' => 'minutes',
                 'minutes' => 30,
                 'coins' => 300,
-                'bonus_coins' => 30, // 10% de bono
-                'price' => 15.00, // Precio base LATAM (USD)
+                'bonus_coins' => 30, // 10% de bono (30 monedas gratis)
+                'price' => 15.00, // Precio base LATAM (30/60 * 30)
                 'regular_price' => 15.00,
                 'original_price' => 15.00,
                 'discount_percentage' => 0,
@@ -50,8 +52,8 @@ class CoinPackagesSeeder extends Seeder
                 'type' => 'minutes',
                 'minutes' => 60,
                 'coins' => 600,
-                'bonus_coins' => 90, // 15% de bono
-                'price' => 30.00, // Precio base LATAM (USD)
+                'bonus_coins' => 90, // 15% de bono (90 monedas gratis)
+                'price' => 30.00, // Precio base LATAM (60/60 * 30)
                 'regular_price' => 30.00,
                 'original_price' => 30.00,
                 'discount_percentage' => 0,
@@ -66,8 +68,8 @@ class CoinPackagesSeeder extends Seeder
                 'type' => 'minutes',
                 'minutes' => 120,
                 'coins' => 1200,
-                'bonus_coins' => 240, // 20% de bono
-                'price' => 60.00, // Precio base LATAM (USD)
+                'bonus_coins' => 240, // 20% de bono (240 monedas gratis)
+                'price' => 60.00, // Precio base LATAM (120/60 * 30)
                 'regular_price' => 60.00,
                 'original_price' => 60.00,
                 'discount_percentage' => 0,
