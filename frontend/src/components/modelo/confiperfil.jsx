@@ -20,6 +20,8 @@ import PaymentManager from "./payments/PaymentManager";
 import MinimumPayoutManager from "./payments/MinimumPayoutManager";
 import ProfileSettings from "../ProfileSettings";
 import SecuritySettings from "../SecuritySettings";
+import ProfileLinkButton from "./ProfileLinkButton";
+import ModalDocumentacion from "../verificacion/register/ModalDocumentacion";
 
 export default function ModeloConfiguracion() {
   const [modalActivo, setModalActivo] = useState(null);
@@ -48,6 +50,7 @@ export default function ModeloConfiguracion() {
         {/* 🔥 PERFIL - AHORA USANDO EL COMPONENTE ProfileSettings */}
         <Seccion titulo={t("settings.profile")}>
           <ProfileSettings t={t} />
+          <ProfileLinkButton />
         </Seccion>
 
         {/* Pagos */}
@@ -93,33 +96,34 @@ export default function ModeloConfiguracion() {
         <MinimumPayoutManager 
           onClose={cerrarModal}
         />
-      ) : modalActivo && (
+      ) : modalActivo && modalActivo !== "terms" && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           onClick={cerrarModal}
         >
           <div
-            className="bg-[#1f2125] rounded-xl p-6 w-full max-w-sm border border-[#ff007a] relative"
+            className="bg-[#1f2125] rounded-xl p-6 w-full max-w-md border border-[#ff007a] relative"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={cerrarModal}
               className="absolute top-3 right-3 text-white/50 hover:text-white"
-              title="Cerrar"
+              title={t("settings.modals.close")}
             >
               <X size={20} />
             </button>
 
-            <h3 className="text-lg font-bold text-[#ff007a] mb-4">
-              {t(`settings.${modalActivo}`)?.toUpperCase() || modalActivo}
-            </h3>
-            <p className="text-sm text-white/80">
-              {t("settings.modalInstruction", { 
-                item: t(`settings.${modalActivo}`) || modalActivo 
-              })}
-            </p>
+            <ModalContent modalActivo={modalActivo} t={t} />
           </div>
         </div>
+      )}
+
+      {/* Modal específico de Términos y Condiciones: reutiliza ModalDocumentacion grande */}
+      {modalActivo === "terms" && (
+        <ModalDocumentacion
+          isOpen={true}
+          onClose={cerrarModal}
+        />
       )}
     </div>
   );
@@ -143,5 +147,92 @@ function ConfigBoton({ icon, texto, onClick }) {
       <span className="text-[#ff007a]">{icon}</span>
       <span className="text-sm">{texto}</span>
     </button>
+  );
+}
+
+// Componente para el contenido de cada modal
+function ModalContent({ modalActivo, t }) {
+  const contenidoModales = {
+    support: {
+      titulo: "🆘 " + t("settings.modals.support.title"),
+      contenido: t("settings.modals.support.description")
+    },
+    report: {
+      titulo: "⚠️ " + t("settings.modals.report.title"),
+      contenido: t("settings.modals.report.description")
+    },
+  };
+
+  const modal = contenidoModales[modalActivo] || { 
+    titulo: "Configuración", 
+    contenido: t("settings.modalInstruction").replace("{{item}}", modalActivo || "esta función")
+  };
+
+  return (
+    <>
+      <h3 className="text-lg font-bold text-[#ff007a] mb-4">
+        {modal.titulo}
+      </h3>
+      <p className="text-sm text-white/80 leading-relaxed whitespace-pre-line">
+        {modal.contenido}
+      </p>
+      
+      {/* Acciones específicas para soporte y reportes */}
+      {modalActivo === "support" && (
+        <a
+          href="mailto:support@ligando.online?subject=Soporte%20Ligando&body=Cu%C3%A9ntanos%20en%20detalle%20tu%20duda%20o%20problema.%0A%0A-%20Correo%20con%20el%20que%20ingresas%3A%0A-%20Dispositivo%20(navegador%2C%20m%C3%B3vil%2C%20PC)%3A%0A-%20Captura%20de%20pantalla%20(si%20es%20posible)%3A%0A"
+          className="mt-4 w-full inline-flex items-center justify-center bg-[#ff007a] hover:bg-[#e6006e] text-white py-2 px-4 rounded-lg transition-colors text-sm"
+        >
+          {t("settings.modals.support.contactButton")}
+        </a>
+      )}
+
+      {modalActivo === "report" && (
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const tipo = form.tipo.value;
+            const descripcion = form.descripcion.value;
+            const mailto = `mailto:report@ligando.online?subject=Reporte%20${encodeURIComponent(
+              tipo
+            )}&body=${encodeURIComponent(descripcion)}`;
+            window.location.href = mailto;
+          }}
+        >
+          <label className="block text-xs text-white/70 mb-1">
+            {t("settings.modals.report.problemType")}
+          </label>
+          <select
+            name="tipo"
+            className="w-full bg-[#131418] border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+          >
+            <option>{t("settings.modals.report.problemTechnical")}</option>
+            <option>{t("settings.modals.report.problemPayment")}</option>
+            <option>{t("settings.modals.report.problemInappropriate")}</option>
+            <option>{t("settings.modals.report.problemOther")}</option>
+          </select>
+
+          <label className="block text-xs text-white/70 mb-1 mt-2">
+            {t("settings.modals.report.describeProblem")}
+          </label>
+          <textarea
+            name="descripcion"
+            required
+            rows={4}
+            className="w-full bg-[#131418] border border-white/10 rounded-lg px-3 py-2 text-sm text-white resize-none"
+            placeholder={t("settings.modals.report.describePlaceholder")}
+          />
+
+          <button
+            type="submit"
+            className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white py-2 px-4 rounded-lg transition-colors text-sm"
+          >
+            {t("settings.modals.report.sendReport")}
+          </button>
+        </form>
+      )}
+    </>
   );
 }

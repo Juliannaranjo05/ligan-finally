@@ -100,17 +100,118 @@ export const sendHeartbeat = async (activityType = 'browsing', room = null) => {
       return false;
     }
 
+    // 🔥 MANEJAR RESPUESTAS OK (200) PERO CON success=false
     if (response.ok) {
       const data = await response.json();
-            rateLimiter.recordSuccess();
+      
+      // Si el servidor devuelve success=false, no es un error crítico
+      if (data.success === false) {
+        console.warn('⚠️ [Heartbeat] Servidor reportó success=false, pero no es error de sesión:', data.error || data.message);
+        rateLimiter.recordError(false);
+        return false; // No disparar eventos de sesión cerrada
+      }
+      
+      rateLimiter.recordSuccess();
       return true;
     } else {
+      // 🔥 ERRORES 500 NO DEBEN DISPARAR MODAL DE SESIÓN CERRADA
+      // Solo manejar errores de autenticación/autorización
+      if (response.status === 500) {
+        console.warn('⚠️ [Heartbeat] Error 500 del servidor, ignorando (no es problema de sesión)');
+        rateLimiter.recordError(false);
+        return false; // No disparar eventos de sesión cerrada
+      }
+      
+      // 🔥 DETECTAR SESIÓN SUSPENDIDA O CERRADA POR OTRO DISPOSITIVO
+      // SOLO para errores 401/403 con código específico
+      if (response.status === 401 || response.status === 403) {
+        try {
+          const errorData = await response.json().catch(() => ({}));
+          const codigo = errorData.code || errorData.codigo || '';
+          
+          if (codigo === 'SESSION_SUSPENDED') {
+            // 🔥 VERIFICAR SI HAY UNA VIDEOLLAMADA ACTIVA - NO CERRAR SESIÓN DURANTE VIDEOLLAMADAS
+            const roomName = localStorage.getItem('roomName') || sessionStorage.getItem('roomName');
+            const inCall = localStorage.getItem('inCall') === 'true' || sessionStorage.getItem('inCall') === 'true';
+            const videochatActive = localStorage.getItem('videochatActive') === 'true' || sessionStorage.getItem('videochatActive') === 'true';
+            
+            if (roomName || inCall || videochatActive) {
+              console.warn('🎥 [Heartbeat] Videollamada activa - IGNORANDO sesión suspendida para evitar desconexión');
+              return false; // No hacer nada durante videollamadas
+            }
+            
+            const reason = errorData.reason || '';
+            const action = errorData.action || '';
+            
+            // Solo cerrar inmediatamente si es por reactivación
+            const shouldCloseImmediately = action === 'close_immediately' || 
+                                          reason?.includes('reactivada') || 
+                                          reason?.includes('reactivó') ||
+                                          reason === 'Otra sesión fue reactivada en otro dispositivo';
+            
+            if (shouldCloseImmediately) {
+              console.warn('⏸️ [Heartbeat] Sesión suspendida por reactivación - cerrando inmediatamente');
+              // 🔥 LIMPIAR TODO Y RECARGAR INMEDIATAMENTE solo si es por reactivación
+              try {
+                localStorage.clear();
+                sessionStorage.clear();
+              } catch (error) {
+                // Ignorar errores
+              }
+              // 🔥 RECARGAR INMEDIATAMENTE - Sin delays
+              console.warn('🔄 [Heartbeat] Recargando página...');
+              window.location.reload();
+              return false;
+            }
+            
+            // Si NO es por reactivación, disparar evento para que el modal lo maneje
+            console.info('✅ [Heartbeat] Disparando evento sessionSuspended para que el modal lo maneje');
+            const suspendedEvent = new CustomEvent("sessionSuspended", {
+              detail: {
+                status: response.status,
+                codigo: codigo,
+                code: codigo,
+                reason,
+                action,
+                url: `${API_BASE_URL}/api/heartbeat`,
+                method: 'POST',
+              }
+            });
+            window.dispatchEvent(suspendedEvent);
+            // No continuar
+            return false;
+          }
+          
+          if (codigo === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            console.warn('🚫 [Heartbeat] Sesión cerrada por otro dispositivo detectada');
+            // Disparar evento para que SessionClosedAlert lo maneje
+            const customEvent = new CustomEvent("axiosError", {
+              detail: {
+                status: response.status,
+                mensaje: errorData.message || 'Se abrió tu cuenta en otro dispositivo',
+                codigo: codigo,
+                code: codigo,
+                url: `${API_BASE_URL}/api/heartbeat`,
+                method: 'POST',
+              },
+            });
+            window.dispatchEvent(customEvent);
+            // No registrar como error de rate limiting, es un error de sesión
+            return false;
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el error, continuar con el flujo normal
+        }
+      }
+      
             rateLimiter.recordError(false);
       return false;
     }
   } catch (error) {
     if (error.name === 'AbortError') {
           } else {
+          // Si es un error de red pero no de abort, podría ser un problema de conexión
+          // No disparar evento de sesión cerrada aquí, solo errores de red
           }
     rateLimiter.recordError(false);
     return false;
@@ -122,9 +223,140 @@ export const useHeartbeat = (activityType = 'browsing', room = null, baseInterva
   const intervalRef = useRef(null);
   const isEnabledRef = useRef(enabled);
   const currentIntervalRef = useRef(baseIntervalMs);
+  const sessionCheckIntervalRef = useRef(null);
 
   useEffect(() => {
     isEnabledRef.current = enabled;
+  }, [enabled]);
+
+  // 🔥 VERIFICACIÓN AGRESIVA DE SESIÓN SUSPENDIDA (cada 5 segundos)
+  // ⚠️ DESHABILITADA DURANTE VIDEOLLAMADAS ACTIVAS para evitar desconexiones inesperadas
+  useEffect(() => {
+    if (!enabled) return;
+    
+    const checkSessionStatus = async () => {
+      // 🔥 VERIFICAR SI HAY UNA VIDEOLLAMADA ACTIVA - NO CERRAR SESIÓN DURANTE VIDEOLLAMADAS
+      const roomName = localStorage.getItem('roomName') || sessionStorage.getItem('roomName');
+      const inCall = localStorage.getItem('inCall') === 'true' || sessionStorage.getItem('inCall') === 'true';
+      const videochatActive = localStorage.getItem('videochatActive') === 'true' || sessionStorage.getItem('videochatActive') === 'true';
+      
+      // Si hay videollamada activa, NO verificar sesión suspendida (evitar desconexiones)
+      if (roomName || inCall || videochatActive) {
+        console.log('🎥 [SessionCheck] Videollamada activa detectada - omitiendo verificación de sesión suspendida');
+        return;
+      }
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        if (sessionCheckIntervalRef.current) {
+          clearInterval(sessionCheckIntervalRef.current);
+          sessionCheckIntervalRef.current = null;
+        }
+        return;
+      }
+      
+      try {
+        // Usar un endpoint ligero para verificar el estado del token
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`${API_BASE_URL}/api/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            activity_type: 'browsing',
+            room: null
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.status === 401 || response.status === 403) {
+          const errorData = await response.json().catch(() => ({}));
+          const codigo = errorData.code || errorData.codigo || '';
+          
+          if (codigo === 'SESSION_SUSPENDED') {
+            // 🔥 VERIFICAR NUEVAMENTE SI HAY VIDEOLLAMADA ACTIVA (doble verificación)
+            const currentRoomName = localStorage.getItem('roomName') || sessionStorage.getItem('roomName');
+            const currentInCall = localStorage.getItem('inCall') === 'true' || sessionStorage.getItem('inCall') === 'true';
+            const currentVideochatActive = localStorage.getItem('videochatActive') === 'true' || sessionStorage.getItem('videochatActive') === 'true';
+            
+            if (currentRoomName || currentInCall || currentVideochatActive) {
+              console.warn('🎥 [SessionCheck] Videollamada activa - IGNORANDO sesión suspendida para evitar desconexión');
+              return;
+            }
+            
+            const reason = errorData.reason || '';
+            const action = errorData.action || '';
+            
+            // Solo cerrar inmediatamente si es por reactivación
+            const shouldCloseImmediately = action === 'close_immediately' || 
+                                          reason?.includes('reactivada') || 
+                                          reason?.includes('reactivó') ||
+                                          reason === 'Otra sesión fue reactivada en otro dispositivo';
+            
+            if (shouldCloseImmediately) {
+              console.warn('⏸️ [SessionCheck] Sesión suspendida por reactivación - cerrando inmediatamente');
+              // Limpiar y recargar inmediatamente solo si es por reactivación
+              try {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                localStorage.removeItem('session_suspended');
+                localStorage.removeItem('session_closed_by_other_device');
+              } catch (error) {
+                // Ignorar errores
+              }
+              // Detener el polling
+              if (sessionCheckIntervalRef.current) {
+                clearInterval(sessionCheckIntervalRef.current);
+                sessionCheckIntervalRef.current = null;
+              }
+              // Forzar recarga
+              setTimeout(() => {
+                window.location.reload();
+              }, 100);
+              return;
+            }
+            
+            // Si NO es por reactivación, disparar evento para que el modal lo maneje
+            console.info('✅ [SessionCheck] Disparando evento sessionSuspended para que el modal lo maneje');
+            const suspendedEvent = new CustomEvent("sessionSuspended", {
+              detail: {
+                status: response.status,
+                codigo: codigo,
+                code: codigo,
+                reason,
+                action,
+                url: `${API_BASE_URL}/api/heartbeat`,
+                method: 'POST',
+              }
+            });
+            window.dispatchEvent(suspendedEvent);
+            // NO detener el polling ni recargar - dejar que el modal decida
+          }
+        }
+      } catch (error) {
+        // Ignorar errores de red o timeout
+        if (error.name !== 'AbortError' && error.name !== 'TimeoutError') {
+          // Solo loggear errores no esperados
+        }
+      }
+    };
+    
+    // Verificar cada 5 segundos si hay riesgo de sesión suspendida
+    // Esto es más frecuente que el heartbeat normal para detectar cambios rápidamente
+    sessionCheckIntervalRef.current = setInterval(checkSessionStatus, 5000);
+    
+    return () => {
+      if (sessionCheckIntervalRef.current) {
+        clearInterval(sessionCheckIntervalRef.current);
+        sessionCheckIntervalRef.current = null;
+      }
+    };
   }, [enabled]);
 
   const scheduleNextHeartbeat = () => {
@@ -163,6 +395,11 @@ export const useHeartbeat = (activityType = 'browsing', room = null, baseInterva
         intervalRef.current = null;
       }
       
+      if (sessionCheckIntervalRef.current) {
+        clearInterval(sessionCheckIntervalRef.current);
+        sessionCheckIntervalRef.current = null;
+      }
+      
       // 🔥 CLEANUP: Volver a browsing al desmontar (con rate limiting)
       if (activityType !== 'browsing' && isEnabledRef.current) {
                 setTimeout(() => {
@@ -170,7 +407,7 @@ export const useHeartbeat = (activityType = 'browsing', room = null, baseInterva
         }, 1000); // Delay para evitar rate limiting
       }
     };
-  }, [activityType, room, baseIntervalMs]);
+  }, [activityType, room, baseIntervalMs, enabled]);
 
   // Función para cambiar estado manualmente
   const changeActivity = async (newActivityType, newRoom = null) => {

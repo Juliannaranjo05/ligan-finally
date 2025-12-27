@@ -45,7 +45,6 @@ const HybridChatSystem = ({
   // 🎯 Logger condicional
   const log = useCallback((message, data = {}) => {
     if (debugMode) {
-      console.log(`🔀 [HYBRID-CHAT] ${message}`, data);
     }
   }, [debugMode]);
 
@@ -65,7 +64,6 @@ const HybridChatSystem = ({
   const senderId = message.senderId || message.user_id;
   const senderName = message.sender || message.user_name;
 
-  console.log('🔍 VERIFICANDO isLocal MEJORADO:', {
     texto: (message.text || '').substring(0, 20),
     senderId: senderId,
     miId: userData.id,
@@ -77,19 +75,16 @@ const HybridChatSystem = ({
   
   // 🔥 PRIORIDAD 1: Si está en el cache de mensajes enviados
   if (message.id && sentMessageIds.current.has(message.id)) {
-    console.log('✅ Es MÍO por cache de enviados');
     return true;
   }
   
   // 🔥 PRIORIDAD 2: Si tiene source local_send
   if (message.source === 'local_send') {
-    console.log('✅ Es MÍO por source local_send');
     return true;
   }
   
   // 🔥 PRIORIDAD 3: Si el mensaje viene marcado como local desde el envío
   if (message.isLocal === true && message.source !== 'datachannel') {
-    console.log('✅ Es MÍO por flag isLocal inicial');
     return true;
   }
   
@@ -97,7 +92,6 @@ const HybridChatSystem = ({
   if (senderId && userData.id) {
     const esLocal = senderId === userData.id || senderId.toString() === userData.id.toString();
     if (esLocal) {
-      console.log('✅ Es MÍO por ID match');
       return true;
     }
   }
@@ -106,12 +100,10 @@ const HybridChatSystem = ({
   if (senderName && userData.name) {
     const esLocal = senderName === userData.name;
     if (esLocal) {
-      console.log('✅ Es MÍO por nombre match');
       return true;
     }
   }
   
-  console.log('❌ NO es mío');
   return false;
 };
   // 💾 FUNCIÓN PARA GUARDAR EN BASE DE DATOS
@@ -636,8 +628,6 @@ const HybridChatSystem = ({
       window.hybridChatAPI(chatAPI);
     }
   }, [chatAPI]);
-
-
 
   return null;
 };

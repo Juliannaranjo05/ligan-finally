@@ -16,6 +16,14 @@ export default defineConfig(({ mode }) => {
     },
     base: '/',
     build: {
+      rollupOptions: {
+        // Externalizar módulos opcionales que pueden no estar instalados
+        external: (id) => {
+          // Solo externalizar si realmente no queremos incluirlo
+          // En este caso, mejor manejarlo en runtime
+          return false;
+        },
+      },
     },
     server: {
       host: '0.0.0.0',
@@ -27,6 +35,10 @@ export default defineConfig(({ mode }) => {
           secure: false,
         },
       },
+    },
+    optimizeDeps: {
+      // Excluir Sentry de la optimización si no está instalado
+      exclude: ['@sentry/react'],
     },
   };
 });

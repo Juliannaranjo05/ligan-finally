@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Services\PlatformSettingsService;
 
 class SessionEarningsController extends Controller
 {
-    // 🔥 CONSTANTES ACTUALIZADAS
-    const MODEL_EARNINGS_PER_MINUTE = 0.24; // $0.24 por minuto FIJO
-    const COINS_PER_MINUTE = 10; // 10 coins = 1 minuto
+    // 🔥 CONSTANTES ACTUALIZADAS - Ahora se obtienen dinámicamente desde PlatformSettingsService
+    // Se mantienen como fallback por compatibilidad, pero se usan los valores dinámicos
+    const MODEL_EARNINGS_PER_MINUTE = 0.24; // Fallback
+    const COINS_PER_MINUTE = 10; // Fallback
 
     /**
      * 🔥 NUEVO MÉTODO UNIFICADO: PROCESAR GANANCIAS POR TIEMPO
@@ -93,9 +95,14 @@ class SessionEarningsController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->first();
 
-            // 💰 CALCULAR GANANCIAS DEL REGALO (70% para modelo)
-            $modelGiftEarnings = round($giftValue * 0.60, 2);
-            $platformGiftEarnings = round($giftValue * 0.40, 2);
+            // Obtener comisión de regalos dinámicamente
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modelRate = 1 - $platformCommissionRate;
+            
+            $modelGiftEarnings = round($giftValue * $modelRate, 2);
+            $platformGiftEarnings = round($giftValue * $platformCommissionRate, 2);
+
 
             if ($existingEarning && $roomName && $existingEarning->source_type === 'video_session') {
                 // 🔄 ACTUALIZAR SESIÓN EXISTENTE CON REGALO
@@ -205,6 +212,145 @@ class SessionEarningsController extends Controller
     }
 
     /**
+     * 🎁 OBTENER SALDO DE REGALOS Y MINUTOS PARA MODELO (ENDPOINT ESPECÍFICO PARA VIDEOCHAT)
+     */
+    public function getModelVideoChatBalance(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            if ($user->rol !== 'modelo') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Solo modelos pueden consultar este balance'
+                ], 403);
+            }
+
+            // 🔥 OBTENER SALDO DEL CLIENTE (el usuario con quien está hablando la modelo)
+            $roomName = $request->input('room_name');
+            $clientUserIdProvided = $request->input('client_user_id');
+            
+            // 🔥 VERIFICAR SI EL client_user_id PROPORCIONADO ES VÁLIDO (debe ser cliente, no modelo)
+            $clientUserId = null;
+            if ($clientUserIdProvided) {
+                $providedUser = \App\Models\User::find($clientUserIdProvided);
+                if ($providedUser && $providedUser->rol === 'cliente' && $providedUser->id != $user->id) {
+                    $clientUserId = $clientUserIdProvided;
+                    Log::info('✅ [getModelVideoChatBalance] Cliente válido proporcionado:', ['client_id' => $clientUserId]);
+                } else {
+                    Log::warning('⚠️ [getModelVideoChatBalance] client_user_id proporcionado no es válido:', [
+                        'provided_id' => $clientUserIdProvided,
+                        'is_cliente' => $providedUser ? ($providedUser->rol === 'cliente') : false,
+                        'is_modelo' => $providedUser ? ($providedUser->id == $user->id) : false
+                    ]);
+                }
+            }
+            
+            // Si no se proporciona client_user_id válido, intentar encontrarlo desde la sesión
+            if (!$clientUserId && $roomName) {
+                // Buscar en ChatSession
+                $session = \App\Models\ChatSession::where('room_name', $roomName)
+                    ->where('modelo_id', $user->id)
+                    ->whereIn('status', ['active', 'connected', 'ongoing', 'calling', 'waiting'])
+                    ->first();
+                
+                if ($session) {
+                    $clientUserId = $session->cliente_id;
+                    Log::info('✅ [getModelVideoChatBalance] Cliente encontrado en ChatSession:', ['client_id' => $clientUserId]);
+                } else {
+                    // Intentar extraer desde roomName: "call_{caller_id}_{receiver_id}_{timestamp}"
+                    if (preg_match('/call_(\d+)_(\d+)_/', $roomName, $matches)) {
+                        $callerId = (int)$matches[1];
+                        $receiverId = (int)$matches[2];
+                        
+                        // Si la modelo es el receiver, el cliente es el caller
+                        // Si la modelo es el caller, el cliente es el receiver
+                        if ($receiverId == $user->id) {
+                            $clientUserId = $callerId;
+                        } elseif ($callerId == $user->id) {
+                            $clientUserId = $receiverId;
+                        }
+                        
+                        if ($clientUserId) {
+                            // Verificar que realmente sea un cliente
+                            $extractedUser = \App\Models\User::find($clientUserId);
+                            if ($extractedUser && $extractedUser->rol === 'cliente') {
+                                Log::info('✅ [getModelVideoChatBalance] Cliente extraído del roomName:', [
+                                    'room_name' => $roomName,
+                                    'caller_id' => $callerId,
+                                    'receiver_id' => $receiverId,
+                                    'modelo_id' => $user->id,
+                                    'client_id' => $clientUserId
+                                ]);
+                            } else {
+                                $clientUserId = null;
+                                Log::warning('⚠️ [getModelVideoChatBalance] ID extraído del roomName no es cliente:', [
+                                    'extracted_id' => $clientUserId,
+                                    'rol' => $extractedUser ? $extractedUser->rol : 'no encontrado'
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (!$clientUserId) {
+                return response()->json([
+                    'success' => true,
+                    'gift_balance' => 0,
+                    'remaining_minutes' => 0,
+                    'client_id' => null
+                ]);
+            }
+            
+            // 🔥 USAR LA MISMA LÓGICA QUE EL CLIENTE: UserCoins con available_minutes
+            $clientCoins = \App\Models\UserCoins::where('user_id', $clientUserId)->first();
+            
+            if (!$clientCoins) {
+                $clientCoins = \App\Models\UserCoins::create([
+                    'user_id' => $clientUserId,
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
+                ]);
+            }
+            
+            // 🔥 USAR LOS MISMOS ACCESSORS QUE USA EL CLIENTE
+            $remainingMinutes = $clientCoins->available_minutes; // Igual que getMyBalanceQuick
+            $giftBalance = $clientCoins->gift_balance; // Saldo de regalos del cliente
+            
+            Log::info('✅ [getModelVideoChatBalance] Balance del cliente calculado:', [
+                'modelo_id' => $user->id,
+                'client_id' => $clientUserId,
+                'purchased_balance' => $clientCoins->purchased_balance,
+                'gift_balance' => $giftBalance,
+                'total_balance' => $clientCoins->total_balance,
+                'remaining_minutes' => $remainingMinutes
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'gift_balance' => $giftBalance, // Saldo de regalos del cliente
+                'remaining_minutes' => $remainingMinutes, // Minutos disponibles del cliente (igual que el cliente)
+                'client_id' => $clientUserId,
+                'debug' => [
+                    'purchased_balance' => $clientCoins->purchased_balance,
+                    'gift_balance' => $giftBalance,
+                    'total_balance' => $clientCoins->total_balance
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo balance de videochat para modelo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al obtener balance'
+            ], 500);
+        }
+    }
+
+    /**
      * 🔥 ACTUALIZAR: GANANCIAS SEMANALES CON PESTAÑAS
      */
     public function getWeeklyEarnings()
@@ -290,7 +436,7 @@ class SessionEarningsController extends Controller
                         'is_paid' => false,
                         'paid_at' => null,
                         'final_amount_to_pay' => round($currentBalance, 2),
-                        'minimum_payout' => round($user->minimum_payout ?? 40.00, 2),
+                        'can_request_payout' => $currentBalance >= ($user->minimum_payout ?? 40.00),
                         'can_request_payout' => $currentBalance >= ($user->minimum_payout ?? 40.00),
                         'has_pending_payment' => $pendingPayment !== null
                     ]
@@ -392,8 +538,12 @@ class SessionEarningsController extends Controller
         $payableMinutes = floor($durationSeconds / 60); // Solo minutos completos
         $qualifyingSession = $payableMinutes >= 1;
 
-        $modelEarnings = $qualifyingSession ? round($payableMinutes * self::MODEL_EARNINGS_PER_MINUTE, 2) : 0;
-        $theoreticalCoinsConsumed = ceil($payableMinutes * self::COINS_PER_MINUTE);
+        // Obtener valores dinámicos desde PlatformSettingsService
+        $earningsPerMinute = PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+        $coinsPerMinute = PlatformSettingsService::getInteger('coins_per_minute', 10);
+        
+        $modelEarnings = $qualifyingSession ? round($payableMinutes * $earningsPerMinute, 2) : 0;
+        $theoreticalCoinsConsumed = ceil($payableMinutes * $coinsPerMinute);
         
         return [
             'qualifying' => $qualifyingSession,
@@ -780,6 +930,318 @@ class SessionEarningsController extends Controller
 
         } catch (\Exception $e) {
             Log::error('❌ Error actualizando duración manual: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * 📊 ADMIN: Obtener todos los pagos pendientes (para administradores)
+     */
+    public function getAllPendingPayments()
+    {
+        try {
+            // Primero obtener pagos pendientes existentes
+            $existingPayments = WeeklyPayment::where('status', 'pending')
+                ->with(['model:id,name,email,payment_method,account_details,account_holder_name,country,country_name,payment_method_verified'])
+                ->orderBy('processed_at', 'desc')
+                ->get();
+
+            // Si hay pagos pendientes, retornarlos
+            if ($existingPayments->isNotEmpty()) {
+                $pendingPayments = $existingPayments->map(function ($payment) {
+                    return [
+                        'id' => $payment->id,
+                        'model_user_id' => $payment->model_user_id,
+                        'model_name' => $payment->model->name ?? 'Usuario eliminado',
+                        'model_email' => $payment->model->email ?? 'N/A',
+                        'week_start' => $payment->week_start->format('d/m/Y'),
+                        'week_end' => $payment->week_end->format('d/m/Y'),
+                        'week_range' => $payment->week_start->format('d/m/Y') . ' - ' . $payment->week_end->format('d/m/Y'),
+                        'amount' => round($payment->amount, 2),
+                        'time_earnings' => round($payment->time_earnings ?? 0, 2),
+                        'gift_earnings' => round($payment->gift_earnings ?? 0, 2),
+                        'total_sessions' => $payment->total_sessions,
+                        'status' => $payment->status,
+                        'processed_at' => $payment->processed_at ? $payment->processed_at->format('d/m/Y H:i') : null,
+                        'days_pending' => $payment->processed_at ? $payment->processed_at->diffInDays(now()) : 0,
+                        'payment_method' => $payment->model->payment_method ?? null,
+                        'account_details' => $payment->model->account_details ?? null,
+                        'account_holder_name' => $payment->model->account_holder_name ?? null,
+                        'country' => $payment->model->country ?? null,
+                        'country_name' => $payment->model->country_name ?? null,
+                        'payment_method_verified' => $payment->model->payment_method_verified ?? false,
+                    ];
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $pendingPayments,
+                    'total_pending' => round($pendingPayments->sum('amount'), 2),
+                    'pending_count' => $pendingPayments->count()
+                ]);
+            }
+
+            // Si no hay pagos pendientes, buscar ganancias sin pagar y agruparlas por modelo
+            $unpaidEarnings = SessionEarning::whereNull('weekly_payment_id')
+                ->with(['model:id,name,email,payment_method,account_details,account_holder_name,country,country_name,payment_method_verified'])
+                ->get();
+
+            if ($unpaidEarnings->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'total_pending' => 0,
+                    'pending_count' => 0
+                ]);
+            }
+
+            // Agrupar por modelo
+            $groupedByModel = $unpaidEarnings->groupBy('model_user_id');
+            $pendingPayments = collect();
+
+            foreach ($groupedByModel as $modelId => $earnings) {
+                $model = $earnings->first()->model;
+                $oldestEarning = $earnings->min('created_at');
+                $newestEarning = $earnings->max('created_at');
+                
+                $timeEarnings = $earnings->sum('model_time_earnings');
+                $giftEarnings = $earnings->sum('model_gift_earnings');
+                $totalAmount = $earnings->sum('model_total_earnings');
+
+                $pendingPayments->push([
+                    'id' => null, // No tiene ID porque no es un WeeklyPayment aún
+                    'model_user_id' => $modelId,
+                    'model_name' => $model->name ?? 'Usuario eliminado',
+                    'model_email' => $model->email ?? 'N/A',
+                    'week_start' => Carbon::parse($oldestEarning)->format('d/m/Y'),
+                    'week_end' => Carbon::parse($newestEarning)->format('d/m/Y'),
+                    'week_range' => Carbon::parse($oldestEarning)->format('d/m/Y') . ' - ' . Carbon::parse($newestEarning)->format('d/m/Y'),
+                    'amount' => round($totalAmount, 2),
+                    'time_earnings' => round($timeEarnings, 2),
+                    'gift_earnings' => round($giftEarnings, 2),
+                    'total_sessions' => $earnings->count(),
+                    'status' => 'pending',
+                    'processed_at' => Carbon::parse($oldestEarning)->format('d/m/Y H:i'),
+                    'days_pending' => Carbon::parse($oldestEarning)->diffInDays(now()),
+                    'needs_creation' => true, // Flag para indicar que necesita crear el WeeklyPayment
+                    'payment_method' => $model->payment_method ?? null,
+                    'account_details' => $model->account_details ?? null,
+                    'account_holder_name' => $model->account_holder_name ?? null,
+                    'country' => $model->country ?? null,
+                    'country_name' => $model->country_name ?? null,
+                    'payment_method_verified' => $model->payment_method_verified ?? false,
+                ]);
+            }
+
+            // Ordenar por fecha más antigua primero
+            $pendingPayments = $pendingPayments->sortBy('processed_at')->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $pendingPayments,
+                'total_pending' => round($pendingPayments->sum('amount'), 2),
+                'pending_count' => $pendingPayments->count()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo pagos pendientes (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ ADMIN: Marcar pago como pagado
+     */
+    public function markPaymentAsPaid(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'payment_method' => 'required|string|max:255',
+                'payment_reference' => 'nullable|string|max:255',
+                'model_user_id' => 'nullable|exists:users,id' // Para crear WeeklyPayment si no existe
+            ]);
+
+            // Si el ID es "null" o "create", crear el WeeklyPayment primero
+            if ($id === 'null' || $id === 'create' || $id === null) {
+                if (!$request->has('model_user_id')) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Se requiere model_user_id para crear el pago'
+                    ], 400);
+                }
+
+                $modelUserId = $request->model_user_id;
+                
+                // Obtener ganancias sin pagar para este modelo
+                $unpaidEarnings = SessionEarning::whereNull('weekly_payment_id')
+                    ->where('model_user_id', $modelUserId)
+                    ->get();
+
+                if ($unpaidEarnings->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'No hay ganancias pendientes para este modelo'
+                    ], 400);
+                }
+
+                // Crear WeeklyPayment
+                $oldestEarning = $unpaidEarnings->min('created_at');
+                $newestEarning = $unpaidEarnings->max('created_at');
+                $totalAmount = $unpaidEarnings->sum('model_total_earnings');
+                $timeEarnings = $unpaidEarnings->sum('model_time_earnings');
+                $giftEarnings = $unpaidEarnings->sum('model_gift_earnings');
+
+                $payment = WeeklyPayment::create([
+                    'model_user_id' => $modelUserId,
+                    'week_start' => Carbon::parse($oldestEarning)->startOfDay(),
+                    'week_end' => Carbon::parse($newestEarning)->endOfDay(),
+                    'amount' => round($totalAmount, 2),
+                    'time_earnings' => round($timeEarnings, 2),
+                    'gift_earnings' => round($giftEarnings, 2),
+                    'total_sessions' => $unpaidEarnings->count(),
+                    'status' => 'paid', // Marcar directamente como pagado
+                    'payment_method' => $request->payment_method,
+                    'payment_reference' => $request->payment_reference,
+                    'paid_at' => now(),
+                    'paid_by' => Auth::id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id'),
+                    'processed_at' => now()
+                ]);
+
+                // Asociar ganancias al pago
+                $unpaidEarnings->each(function ($earning) use ($payment) {
+                    $earning->update(['weekly_payment_id' => $payment->id]);
+                });
+
+                Log::info('Pago creado y marcado como pagado (admin)', [
+                    'payment_id' => $payment->id,
+                    'model_user_id' => $modelUserId,
+                    'amount' => $totalAmount
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Pago creado y marcado como pagado correctamente',
+                    'payment' => [
+                        'id' => $payment->id,
+                        'status' => $payment->status,
+                        'paid_at' => $payment->paid_at->format('d/m/Y H:i')
+                    ]
+                ]);
+            }
+
+            // Si existe el WeeklyPayment, marcarlo como pagado
+            $payment = WeeklyPayment::findOrFail($id);
+
+            if ($payment->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Este pago ya ha sido procesado'
+                ], 400);
+            }
+
+            // Obtener admin_id del request si no hay usuario autenticado
+            $adminId = Auth::id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+
+            $payment->markAsPaid(
+                $request->payment_method,
+                $request->payment_reference,
+                $adminId
+            );
+
+            Log::info('Pago marcado como pagado (admin)', [
+                'payment_id' => $payment->id,
+                'model_user_id' => $payment->model_user_id,
+                'amount' => $payment->amount,
+                'admin_id' => $adminId
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pago marcado como pagado correctamente',
+                'payment' => [
+                    'id' => $payment->id,
+                    'status' => $payment->status,
+                    'paid_at' => $payment->paid_at->format('d/m/Y H:i')
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error marcando pago como pagado (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * 📊 ADMIN: Estadísticas de ganancias y pagos
+     */
+    public function getAdminStats()
+    {
+        try {
+            $totalPending = WeeklyPayment::where('status', 'pending')->sum('amount');
+            $totalPaid = WeeklyPayment::where('status', 'paid')->sum('amount');
+            $pendingCount = WeeklyPayment::where('status', 'pending')->count();
+            $paidCount = WeeklyPayment::where('status', 'paid')->count();
+            
+            // Si no hay pagos pendientes, incluir ganancias sin pagar
+            if ($pendingCount === 0) {
+                $unpaidEarnings = SessionEarning::whereNull('weekly_payment_id')->get();
+                if ($unpaidEarnings->isNotEmpty()) {
+                    $totalPending = $unpaidEarnings->sum('model_total_earnings');
+                    $pendingCount = $unpaidEarnings->groupBy('model_user_id')->count();
+                }
+            }
+            
+            // Pagos de esta semana
+            $thisWeekPaid = WeeklyPayment::where('status', 'paid')
+                ->whereBetween('paid_at', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()])
+                ->sum('amount');
+            
+            // Pagos de este mes
+            $thisMonthPaid = WeeklyPayment::where('status', 'paid')
+                ->whereMonth('paid_at', Carbon::now()->month)
+                ->whereYear('paid_at', Carbon::now()->year)
+                ->sum('amount');
+
+            // Modelos con pagos pendientes o ganancias sin pagar
+            $modelsWithPending = WeeklyPayment::where('status', 'pending')
+                ->distinct('model_user_id')
+                ->count('model_user_id');
+            
+            // Si no hay pagos pendientes, contar modelos con ganancias sin pagar
+            if ($modelsWithPending === 0) {
+                $modelsWithPending = SessionEarning::whereNull('weekly_payment_id')
+                    ->distinct('model_user_id')
+                    ->count('model_user_id');
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'pending' => [
+                        'total_amount' => round($totalPending, 2),
+                        'count' => $pendingCount,
+                        'models_affected' => $modelsWithPending
+                    ],
+                    'paid' => [
+                        'total_amount' => round($totalPaid, 2),
+                        'count' => $paidCount,
+                        'this_week' => round($thisWeekPaid, 2),
+                        'this_month' => round($thisMonthPaid, 2)
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo estadísticas de pagos (admin): ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => 'Error interno del servidor'

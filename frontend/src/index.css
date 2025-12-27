@@ -1,3 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+/* Scrollbar transparente para chat de mensajes */
+.chat-scroll-transparent::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-scroll-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll-transparent::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+.chat-scroll-transparent::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.chat-scroll-transparent {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}

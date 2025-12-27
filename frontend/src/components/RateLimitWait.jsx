@@ -39,12 +39,10 @@ const RateLimitWait = ({
             const parsed = JSON.parse(cachedUser);
             const role = parsed.rol || parsed.role;
             if (role) {
-              console.log('👤 Rol obtenido desde localStorage:', role);
               setUserRole(role);
               return;
             }
           } catch (e) {
-            console.log('⚠️ Error parseando cache de localStorage');
           }
         }
 
@@ -52,14 +50,12 @@ const RateLimitWait = ({
         const user = await getUser(false); // NO force refresh
         const role = user.rol || user.role;
         if (role) {
-          console.log('👤 Rol obtenido desde cache/API:', role);
           setUserRole(role);
           
           // Guardar en localStorage para futuras referencias
           localStorage.setItem('userCache', JSON.stringify(user));
         }
       } catch (error) {
-        console.log('⚠️ No se pudo obtener rol (rate limited):', error.message);
         // No hacer nada, dejar que el timer redirija al fallback
       }
     };
@@ -103,12 +99,9 @@ const RateLimitWait = ({
 
     if (userRole === 'cliente') {
       targetRoute = '/homecliente';
-      console.log('🔄 Redirigiendo a HOME CLIENTE');
     } else if (userRole === 'modelo') {
       targetRoute = '/homellamadas';
-      console.log('🔄 Redirigiendo a HOME LLAMADAS (modelo)');
     } else {
-      console.log('🔄 Redirigiendo a fallback:', finalFallbackRoute);
     }
 
     // 🔥 SI HAY CALLBACK PERSONALIZADO, USARLO
@@ -119,7 +112,6 @@ const RateLimitWait = ({
           targetRoute = result;
         }
       } catch (error) {
-        console.error('❌ Error en callback onRetry:', error);
       }
     }
 
@@ -134,7 +126,6 @@ const RateLimitWait = ({
     if (hasRedirected.current) return;
     
     setIsRetrying(true);
-    console.log('🔄 Reintento manual solicitado');
     
     // Dar un poco más de tiempo en el reintento manual
     setTimeout(() => {

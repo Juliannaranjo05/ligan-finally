@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Gift, Sparkles, Send, MessageSquare, Heart } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,15 +19,19 @@ export const GiftsModal = ({
   const [selectedGift, setSelectedGift] = useState(null);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [imageCacheBuster, setImageCacheBuster] = useState(Date.now());
+  
+  // 🔥 FORZAR RECARGA DE IMÁGENES CUANDO SE ABRE EL MODAL
+  useEffect(() => {
+    if (isOpen) {
+      setImageCacheBuster(Date.now());
+    }
+  }, [isOpen]);
 
   const handleGiftSelect = async (gift) => {
     setIsLoading(true);
     
     try {
-      console.log('🎁 Regalo seleccionado:', gift);
-      console.log('🔍 userRole:', userRole);
-      console.log('🔍 gift.id:', gift.id, typeof gift.id);
-      console.log('🔍 recipientId:', recipientId, typeof recipientId);
 
       // 🔥 VALIDACIÓN PARA STRING IDs
       const giftId = gift.id; // Mantener como string o number
@@ -35,31 +39,23 @@ export const GiftsModal = ({
 
       // Validar que gift.id existe
       if (!giftId) {
-        console.error('❌ ERROR: gift.id está vacío:', gift.id);
         alert(t('gifts.invalidGiftId'));
         return;
       }
 
       // Validar que recipientId es un número válido
       if (isNaN(recipientIdNumber)) {
-        console.error('❌ ERROR: recipientId inválido:', recipientId);
         alert(t('gifts.invalidRecipientId'));
         return;
       }
 
-      console.log('✅ IDs validados:', {
-        giftId: giftId,
-        recipientId: recipientIdNumber,
-        roomName: roomName,
-        message: message,
-        userRole: userRole
-      });
+      // payload prepared: giftId, recipientIdNumber, roomName, message, userRole
+      // (no-op debug)
 
       let result;
 
       if (userRole === 'modelo') {
         // 🔥 MODELO: PEDIR REGALO (funcionalidad existente)
-        console.log('🎭 [MODELO] Pidiendo regalo...');
         
         result = await onRequestGift(
           giftId,              // ✅ ID del regalo
@@ -77,7 +73,6 @@ export const GiftsModal = ({
 
       } else if (userRole === 'cliente') {
         // 🔥 CLIENTE: ENVIAR REGALO DIRECTAMENTE
-        console.log('👤 [CLIENTE] Enviando regalo directamente...');
         
         // Verificar saldo suficiente
         if (userBalance < gift.price) {
@@ -117,7 +112,6 @@ export const GiftsModal = ({
       }
 
     } catch (error) {
-      console.error('❌ Error en handleGiftSelect:', error);
       alert(t('gifts.processingError'));
     }
     
@@ -153,12 +147,12 @@ export const GiftsModal = ({
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[150] flex items-center justify-center p-2 sm:p-4">
       <div
-        className="border border-[#ff007a]/30 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden"
+        className="border border-[#ff007a]/30 rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg max-h-[85vh] sm:max-h-[80vh] overflow-hidden"
         style={{ background: 'linear-gradient(180deg, #0a0d10 0%, #131418 100%)' }}
       >
         {/* Header */}
         <div
-          className="p-4 sm:p-6 border-b border-[#ff007a]/20"
+          className="p-3 sm:p-4 border-b border-[#ff007a]/20"
           style={{ background: 'linear-gradient(90deg, rgba(255, 0, 122, 0.15) 0%, rgba(255, 0, 122, 0.08) 100%)' }}
         >
           <div className="flex items-center justify-between">
@@ -171,8 +165,8 @@ export const GiftsModal = ({
                 )}
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white">{title}</h2>
-                <p className="text-[#ff007a] text-xs sm:text-sm">{subtitle}</p>
+                <h2 className="text-lg sm:text-xl font-bold text-white">{title}</h2>
+                <p className="text-[#ff007a] text-xs">{subtitle}</p>
                 {userRole === 'cliente' && (
                   <p className="text-yellow-400 text-xs">
                     {t('gifts.yourBalance', { balance: userBalance })}
@@ -190,7 +184,7 @@ export const GiftsModal = ({
         </div>
 
         {/* Mensaje opcional */}
-        <div className="p-4 sm:p-6 border-b border-[#ff007a]/10">
+        <div className="p-3 sm:p-4 border-b border-[#ff007a]/10">
           <label className="block text-white text-sm font-medium mb-2">
             {messageLabel}
           </label>
@@ -211,8 +205,11 @@ export const GiftsModal = ({
         </div>
 
         {/* Grid de regalos */}
-        <div className="p-4 sm:p-8 overflow-y-auto max-h-[calc(95vh-250px)] sm:max-h-[calc(90vh-300px)]">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6 min-h-[400px] sm:min-h-[500px]">
+        <div 
+          className="p-3 overflow-y-auto gift-scroll-container" 
+          style={{ maxHeight: '340px', minHeight: '340px' }}
+        >
+          <div className="grid grid-cols-2 gap-3">
             {gifts.map((gift) => {
               // 🔥 VERIFICAR SI EL CLIENTE TIENE SALDO SUFICIENTE
               const canAfford = userRole === 'modelo' || userBalance >= gift.price;
@@ -221,35 +218,54 @@ export const GiftsModal = ({
                 <div
                   key={gift.id}
                   onClick={() => !isLoading && canAfford && handleGiftSelect(gift)}
-                  className={`group cursor-pointer border rounded-xl p-3 sm:p-6 transition-all duration-300 flex flex-col items-center justify-center ${
+                  className={`group cursor-pointer border rounded-xl p-3 transition-all duration-300 flex flex-col items-center justify-center aspect-square ${
                     isLoading || !canAfford
                       ? 'opacity-50 cursor-not-allowed border-gray-600' 
                       : 'border-[#ff007a]/20 hover:border-[#ff007a]/50 hover:scale-105 hover:shadow-xl hover:shadow-[#ff007a]/10'
                   }`}
-                  style={{ background: 'linear-gradient(180deg, #1a1c20 0%, #2b2d31 100%)', minHeight: '140px' }}
+                  style={{ background: 'linear-gradient(180deg, #1a1c20 0%, #2b2d31 100%)' }}
                 >
                   {/* Imagen del regalo */}
-                  <div className="w-16 h-16 sm:w-24 sm:h-24 mx-auto mb-2 sm:mb-3 flex items-center justify-center">
+                  <div className="w-16 h-16 flex items-center justify-center flex-shrink-0 mb-2">
                     <img
-                      src={gift.image_path}
+                      src={(() => {
+                        const imagePath = gift.image_path || '';
+                        if (!imagePath) return '';
+                        
+                        // Construir URL con versión basada en nombre del archivo + timestamp
+                        let imageUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://')
+                          ? imagePath 
+                          : imagePath;
+                        
+                        // Extraer nombre del archivo y crear hash para versión
+                        const urlParts = imageUrl.split('/');
+                        const fileName = urlParts[urlParts.length - 1].split('?')[0];
+                        const fileHash = fileName ? btoa(fileName).substring(0, 8) : Date.now();
+                        const separator = imageUrl.includes('?') ? '&' : '?';
+                        // 🔥 AGREGAR TIMESTAMP PARA FORZAR RECARGA CADA VEZ QUE SE ABRE EL MODAL
+                        return `${imageUrl.split('?')[0]}${separator}v=${fileHash}&_t=${imageCacheBuster}`;
+                      })()}
                       alt={gift.name}
-                      className={`w-12 h-12 sm:w-20 sm:h-20 object-contain transition-all duration-300 ${
+                      key={`${gift.id}-${gift.image_path}`}
+                      className={`w-12 h-12 object-contain transition-all duration-300 ${
                         canAfford ? 'filter group-hover:brightness-110' : 'filter grayscale'
                       }`}
+                      loading="eager"
+                      decoding="async"
                       onError={(e) => {
                         e.target.style.display = 'none';
                         const fallback = e.target.parentNode.querySelector('.fallback-icon');
                         if (fallback) fallback.style.display = 'flex';
                       }}
                     />
-                    <div className="fallback-icon hidden w-12 h-12 sm:w-20 sm:h-20 items-center justify-center">
-                      <Gift size={24} className="sm:w-10 sm:h-10 text-[#ff007a]" />
+                    <div className="fallback-icon hidden w-12 h-12 items-center justify-center">
+                      <Gift size={24} className="text-[#ff007a]" />
                     </div>
                   </div>
 
                   {/* Información del regalo */}
-                  <div className="text-center">
-                    <h3 className={`font-semibold text-xs sm:text-sm mb-2 sm:mb-3 transition-colors leading-tight ${
+                  <div className="text-center w-full">
+                    <h3 className={`font-semibold text-xs mb-2 transition-colors leading-tight line-clamp-2 ${
                       canAfford 
                         ? 'text-white group-hover:text-[#ff007a]' 
                         : 'text-gray-500'
@@ -258,12 +274,12 @@ export const GiftsModal = ({
                     </h3>
 
                     {/* Precio con indicador de saldo */}
-                    <div className={`inline-flex items-center gap-1 px-2 py-1 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-lg ${
+                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold shadow-lg ${
                       canAfford
                         ? 'bg-gradient-to-r from-[#ff007a] to-[#cc0062] text-white shadow-[#ff007a]/20'
                         : 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 shadow-gray-500/20'
                     }`}>
-                      <Sparkles size={10} className="sm:w-3.5 sm:h-3.5" />
+                      <Sparkles size={8} />
                       {gift.price}
                       {userRole === 'cliente' && !canAfford && (
                         <span className="ml-1 text-red-300">💸</span>
@@ -272,7 +288,7 @@ export const GiftsModal = ({
 
                     {/* Indicador de saldo insuficiente */}
                     {userRole === 'cliente' && !canAfford && (
-                      <div className="mt-1 text-xs text-red-400">
+                      <div className="mt-1 text-xs text-red-400 line-clamp-1">
                         {t('gifts.insufficient', { amount: gift.price - userBalance })}
                       </div>
                     )}
@@ -284,8 +300,8 @@ export const GiftsModal = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3 sm:p-4 border-t border-[#ff007a]/20 bg-[#1a1c20]/50">
-          <div className="flex items-center justify-center text-xs sm:text-sm text-white/60">
+        <div className="p-2 sm:p-3 border-t border-[#ff007a]/20 bg-[#1a1c20]/50">
+          <div className="flex items-center justify-center text-xs text-white/60">
             <span>
               ✨ {t('gifts.giftsAvailable', { count: gifts.length })} - {buttonText}
               {userRole === 'cliente' && (
@@ -309,6 +325,40 @@ export const GiftsModal = ({
           </div>
         )}
       </div>
+      
+      {/* Estilos del scrollbar */}
+      <style jsx>{`
+        .gift-scroll-container::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .gift-scroll-container::-webkit-scrollbar-track {
+          background: rgba(43, 45, 49, 0.5);
+          border-radius: 10px;
+          margin: 4px 0;
+        }
+
+        .gift-scroll-container::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, #ff007a 0%, #cc0062 100%);
+          border-radius: 10px;
+          border: 2px solid rgba(43, 45, 49, 0.3);
+          box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+        }
+
+        .gift-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
+          box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+        }
+
+        .gift-scroll-container::-webkit-scrollbar-thumb:active {
+          background: linear-gradient(180deg, #cc0062 0%, #99004d 100%);
+        }
+
+        .gift-scroll-container {
+          scrollbar-width: thin;
+          scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
+        }
+      `}</style>
     </div>
   );
 };
@@ -331,5 +381,38 @@ export const giftSystemStyles = `
 
   .animate-scaleIn {
     animation: scaleIn 0.4s ease-out;
+  }
+
+  /* Scrollbar personalizado para el contenedor de regalos */
+  .gift-scroll-container::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .gift-scroll-container::-webkit-scrollbar-track {
+    background: rgba(43, 45, 49, 0.5);
+    border-radius: 10px;
+    margin: 4px 0;
+  }
+
+  .gift-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #ff007a 0%, #cc0062 100%);
+    border-radius: 10px;
+    border: 2px solid rgba(43, 45, 49, 0.3);
+    box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+  }
+
+  .gift-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
+    box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+  }
+
+  .gift-scroll-container::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(180deg, #cc0062 0%, #99004d 100%);
+  }
+
+  /* Firefox */
+  .gift-scroll-container {
+    scrollbar-width: thin;
+    scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
   }
 `;

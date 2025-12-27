@@ -35,7 +35,6 @@ export const useMediaDevices = (room = null, localParticipant = null) => {
       if (!permissionsGranted) {
         const granted = await requestPermissions();
         if (!granted) {
-          console.warn('Permisos no concedidos, no se pueden obtener etiquetas de dispositivos');
         }
       }
 

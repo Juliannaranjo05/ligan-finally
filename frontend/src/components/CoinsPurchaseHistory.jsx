@@ -87,7 +87,6 @@ export default function CoinsPurchaseHistory({
         throw new Error(data.error || 'Error desconocido');
       }
     } catch (error) {
-      console.error('Error obteniendo historial:', error);
       setError(error.message);
     } finally {
       setLoading(false);

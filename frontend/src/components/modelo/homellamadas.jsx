@@ -1,5 +1,5 @@
 // InterfazCliente.jsx - Versión actualizada con control de 24 horas integrado
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Header from "./header";
@@ -20,12 +20,12 @@ export default function InterfazCliente() {
   const notifications = useAppNotifications();
 
   // Estados existentes
-  const [user, setUser] = React.useState(null);
-  const [existingStory, setExistingStory] = React.useState(null);
-  const [loadingStory, setLoadingStory] = React.useState(true);
-  const [usuariosActivos, setUsuariosActivos] = React.useState([]);
-  const [loadingUsers, setLoadingUsers] = React.useState(true);
-  const [initialLoad, setInitialLoad] = React.useState(true);
+  const [user, setUser] = useState(null);
+  const [existingStory, setExistingStory] = useState(null);
+  const [loadingStory, setLoadingStory] = useState(true);
+  const [usuariosActivos, setUsuariosActivos] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [usuariosBloqueados, setUsuariosBloqueados] = useState([]);
   const [loadingBloqueados, setLoadingBloqueados] = useState(false);
   
@@ -38,14 +38,24 @@ export default function InterfazCliente() {
   const [showStoryModal, setShowStoryModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-  const [isCallActive, setIsCallActive] = React.useState(false);
-  const [currentCall, setCurrentCall] = React.useState(null);
-  const [isReceivingCall, setIsReceivingCall] = React.useState(false);
-  const [incomingCall, setIncomingCall] = React.useState(null);
-  const [callPollingInterval, setCallPollingInterval] = React.useState(null);
-  const [incomingCallPollingInterval, setIncomingCallPollingInterval] = React.useState(null);
-  const [incomingCallAudio, setIncomingCallAudio] = React.useState(null);
-  const audioRef = React.useRef(null);
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [currentCall, setCurrentCall] = useState(null);
+  const [isReceivingCall, setIsReceivingCall] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [callPollingInterval, setCallPollingInterval] = useState(null);
+  const [incomingCallPollingInterval, setIncomingCallPollingInterval] = useState(null);
+  const [incomingCallAudio, setIncomingCallAudio] = useState(null);
+  const audioRef = useRef(null);
+  
+  // Estados para historial de llamadas
+  const [callHistory, setCallHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  
+  // Estado para controlar las secciones expandidas del acordeón
+  const [expandedSections, setExpandedSections] = useState({
+    activeUsers: false,  // Por defecto colapsado
+    history: false       // Por defecto colapsado
+  });
 
   // 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
   const getAuthHeaders = () => {
@@ -349,7 +359,7 @@ export default function InterfazCliente() {
   // ... (mantener funciones de llamadas - iniciarLlamadaReal, cancelarLlamada, etc.)
 
   // 🔥 USEEFFECTS ACTUALIZADOS
-  React.useEffect(() => {
+  useEffect(() => {
     if (!user?.id) return;
 
     cargarUsuariosActivos(false);
@@ -362,7 +372,7 @@ export default function InterfazCliente() {
     return () => clearInterval(interval);
   }, [user?.id]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchUser = async () => {
       try {
         const userData = await getUser();
@@ -373,8 +383,20 @@ export default function InterfazCliente() {
     fetchUser();
   }, []);
 
+  // 🧹 CLEANUP: Evitar redirección no deseada desde RouteGuard
+  // Limpiar claves residuales de videochat que pueden forzar redirección
+  useEffect(() => {
+    try {
+      const keysToRemove = ['roomName', 'currentRoom', 'inCall', 'videochatActive'];
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      sessionStorage.removeItem('roomName');
+    } catch (e) {
+      // Silenciar cualquier error de storage
+    }
+  }, []);
+
   // 🆕 USEEFFECT ACTUALIZADO PARA CARGAR DATOS DE HISTORIA
-  React.useEffect(() => {
+  useEffect(() => {
     const loadStoryData = async () => {
       await checkExistingStory();
       await checkCanUpload();
@@ -390,7 +412,6 @@ export default function InterfazCliente() {
       const token = localStorage.getItem('token');
       
       if (!token || token === 'null' || token === 'undefined') {
-        console.warn('❌ Token inválido o no encontrado');
         return;
       }
       
@@ -503,11 +524,46 @@ export default function InterfazCliente() {
 
   const storyButtonInfo = getStoryButtonInfo();
 
-  const historial = [
-    { nombre: "LeoFlex", accion: t("client.history.callEnded") || "Llamada finalizada", hora: t("client.history.today") + ", 10:45 AM" },
-    { nombre: "ValePink", accion: t("client.history.messageSent") || "Mensaje enviado", hora: t("client.history.yesterday") + ", 9:13 PM" },
-    { nombre: "Nico21", accion: t("client.history.addedToFavorites") || "Te agregó a favoritos", hora: t("client.history.yesterday") + ", 7:30 PM" },
-  ];
+  // 🔥 FUNCIÓN PARA CARGAR HISTORIAL DE LLAMADAS
+  const cargarHistorialLlamadas = async () => {
+    try {
+      setLoadingHistory(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token || token === 'null' || token === 'undefined') {
+        setLoadingHistory(false);
+        setCallHistory([]); // 🔥 Establecer array vacío si no hay token
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/calls/history`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        try {
+          const data = await response.json();
+          if (data.success && data.history) {
+            setCallHistory(data.history);
+          } else {
+            // 🔥 Si no hay éxito o no hay historial, establecer array vacío
+            setCallHistory([]);
+          }
+        } catch (jsonError) {
+          setCallHistory([]); // 🔥 Establecer array vacío si hay error parseando
+        }
+      } else {
+        // 🔥 Si la respuesta no es OK, establecer array vacío
+        setCallHistory([]);
+      }
+    } catch (error) {
+      setCallHistory([]); // 🔥 Establecer array vacío en caso de error
+    } finally {
+      // 🔥 SIEMPRE establecer loadingHistory en false, incluso si hay errores
+      setLoadingHistory(false);
+    }
+  };
   // 🔥 FUNCIONES DE AUDIO
 const playIncomingCallSound = async () => {
   try {
@@ -565,7 +621,7 @@ const iniciarLlamadaReal = async (usuario) => {
     }
 
     // 🚫 VERIFICAR SI ÉL ME BLOQUEÓ
-    const blockCheckResponse = await fetch(`${API_BASE_URL}/api/check-if-blocked-by`, {
+      const blockCheckResponse = await fetch(`${API_BASE_URL}/api/blocks/check-if-blocked-by`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -588,7 +644,42 @@ const iniciarLlamadaReal = async (usuario) => {
       }
     }
 
-    // ✅ SIN BLOQUEOS - PROCEDER CON LA LLAMADA
+    // 💰 VERIFICAR SALDO DEL CLIENTE ANTES DE INICIAR LLAMADA
+    const clientBalanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/check-client-balance`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        client_id: otherUserId
+      })
+    });
+    
+    if (clientBalanceResponse.ok) {
+      const clientBalanceData = await clientBalanceResponse.json();
+      
+      // 🔥 VERIFICAR SI EL CLIENTE PUEDE INICIAR LLAMADA
+      const canStartCall = clientBalanceData.success?.can_start_call ?? clientBalanceData.can_start_call ?? true;
+      
+      if (!canStartCall) {
+        // ❌ EL CLIENTE NO TIENE SALDO SUFICIENTE
+        setIsCallActive(false);
+        setCurrentCall(null);
+        
+        const minimumRequired = clientBalanceData.balance?.minimum_required || 30;
+        setConfirmAction({
+          type: 'error',
+          title: t("client.errors.clientNoBalance") || 'Cliente sin saldo',
+          message: t("client.errors.clientNoBalanceMessage", { name: otherUserName, minimum: minimumRequired }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita al menos ${minimumRequired} monedas.`,
+          confirmText: t("client.errors.understood") || 'Entendido',
+          action: () => setShowConfirmModal(false)
+        });
+        setShowConfirmModal(true);
+        return;
+      }
+    } else {
+      // Si no se puede verificar el saldo, continuar pero registrar advertencia
+    }
+
+    // ✅ SIN BLOQUEOS Y CLIENTE CON SALDO - PROCEDER CON LA LLAMADA
     setCurrentCall({
       ...usuario,
       status: 'initiating'
@@ -749,8 +840,15 @@ const verificarLlamadasEntrantes = async () => {
                     return;
         }
         
-        if (!isReceivingCall && !isCallActive) {
-                    playIncomingCallSound();
+        // 🔥 PERMITIR RECIBIR LLAMADAS ENTRANTES INCLUSO SI HAY UNA LLAMADA ACTIVA
+        // El backend cancelará automáticamente la llamada activa previa cuando se acepte la nueva
+        if (!isReceivingCall) {
+          
+          // Si hay una llamada activa, mostrar advertencia pero permitir recibir la nueva
+          if (isCallActive) {
+          }
+          
+          playIncomingCallSound();
           setIncomingCall(data.incoming_call);
           setIsReceivingCall(true);
         }
@@ -808,13 +906,50 @@ const responderLlamada = async (accion) => {
 
 // 🔥 FUNCIÓN: REDIRIGIR AL VIDEOCHAT MODELO
 const redirigirAVideochat = (callData) => {
-    
-  // Guardar datos de la llamada
-  sessionStorage.setItem('roomName', callData.room_name);
+  // 🔥 Obtener room_name de diferentes posibles ubicaciones en la respuesta
+  const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
+  
+  if (!roomName) {
+    return;
+  }
+  
+  
+  // 🔥 DESCONECTAR CONEXIÓN LIVEKIT ANTERIOR SI EXISTE
+  const disconnectPreviousConnection = async () => {
+    try {
+      if (window.livekitRoom && window.livekitRoom.state !== 'disconnected') {
+        await window.livekitRoom.disconnect();
+        window.livekitRoom = null;
+      }
+    } catch (error) {
+    }
+  };
+  
+  disconnectPreviousConnection();
+  
+  // 🔥 LIMPIAR DATOS DE LLAMADAS PREVIAS
+  // Limpiar sessionStorage y localStorage de llamadas anteriores
+  const oldRoomName = sessionStorage.getItem('roomName') || localStorage.getItem('roomName');
+  if (oldRoomName && oldRoomName !== roomName) {
+    sessionStorage.removeItem('currentRoom');
+    sessionStorage.removeItem('inCall');
+    sessionStorage.removeItem('videochatActive');
+    sessionStorage.removeItem('roomName');
+    sessionStorage.removeItem('userName');
+    localStorage.removeItem('roomName');
+    localStorage.removeItem('userName');
+  }
+  
+  // Guardar datos de la nueva llamada
+  sessionStorage.setItem('roomName', roomName);
   sessionStorage.setItem('userName', user?.name || 'Modelo');
-  sessionStorage.setItem('currentRoom', callData.room_name);
+  sessionStorage.setItem('currentRoom', roomName);
   sessionStorage.setItem('inCall', 'true');
   sessionStorage.setItem('videochatActive', 'true');
+  
+  // También guardar en localStorage para compatibilidad
+  localStorage.setItem('roomName', roomName);
+  localStorage.setItem('userName', user?.name || 'Modelo');
   
   // Limpiar estados de llamada
   setIsCallActive(false);
@@ -828,39 +963,52 @@ const redirigirAVideochat = (callData) => {
     setCallPollingInterval(null);
   }
   
-  // Redirigir al videochat modelo (no cliente)
-  navigate('/videochat', {
-    state: {
-      roomName: callData.room_name,
-      userName: user?.name || 'Modelo',
-      callId: callData.call_id || callData.id,
-      from: 'call',
-      callData: callData
-    }
-  });
+  // Pequeño delay para asegurar que la desconexión anterior se complete
+  setTimeout(() => {
+    // Redirigir al videochat modelo (no cliente)
+    navigate('/videochat', {
+      state: {
+        roomName: roomName,
+        userName: user?.name || 'Modelo',
+        callId: callData.call_id || callData.id || callData.incoming_call?.id,
+        from: 'call',
+        callData: callData
+      },
+      replace: true // Usar replace para evitar problemas de navegación
+    });
+  }, 500); // Delay de 500ms para asegurar desconexión
 };
 
 // 🔥 USEEFFECTS NECESARIOS:
 
 // 1. POLLING PARA LLAMADAS ENTRANTES
-React.useEffect(() => {
+useEffect(() => {
   if (!user?.id) return;
 
+  // 🔥 LIMPIAR INTERVALO ANTERIOR SI EXISTE
+  if (incomingCallPollingInterval) {
+    clearInterval(incomingCallPollingInterval);
+    setIncomingCallPollingInterval(null);
+  }
     
   verificarLlamadasEntrantes();
   
-  const interval = setInterval(verificarLlamadasEntrantes, 3000);
+  // 🔥 INTERVALO DE 5 SEGUNDOS (aumentado de 3s para reducir carga)
+  const interval = setInterval(verificarLlamadasEntrantes, 5000);
   setIncomingCallPollingInterval(interval);
 
   return () => {
-        if (interval) {
+    if (interval) {
       clearInterval(interval);
     }
+    if (incomingCallPollingInterval) {
+      clearInterval(incomingCallPollingInterval);
+    }
   };
-}, [user?.id, isReceivingCall, isCallActive]);
+}, [user?.id]); // 🔥 Solo dependencia crítica - removido isReceivingCall e isCallActive
 
 // 2. CONFIGURAR SISTEMA DE AUDIO
-React.useEffect(() => {
+useEffect(() => {
     
   const enableAudioContext = async () => {
         try {
@@ -883,8 +1031,15 @@ React.useEffect(() => {
   };
 }, []);
 
+// 4. CARGAR HISTORIAL DE LLAMADAS
+useEffect(() => {
+  if (user?.id) {
+    cargarHistorialLlamadas();
+  }
+}, [user?.id]);
+
 // 3. CLEANUP AL DESMONTAR COMPONENTE
-React.useEffect(() => {
+useEffect(() => {
   return () => {
     stopIncomingCallSound();
     if (callPollingInterval) {
@@ -904,22 +1059,22 @@ React.useEffect(() => {
       verificationStatus: "aprobada",
       blockIfInCall: true
     }}>
-      <div className="min-h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white p-6">
+      <div className="h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white p-6 overflow-hidden flex flex-col">
         <Header />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1 overflow-hidden">
           {/* Panel central */}
-          <main className="lg:col-span-3 bg-[#1f2125] rounded-2xl p-8 shadow-xl flex flex-col items-center">
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-6 mt-16">
-              {t("client.greeting", { name: user?.name || t("client.defaultUser") || "Usuario" })}
+          <main className="lg:col-span-3 bg-[#1f2125] rounded-2xl p-6 shadow-xl flex flex-col items-center justify-center overflow-hidden">
+            <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
+              {t("client.greeting", { name: user?.display_name || user?.nickname || user?.name || t("client.defaultUser") || "Usuario" })}
             </h2>
-            <p className="text-center text-white/70 mb-8 max-w-md">
+            <p className="text-center text-white/70 mb-6 max-w-md">
               {t("client.instructions")}
             </p>
 
-            <div className="flex flex-col items-center gap-4 w-full max-w-xs">
+            <div className="flex flex-col items-center gap-3 w-full max-w-xs">
               <button
-                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-8 py-4 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
+                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-8 py-3 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
                 onClick={() => navigate("/esperandocall")}
               >
                 {t("client.startCall")}
@@ -955,162 +1110,251 @@ React.useEffect(() => {
                 </div>
               )}
 
-              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-4 text-center mt-2">
-                <p className="text-white text-sm mb-1 font-semibold">
+              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-3 text-center">
+                <p className="text-white text-xs mb-1 font-semibold">
                   🌟 {t("client.restrictions.professionalTip")}
                 </p>
-                <p className="text-white/70 text-sm italic">
+                <p className="text-white/70 text-xs italic">
                   {t("client.restrictions.professionalTipText")}
                 </p>
               </div>
             </div>
           </main>
 
-          {/* Panel lateral - mantener igual */}
-          <aside className="flex flex-col gap-2 h-[82vh] overflow-y-auto">
-            <section className="bg-[#2b2d31] rounded-2xl p-5 shadow-lg h-1/2">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-[#ff007a]">
-                  {t("client.activeUsers")}
-                </h3>
-                {usuariosActivos.length > 0 && (
-                  <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
-                    {usuariosActivos.length}
-                  </span>
+          {/* Panel lateral - Acordeón */}
+          <aside className="h-full overflow-y-auto custom-scrollbar">
+            <div className="bg-[#2b2d31] rounded-2xl border border-[#ff007a]/20 overflow-hidden">
+              {/* Sección 1: Usuarios Activos */}
+              <div className="border-b border-[#ff007a]/10">
+                <button
+                  onClick={() => setExpandedSections(prev => ({
+                    activeUsers: !prev.activeUsers,
+                    history: false
+                  }))}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-bold text-[#ff007a]">
+                      {t("client.activeUsers")}
+                    </h3>
+                    {usuariosActivos.length > 0 && (
+                      <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
+                        {usuariosActivos.length}
+                      </span>
+                    )}
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.activeUsers ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {expandedSections.activeUsers && (
+                  <div className="px-4 pb-4 border-t border-[#ff007a]/10 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                    {loadingUsers && initialLoad ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
+                        <span className="ml-3 text-sm text-white/60">
+                          {t("client.loadingUsers")}
+                        </span>
+                      </div>
+                    ) : usuariosActivos.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center text-center py-8">
+                        <Users size={32} className="text-white/20 mb-3" />
+                        <p className="text-sm text-white/60 font-medium">
+                          {t("client.noActiveUsers")}
+                        </p>
+                        <p className="text-xs text-white/40 mt-1">
+                          {t("client.contactsWillAppear")}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 pt-3">
+                        {usuariosActivos.map((usuario, index) => (
+                          <div
+                            key={usuario.id}
+                            className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
+                            style={{
+                              animationDelay: `${index * 50}ms`
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                {usuario.avatar_url ? (
+                                  <img
+                                    src={usuario.avatar_url}
+                                    alt={usuario.display_name || usuario.name || usuario.alias}
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextElementSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : null}
+                                <div className={`w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${usuario.avatar_url ? 'hidden' : ''}`}>
+                                  {getInitial(usuario.display_name || usuario.name || usuario.alias)}
+                                </div>
+                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
+                              </div>
+                              <div>
+                                <div className="font-semibold text-sm">
+                                  {usuario.display_name || usuario.name || usuario.alias}
+                                </div>
+                                <div className="text-xs text-green-400">
+                                  {t("client.status.home.online")}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => iniciarLlamadaReal(usuario)}
+                                disabled={isCallActive || isReceivingCall}
+                                className={`p-2 rounded-full transition-colors duration-200 ${
+                                  isCallActive || isReceivingCall 
+                                    ? 'bg-gray-500/20 cursor-not-allowed' 
+                                    : 'hover:bg-[#ff007a]/20'
+                                }`}
+                                title={
+                                  isCallActive || isReceivingCall 
+                                    ? t("client.errors.callError")
+                                    : t("client.call")
+                                }
+                              >
+                                <Phone 
+                                  size={16} 
+                                  className={`${
+                                    isCallActive || isReceivingCall 
+                                      ? 'text-gray-500' 
+                                      : 'text-[#ff007a] hover:text-white'
+                                  } transition-colors`} 
+                                />
+                              </button>
+                              <button
+                                onClick={() => abrirChatConUsuario(usuario)}
+                                className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
+                                title={t("client.message")}
+                              >
+                                <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              
-              {loadingUsers && initialLoad ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                  <span className="ml-3 text-sm text-white/60">
-                    {t("client.loadingUsers")}
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-3 h-[calc(100%-4rem)] overflow-y-auto pr-2">
-                  <style>
-                    {`
-                      .space-y-3::-webkit-scrollbar {
-                        width: 4px;
-                      }
-                      .space-y-3::-webkit-scrollbar-track {
-                        background: #2b2d31;
-                        border-radius: 2px;
-                      }
-                      .space-y-3::-webkit-scrollbar-thumb {
-                        background: #ff007a;
-                        border-radius: 2px;
-                      }
-                      .space-y-3::-webkit-scrollbar-thumb:hover {
-                        background: #cc0062;
-                      }
-                    `}
-                  </style>
-                  
-                  {usuariosActivos.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                      <Users size={32} className="text-white/20 mb-3" />
-                      <p className="text-sm text-white/60 font-medium">
-                        {t("client.noActiveUsers")}
-                      </p>
-                      <p className="text-xs text-white/40 mt-1">
-                        {t("client.contactsWillAppear")}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {usuariosActivos.map((usuario, index) => (
-                        <div
-                          key={usuario.id}
-                          className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
-                          style={{
-                            animationDelay: `${index * 50}ms`
-                          }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm relative">
-                              {getInitial(usuario.name || usuario.alias)}
-                              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
-                            </div>
-                            <div>
-                              <div className="font-semibold text-sm">
-                                {usuario.name || usuario.alias}
-                              </div>
-                              <div className="text-xs text-green-400">
-                                {t("client.status.home.online")}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => iniciarLlamadaReal(usuario)}
-                              disabled={isCallActive || isReceivingCall}
-                              className={`p-2 rounded-full transition-colors duration-200 ${
-                                isCallActive || isReceivingCall 
-                                  ? 'bg-gray-500/20 cursor-not-allowed' 
-                                  : 'hover:bg-[#ff007a]/20'
-                              }`}
-                              title={
-                                isCallActive || isReceivingCall 
-                                  ? t("client.errors.callError")
-                                  : t("client.call")
-                              }
-                            >
-                              <Phone 
-                                size={16} 
-                                className={`${
-                                  isCallActive || isReceivingCall 
-                                    ? 'text-gray-500' 
-                                    : 'text-[#ff007a] hover:text-white'
-                                } transition-colors`} 
-                              />
-                            </button>
-                            <button
-                              onClick={() => abrirChatConUsuario(usuario)}
-                              className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
-                              title={t("client.message")}
-                            >
-                              <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
 
-            {/* Historial */}
-            <section className="bg-[#2b2d31] rounded-2xl p-5 shadow-lg h-1/2">
-              <h3 className="text-lg font-bold text-[#ff007a] mb-4 text-center">
-                {t("client.yourHistory")}
-              </h3>
-              <div className="space-y-3 h-[calc(100%-4rem)] overflow-y-auto pr-2">
-                {historial.map((item, index) => (
-                  <div 
-                    key={index} 
-                    className="flex justify-between items-start bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-colors duration-200"
+              {/* Sección 2: Historial */}
+              <div>
+                <button
+                  onClick={() => setExpandedSections(prev => ({
+                    activeUsers: false,
+                    history: !prev.history
+                  }))}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors"
+                >
+                  <h3 className="text-lg font-bold text-[#ff007a]">
+                    {t("client.yourHistory")}
+                  </h3>
+                  <svg
+                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <div className="flex gap-3 items-center">
-                      <div className="w-9 h-9 bg-pink-400 text-[#1a1c20] font-bold rounded-full flex items-center justify-center text-sm">
-                        {item.nombre.charAt(0)}
-                      </div>
-                      <div className="text-sm">
-                        <p className="font-medium">{item.nombre}</p>
-                        <p className="text-white/60 text-xs">{item.accion}</p>
-                      </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {expandedSections.history && (
+                  <div className="px-4 pb-4 border-t border-[#ff007a]/10 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3 pt-3">
+                      {loadingHistory ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
+                        </div>
+                      ) : callHistory.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-white/60 text-sm">
+                            {t("client.history.noHistory")}
+                          </p>
+                        </div>
+                      ) : (
+                        callHistory.map((item) => (
+                          <div 
+                            key={item.id} 
+                            className="flex justify-between items-start bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-colors duration-200"
+                          >
+                            <div className="flex gap-3 items-center">
+                              <div className={`w-9 h-9 ${item.type === 'favorite' ? 'bg-yellow-500' : 'bg-pink-400'} text-[#1a1c20] font-bold rounded-full flex items-center justify-center text-sm`}>
+                                {item.type === 'favorite' ? <Star size={16} className="text-[#1a1c20]" /> : getInitial(item.user_name)}
+                              </div>
+                              <div className="text-sm">
+                                <p className="font-medium">{item.user_name}</p>
+                                <p className="text-white/60 text-xs">
+                                  {item.type === 'favorite' 
+                                    ? `${item.user_name} ${t("client.history.addedToFavorites")}`
+                                    : item.status === 'ended' 
+                                    ? t("client.history.callEnded")
+                                    : item.status === 'rejected'
+                                    ? t("client.history.callRejected")
+                                    : t("client.history.callCancelled")
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-right text-white/40 text-xs">
+                                {item.formatted_date || item.timestamp}
+                              </div>
+                              {item.user_id && (
+                                <>
+                                  {item.type === 'favorite' ? (
+                                    <button
+                                      onClick={() => abrirChatConUsuario({ 
+                                        id: item.user_id, 
+                                        name: item.user_name,
+                                        alias: item.user_name
+                                      })}
+                                      className="p-2 rounded-full bg-[#ff007a] hover:bg-[#e6006e] text-white transition-colors duration-200"
+                                      title={t("client.message")}
+                                    >
+                                      <MessageSquare size={14} />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => iniciarLlamadaReal({ 
+                                        id: item.user_id, 
+                                        name: item.user_name,
+                                        alias: item.user_name
+                                      })}
+                                      disabled={isCallActive || isReceivingCall}
+                                      className="p-2 rounded-full bg-[#ff007a] hover:bg-[#e6006e] text-white transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={t("client.startCall")}
+                                    >
+                                      <Phone size={14} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <div className="text-right text-white/40 text-xs">{item.hora}</div>
                   </div>
-                ))}
+                )}
               </div>
-            </section>
+            </div>
           </aside>
         </div>
 
-        {/* Estilos adicionales para animaciones */}
+        {/* Estilos adicionales para animaciones y scrollbar */}
         <style jsx>{`
           @keyframes fadeIn {
             from {
@@ -1125,6 +1369,39 @@ React.useEffect(() => {
           
           .animate-fadeIn {
             animation: fadeIn 0.3s ease-out forwards;
+          }
+          
+          /* Scrollbar personalizado mejorado */
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(43, 45, 49, 0.5);
+            border-radius: 10px;
+            margin: 4px 0;
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #ff007a 0%, #cc0062 100%);
+            border-radius: 10px;
+            border: 2px solid rgba(43, 45, 49, 0.3);
+            box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
+            box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb:active {
+            background: linear-gradient(180deg, #cc0062 0%, #99004d 100%);
+          }
+          
+          /* Para Firefox */
+          .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
           }
         `}</style>
       </div>
@@ -1157,20 +1434,20 @@ React.useEffect(() => {
         onDelete={handleDeleteStory}
       />
 
-     <CallingSystem
-      isVisible={isCallActive}
-      callerName={currentCall?.name || currentCall?.alias}
-      callerAvatar={currentCall?.avatar}
-      onCancel={cancelarLlamada} // 🔥 FUNCIÓN REAL EN LUGAR DE () => {}
-      callStatus={currentCall?.status || 'initiating'}
-    />
+      <CallingSystem
+        isVisible={isCallActive}
+        callerName={currentCall?.display_name || currentCall?.name || currentCall?.alias}
+        callerAvatar={currentCall?.avatar_url || null}
+        onCancel={cancelarLlamada}
+        callStatus={currentCall?.status || 'initiating'}
+      />
 
-    <IncomingCallOverlay
-      isVisible={isReceivingCall}
-      callData={incomingCall}
-      onAnswer={() => responderLlamada('accept')} // 🔥 FUNCIÓN REAL
-      onDecline={() => responderLlamada('reject')} // 🔥 FUNCIÓN REAL
-    />
-   </ProtectedPage>
+      <IncomingCallOverlay
+        isVisible={isReceivingCall}
+        callData={incomingCall}
+        onAnswer={() => responderLlamada('accept')}
+        onDecline={() => responderLlamada('reject')}
+      />
+    </ProtectedPage>
   );
 }

@@ -41,32 +41,28 @@ const DesktopControlsImprovedClient = ({
 
   // Funciones para controles básicos
   const handleMicToggle = () => {
-    console.log('🎤 Toggle micrófono:', !micEnabled);
-    setMicEnabled(!micEnabled);
+    // 🔥 setMicEnabled ahora acepta un valor opcional o hace toggle si no se pasa nada
+    setMicEnabled();
   };
 
   const handleCameraToggle = () => {
-    console.log('🎥 Toggle cámara:', !cameraEnabled);
-    setCameraEnabled(!cameraEnabled);
+    // 🔥 setCameraEnabled ahora acepta un valor opcional o hace toggle si no se pasa nada
+    setCameraEnabled();
   };
 
   const handleVolumeToggle = () => {
-    console.log('🔊 Toggle volumen:', !volumeEnabled);
     setVolumeEnabled(!volumeEnabled);
   };
 
   const handleCameraChangeInternal = (deviceId) => {
-    console.log('🎥 Cambiando cámara a:', deviceId);
     onCameraChange(deviceId);
   };
 
   const handleMicrophoneChangeInternal = (deviceId) => {
-    console.log('🎤 Cambiando micrófono a:', deviceId);
     onMicrophoneChange(deviceId);
   };
 
   const handleLoadDevicesInternal = () => {
-    console.log('🔄 Recargando dispositivos...');
     onLoadDevices();
   };
 
@@ -136,7 +132,12 @@ const DesktopControlsImprovedClient = ({
 
           {/* ⏭️ SIGUIENTE PERSONA */}
           <button
-            onClick={siguientePersona}
+            onClick={() => {
+              if (siguientePersona && typeof siguientePersona === 'function') {
+                siguientePersona();
+              } else {
+              }
+            }}
             disabled={loading}
             className={`
               relative p-4 rounded-2xl transition-all duration-300 hover:scale-110 group overflow-hidden

@@ -45,9 +45,6 @@ export default function WompiPayment({ onClose }) {
 
   // Debug: Log cuando cambia el estado del sidebar
   useEffect(() => {
-    console.log('🔄 Estado del sidebar cambió:', showBuyMinutesSidebar);
-    console.log('📦 Paquetes totales:', packages.length);
-    console.log('📦 Paquetes filtrados:', getFilteredPackages().length);
   }, [showBuyMinutesSidebar, packages, activePackageType]);
 
   const getAuthHeaders = () => {
@@ -61,20 +58,16 @@ export default function WompiPayment({ onClose }) {
   useEffect(() => {
     const initializeWompi = async () => {
       try {
-        console.log('🚀 Inicializando Wompi...');
         await Promise.all([
           fetchWompiConfig(),
           fetchPackages(), 
           fetchBalance(),
           fetchPurchaseHistory()
         ]);
-        console.log('✅ Wompi inicializado correctamente');
       } catch (error) {
-        console.error('❌ Error inicializando Wompi:', error);
         showNotification(t('wompi.errors.configurationError'), 'error');
       } finally {
         setLoading(false);
-        console.log('📊 Estado de carga completado');
       }
     };
 
@@ -115,7 +108,6 @@ export default function WompiPayment({ onClose }) {
         setWompiConfig(data);
       }
     } catch (error) {
-      console.error('Error obteniendo configuración Wompi:', error);
     }
   };
 
@@ -157,34 +149,25 @@ export default function WompiPayment({ onClose }) {
         }
       } catch (giftsError) {
         // API de gifts no disponible, continuar sin ella
-        console.log('API de gifts no disponible, continuando sin balance de gifts');
       }
 
       setBalance(combinedBalance);
     } catch (error) {
-      console.error('Error obteniendo balance:', error);
     }
   };
 
   const fetchPackages = async () => {
     try {
-      console.log('📡 Fetching paquetes desde:', `${API_BASE_URL}/api/wompi/packages`);
       const response = await fetch(`${API_BASE_URL}/api/wompi/packages`, {
         headers: getAuthHeaders()
       });
-      console.log('📡 Respuesta recibida, status:', response.status);
       const data = await response.json();
-      console.log('📦 Paquetes recibidos:', data);
       if (data.success && data.packages) {
         setPackages(data.packages);
-        console.log('✅ Paquetes cargados en estado:', data.packages.length);
-        console.log('📋 Detalle de paquetes:', data.packages.map(p => ({ id: p.id, name: p.name, type: p.type })));
       } else {
-        console.error('❌ Error en respuesta de paquetes:', data);
         showNotification('Error al cargar paquetes. Intenta recargar la página.', 'error');
       }
     } catch (error) {
-      console.error('❌ Error obteniendo paquetes:', error);
       showNotification('Error de conexión al cargar paquetes.', 'error');
     }
   };
@@ -199,18 +182,12 @@ export default function WompiPayment({ onClose }) {
         setPurchaseHistory((data.purchases.data || []).slice(0, 3));
       }
     } catch (error) {
-      console.error('Error obteniendo historial:', error);
     }
   };
 
   const getFilteredPackages = () => {
     const filtered = packages.filter(pkg => pkg.type === activePackageType);
-    console.log('🔍 Filtrando paquetes:', {
-      total: packages.length,
-      tipo: activePackageType,
-      filtrados: filtered.length,
-      paquetes: filtered
-    });
+    // debug summary removed
     return filtered;
   };
 
@@ -235,7 +212,6 @@ export default function WompiPayment({ onClose }) {
         ? '/api/wompi/sandbox-purchase'
         : '/api/wompi/create-payment';
       
-      console.log(`Modo Wompi: ${config.sandbox ? 'SANDBOX' : 'PRODUCCIÓN'}`);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
@@ -302,7 +278,6 @@ export default function WompiPayment({ onClose }) {
       }
 
     } catch (error) {
-      console.error('Error creando pago:', error);
       showNotification(t('wompi.errors.connectionError'), 'error');
     } finally {
       setProcessing(false);
@@ -347,7 +322,6 @@ export default function WompiPayment({ onClose }) {
       }
 
     } catch (error) {
-      console.error('Error verificando estado:', error);
     } finally {
       setCheckingStatus(false);
     }
@@ -401,13 +375,7 @@ export default function WompiPayment({ onClose }) {
     );
   }
 
-  console.log('🎨 Renderizando WompiPayment:', {
-    loading,
-    packages: packages.length,
-    showBuyMinutesSidebar,
-    activePackageType,
-    showPaymentWindow
-  });
+  // debug: removed UI summary
 
   return (
     <div className="text-white w-full max-w-7xl mx-auto overflow-auto px-2 sm:px-4 lg:px-6">
@@ -504,12 +472,8 @@ export default function WompiPayment({ onClose }) {
             <div className="flex flex-col sm:flex-row gap-4 mt-6 justify-center">
               <button
                 onClick={() => {
-                  console.log('🔵 Click en Comprar Minutos');
-                  console.log('📦 Paquetes disponibles:', packages.length);
-                  console.log('📦 Paquetes de minutos:', getFilteredPackages().length);
                   setActivePackageType('minutes');
                   setShowBuyMinutesSidebar(true);
-                  console.log('✅ Sidebar abierto:', true);
                 }}
                 className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
@@ -518,7 +482,6 @@ export default function WompiPayment({ onClose }) {
               </button>
               <button
                 onClick={() => {
-                  console.log('🎁 Click en Enviar Regalos');
                   setActivePackageType('gifts');
                   setShowBuyMinutesSidebar(true);
                 }}
@@ -949,12 +912,11 @@ export default function WompiPayment({ onClose }) {
       {/* Sidebar de Comprar Minutos - Renderizado con Portal */}
       {showBuyMinutesSidebar && typeof document !== 'undefined' && createPortal(
         <>
-          {console.log('🚪 Renderizando sidebar con portal, showBuyMinutesSidebar:', showBuyMinutesSidebar)}
+          {}
           {/* Overlay */}
           <div
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] transition-opacity duration-300"
             onClick={() => {
-              console.log('🔴 Click en overlay, cerrando sidebar');
               setShowBuyMinutesSidebar(false);
             }}
           />

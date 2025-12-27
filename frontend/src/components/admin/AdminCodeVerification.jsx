@@ -17,7 +17,7 @@ export const AdminCodeVerification = ({ onSuccess }) => {
 
     try {
       const res = await axios.post(
-        "http://localhost:8000/api/admin/verify-code",
+        `${import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org'}/api/admin/verify-code`,
         { code },
         {
           headers: {
@@ -27,13 +27,20 @@ export const AdminCodeVerification = ({ onSuccess }) => {
       );
 
       if (res.data.success) {
-        console.log("✅ Código correcto");
+        // Guardar admin_id en localStorage si viene en la respuesta
+        if (res.data.admin_id) {
+          localStorage.setItem("ligand_admin_id", res.data.admin_id);
+        }
+        // Asegurar que el admin_id esté guardado (por si viene del header)
+        const adminId = localStorage.getItem("ligand_admin_id");
+        if (!adminId && res.data.admin_id) {
+          localStorage.setItem("ligand_admin_id", res.data.admin_id);
+        }
         navigate("/admin/dashboard"); // o donde desees ir
       } else {
         setError(res.data.message || 'Código incorrecto');
       }
     } catch (err) {
-      console.error("❌ Error en verificación:", err);
       setError('Ocurrió un error al verificar');
     } finally {
       setSubmitting(false);

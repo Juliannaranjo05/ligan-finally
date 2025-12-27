@@ -35,7 +35,6 @@ export const useHybridChat = (
   // 🎯 Logger condicional
   const log = useCallback((message, data = {}) => {
     if (debugMode) {
-      console.log(`🔀 [HYBRID-HOOK] ${message}`, data);
     }
   }, [debugMode]);
   

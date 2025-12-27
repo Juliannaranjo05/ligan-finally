@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import LanguageSelector from "../languageSelector.jsx";
 import ModelEarnings from './ModelEarnings.jsx';
 import MiniChatVideocall, { useVideocallChat } from './MiniChatVideocall.jsx';
+import { useCurrentUser } from '../hooks/useCurrentUser.js';
 
 // 🔥 IMPORTAR TU SISTEMA DE TRADUCCIÓN
 import {
@@ -19,10 +20,12 @@ export default function Header() {
   const [mobileMenuAbierto, setMobileMenuAbierto] = useState(false);
   const [globalUnreadCount, setGlobalUnreadCount] = useState(0);
   const [lastSeenMessages, setLastSeenMessages] = useState({});
-  const [usuario, setUsuario] = useState({ id: null });
   const menuRef = useRef(null);
   const mobileMenuRef = useRef(null);
   const pollingInterval = useRef(null);
+  
+  // 🔥 USAR HOOK DE USUARIO ACTUAL (fuente única desde BD)
+  const { user: currentUser, loading: userLoading } = useCurrentUser();
   
   // 🌍 HOOKS DE TRADUCCIÓN
   const { t } = useTranslation();
@@ -190,8 +193,8 @@ export default function Header() {
           },
           {
             id: 2,
-            user_id: usuario.id,
-            user_name: usuario.name || t('common.user', "Usuario"),
+            user_id: currentUser?.id,
+            user_name: currentUser?.name || t('common.user', "Usuario"),
             user_role: "cliente",
             message: t('chat.example_response', "¡Hola! Todo bien, ¿y tú?"),
             type: "text",
@@ -232,9 +235,9 @@ export default function Header() {
           // Agregar mensaje inmediatamente
           const nuevoMensajeObj = {
             id: Date.now(),
-            user_id: usuario.id,
-            user_name: usuario.name || t('common.user', "Usuario"),
-            user_role: usuario.rol || "cliente",
+            user_id: currentUser?.id,
+            user_name: currentUser?.name || t('common.user', "Usuario"),
+            user_role: currentUser?.rol || "modelo",
             message: mensaje,
             type: tipo,
             created_at: new Date().toISOString()
@@ -268,7 +271,7 @@ export default function Header() {
   // 🔥 RENDERIZAR MENSAJE CON TRADUCCIÓN
   const renderMensaje = (mensaje) => {
     const textoMensaje = mensaje.message || mensaje.text || t('chat.no_content', 'Mensaje sin contenido');
-    const esUsuarioActual = mensaje.user_id === usuario.id;
+    const esUsuarioActual = mensaje.user_id === currentUser?.id;
     
     switch (mensaje.type) {
       case 'gift':
@@ -354,24 +357,6 @@ export default function Header() {
   };
 
 
-  
-  // 🔔 CARGAR DATOS DEL USUARIO
-  useEffect(() => {
-    const cargarUsuario = async () => {
-      try {
-        const userData = JSON.parse(localStorage.getItem('user') || '{}');
-        if (userData.id) {
-          setUsuario(userData);
-        } else {
-          setUsuario({ id: 1, name: t('common.user', "Usuario") });
-        }
-      } catch (error) {
-                setUsuario({ id: 1, name: t('common.user', "Usuario") });
-      }
-    };
-
-    cargarUsuario();
-  }, [t]);
 
   // 🔔 CARGAR TIMESTAMPS DE ÚLTIMA VEZ VISTO
   useEffect(() => {
@@ -388,7 +373,7 @@ export default function Header() {
       return conversacion.unread_count;
     }
     
-    if (lastMessageTime > lastSeen && conversacion.last_message_sender_id !== usuario.id) {
+    if (lastMessageTime > lastSeen && conversacion.last_message_sender_id !== currentUser?.id) {
       return 1;
     }
     
@@ -397,7 +382,7 @@ export default function Header() {
 
   // 🔔 OBTENER CONTEO GLOBAL DE MENSAJES
   const obtenerConteoGlobal = async () => {
-    if (!usuario.id) return;
+    if (!currentUser?.id) return;
 
     try {
             
@@ -428,7 +413,7 @@ export default function Header() {
 
   // 🔔 POLLING GLOBAL CADA 10 SEGUNDOS
   useEffect(() => {
-    if (!usuario.id) return;
+    if (!currentUser?.id) return;
 
     obtenerConteoGlobal();
 
@@ -441,7 +426,7 @@ export default function Header() {
         clearInterval(pollingInterval.current);
       }
     };
-  }, [usuario.id, lastSeenMessages]);
+  }, [currentUser?.id, lastSeenMessages]);
 
   // Cerrar menús al hacer clic fuera
   useEffect(() => {
@@ -464,7 +449,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="flex justify-between items-center mb-4 px-4 relative">
+      <header className="flex justify-between items-center mb-2 px-4 pt-4 relative">
         {/* Logo + Nombre */}
         <div
           className="flex items-center cursor-pointer"
@@ -537,10 +522,21 @@ export default function Header() {
           <div className="relative" ref={menuRef}>
             <button
               onClick={toggleMenu}
-              className="w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center"
+              className="w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a]"
               title={t('header.account_menu', 'Menú de cuenta')}
             >
-              M
+              {currentUser?.avatar_url ? (
+                <img 
+                  src={currentUser.avatar_url} 
+                  alt={currentUser.name || 'Usuario'} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <span>{(currentUser?.name || 'Usuario').charAt(0).toUpperCase()}</span>
+              )}
             </button>
 
             {/* Menú desplegable desktop */}
@@ -596,10 +592,23 @@ export default function Header() {
             
             <button
               onClick={toggleMobileMenu}
-              className="w-10 h-10 rounded-full bg-[#ff007a] text-white hover:scale-105 transition flex items-center justify-center"
+              className="w-10 h-10 rounded-full bg-[#ff007a] text-white hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a]"
               title={t('header.menu', 'Menú')}
             >
-              {mobileMenuAbierto ? <X size={20} /> : <Menu size={20} />}
+              {mobileMenuAbierto ? (
+                <X size={20} />
+              ) : currentUser?.avatar_url ? (
+                <img 
+                  src={currentUser.avatar_url} 
+                  alt={currentUser.name || 'Usuario'} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <span className="text-sm font-bold">{(currentUser?.name || 'Usuario').charAt(0).toUpperCase()}</span>
+              )}
             </button>
           </div>
 

@@ -24,6 +24,7 @@ class User extends Authenticatable
         'current_access_token_id',
         'email_verified_at',
         'google_id',
+        'profile_slug',
     ];
     protected $hidden = [
         'password',

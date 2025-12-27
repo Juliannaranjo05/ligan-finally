@@ -86,17 +86,32 @@ export const detectLanguage = (text) => {
   return maxScore > 0 ? detectedLang : 'unknown';
 };
 
-// 🔄 FUNCIÓN DE TRADUCCIÓN CON LIBRE TRANSLATE
+// 🔄 FUNCIÓN DE TRADUCCIÓN CON LIBRE TRANSLATE (DESHABILITADA - causa errores 400)
 const tryLibreTranslate = async (text, targetLang) => {
+  // Deshabilitado temporalmente debido a errores 400 de la API
+  return null;
+  
+  /* Código original comentado
   try {
-        
+    // Validar entrada
+    if (!text || text.trim().length === 0 || text.length > 5000) {
+      return null;
+    }
+
+    // Validar código de idioma
+    const validLangs = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'tr', 'hi', 'ja', 'ko', 'zh', 'ar', 'nl'];
+    if (!validLangs.includes(targetLang)) {
+      return null;
+    }
+
     const response = await fetch('https://libretranslate.com/translate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
-        q: text,
+        q: text.substring(0, 5000), // Limitar longitud
         source: 'auto',
         target: targetLang,
         format: 'text'
@@ -104,41 +119,58 @@ const tryLibreTranslate = async (text, targetLang) => {
     });
 
     if (!response.ok) {
+      // Si es error 400 o 429, no intentar de nuevo
+      if (response.status === 400 || response.status === 429) {
+        return null;
+      }
       throw new Error(`LibreTranslate error: ${response.status}`);
     }
 
     const data = await response.json();
     
-    if (data.translatedText && data.translatedText !== text) {
-            return data.translatedText;
+    if (data && data.translatedText && data.translatedText.trim() !== '' && data.translatedText !== text) {
+      return data.translatedText.trim();
     }
 
     return null;
   } catch (error) {
-        return null;
+    // Silenciar errores de red o API
+    return null;
   }
+  */
 };
 
 // 🔄 FUNCIÓN DE TRADUCCIÓN CON GOOGLE
 const tryGoogleTranslate = async (text, targetLang) => {
   try {
-        
+    // Validar entrada
+    if (!text || text.trim().length === 0 || text.length > 5000) {
+      return null;
+    }
+
+    // Validar código de idioma
+    const validLangs = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'tr', 'hi', 'ja', 'ko', 'zh', 'ar', 'nl'];
+    if (!validLangs.includes(targetLang)) {
+      return null;
+    }
+
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`Google error: ${response.status}`);
+      // Silenciar errores para evitar spam en consola
+      return null;
     }
 
     const data = await response.json();
     
-    if (data && data[0] && data[0][0] && data[0][0][0]) {
+    if (data && data[0]) {
       let translation = '';
       
       if (Array.isArray(data[0])) {
@@ -147,31 +179,39 @@ const tryGoogleTranslate = async (text, targetLang) => {
           .map(segment => segment[0])
           .join('')
           .trim();
-      } else {
+      } else if (data[0][0] && data[0][0][0]) {
         translation = data[0][0][0].trim();
       }
 
-      if (translation && translation.toLowerCase() !== text.toLowerCase()) {
-                return translation;
+      if (translation && translation.trim() !== '' && translation.toLowerCase() !== text.toLowerCase()) {
+        return translation.trim();
       }
     }
 
     return null;
   } catch (error) {
-        return null;
+    // Silenciar errores para evitar spam en consola
+    return null;
   }
 };
 
 // 🌍 FUNCIÓN PRINCIPAL DE TRADUCCIÓN
 export const translateText = async (text, targetLang = 'es') => {
   if (!text || text.trim().length === 0) return null;
+  if (text.length > 5000) {
+    // Si el texto es muy largo, truncar
+    text = text.substring(0, 5000);
+  }
 
   const cleanText = text.trim();
   const cacheKey = `${cleanText}_auto_${targetLang}`;
 
   // Verificar cache
   if (translationCache.has(cacheKey)) {
-        return translationCache.get(cacheKey);
+    const cached = translationCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
   }
 
   // Detectar idioma
@@ -179,26 +219,31 @@ export const translateText = async (text, targetLang = 'es') => {
   
   // No traducir si ya está en el idioma objetivo
   if (detectedLang === targetLang) {
-        return null;
+    return null;
+  }
+
+  // Validar código de idioma objetivo
+  const validLangs = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'tr', 'hi', 'ja', 'ko', 'zh', 'ar', 'nl'];
+  if (!validLangs.includes(targetLang)) {
+    return null;
   }
 
   try {
-    
     let translation = null;
 
-    // Intentar LibreTranslate primero
-    translation = await tryLibreTranslate(cleanText, targetLang);
+    // Usar solo Google Translate (más confiable y sin errores 400)
+    translation = await tryGoogleTranslate(cleanText, targetLang);
 
-    // Si falla, intentar Google
-    if (!translation) {
-      translation = await tryGoogleTranslate(cleanText, targetLang);
-    }
+    // LibreTranslate deshabilitado temporalmente debido a errores 400
+    // if (!translation) {
+    //   translation = await tryLibreTranslate(cleanText, targetLang);
+    // }
 
-    if (translation) {
+    if (translation && translation.trim() !== '' && translation.toLowerCase() !== cleanText.toLowerCase()) {
       const result = {
         original: cleanText,
-        translated: translation,
-        detectedLang: detectedLang,
+        translated: translation.trim(),
+        detectedLang: detectedLang || 'unknown',
         targetLang: targetLang,
         timestamp: Date.now()
       };
@@ -206,13 +251,14 @@ export const translateText = async (text, targetLang = 'es') => {
       // Guardar en cache
       translationCache.set(cacheKey, result);
       
-            return result;
+      return result;
     }
 
-        return null;
+    return null;
 
   } catch (error) {
-        return null;
+    // Silenciar errores
+    return null;
   }
 };
 
@@ -377,16 +423,19 @@ export const TranslatedMessage = ({ message, settings }) => {
 
   if (safeSettings.showOriginal) {
     return (
-      <div className="space-y-1">
-        <div className="opacity-75 text-sm">
+      <div className="space-y-1.5">
+        {/* Mensaje original arriba */}
+        <div className="text-base">
           {translationData.original}
         </div>
-        <div className="border-l-2 border-current border-opacity-40 pl-2 font-medium">
-          {translationData.translated}
-        </div>
-        <div className="text-xs opacity-50 flex items-center gap-1">
-          <Languages size={10} />
-          {TRANSLATION_CONFIG.LANGUAGES[translationData.detectedLang]?.flag} → {TRANSLATION_CONFIG.LANGUAGES[translationData.targetLang]?.flag}
+        {/* Traducción debajo con indicador visual */}
+        <div className="flex items-start gap-2">
+          <div className="flex-shrink-0 mt-0.5">
+            <Languages size={12} className="opacity-60" />
+          </div>
+          <div className="flex-1 border-l-2 border-current border-opacity-30 pl-2 text-sm opacity-90">
+            {translationData.translated}
+          </div>
         </div>
       </div>
     );

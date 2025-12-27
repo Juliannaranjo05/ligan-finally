@@ -27,6 +27,12 @@ class Kernel extends ConsoleKernel
         ->withoutOverlapping()
         ->runInBackground()
         ->appendOutputTo(storage_path('logs/cleanup.log'));
+
+        // 🔄 Backup diario de base de datos (a las 2 AM)
+        $schedule->command('db:backup --compress')
+            ->dailyAt('02:00')
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/backup.log'));
     
     }
     

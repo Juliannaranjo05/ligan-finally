@@ -46,13 +46,10 @@ export default function SeleccionGenero() {
     setCargando(true);
 
     try {
-      console.log("📤 Enviando nombre y rol a backend...");
       await api.post(`${API_BASE_URL}/api/asignar-rol`, {
         rol: genero,
         name: nombre.trim(),
       });
-
-      console.log("✅ Rol asignado exitosamente. Esperando para actualizar perfil...");
 
       await new Promise((r) => setTimeout(r, 300));
 
@@ -69,7 +66,6 @@ export default function SeleccionGenero() {
         });
 
         user = res.data.user;
-        console.log(`🔄 Intento ${intentos + 1} - Perfil obtenido:`, user);
 
         if (user.rol && user.name) {
           actualizado = true;
@@ -81,7 +77,6 @@ export default function SeleccionGenero() {
       }
 
       if (!actualizado) {
-        console.warn("⚠️ El perfil aún no refleja los cambios. Redirección cancelada.");
         setError(t('seleccion_genero.error_confirmar_datos')); // ✅ USAR TRADUCCIÓN
         return;
       }
@@ -91,19 +86,15 @@ export default function SeleccionGenero() {
       setShowModal(false);
 
       const destino = genero === "modelo" ? "/anteveri" : "/homellamadas";
-      console.log("👉 Navegando a:", destino);
       navigate(destino);
-      console.log("✅ Redirección ejecutada");
 
       setTimeout(() => {
         if (window.location.pathname !== destino) {
-          console.warn("⚠️ Redirección no aplicada visualmente. Recargando...");
           window.location.href = destino;
         }
       }, 400);
 
     } catch (err) {
-      console.error("❌ Error al guardar rol o al obtener perfil:", err);
       
       // Mostrar mensaje de error más específico si está disponible
       const errorMessage = err.response?.data?.message || t('seleccion_genero.error_guardar');

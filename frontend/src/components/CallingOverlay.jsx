@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PhoneOff } from 'lucide-react';
 
 const CallingOverlay = ({ 
@@ -8,11 +8,11 @@ const CallingOverlay = ({
   callerAvatar = null,
   callStatus = 'initiating'
 }) => {
-  const [dots, setDots] = React.useState('');
-  const [callDuration, setCallDuration] = React.useState(0);
+  const [dots, setDots] = useState('');
+  const [callDuration, setCallDuration] = useState(0);
 
   // Animación de puntos suspensivos
-  React.useEffect(() => {
+  useEffect(() => {
     const interval = setInterval(() => {
       setDots(prev => {
         if (prev === '...') return '';
@@ -23,7 +23,7 @@ const CallingOverlay = ({
   }, []);
 
   // Timer de duración
-  React.useEffect(() => {
+  useEffect(() => {
     let interval;
     if (isVisible && callStatus === 'calling') {
       interval = setInterval(() => {
@@ -87,20 +87,27 @@ const CallingOverlay = ({
       <div className="relative z-10 bg-[#1f2125] rounded-2xl p-8 shadow-xl border border-[#ff007a]/20 max-w-sm w-full mx-6 text-center">
         
         {/* Avatar del usuario */}
-        <div className="relative mb-6">
-          <div className="w-32 h-32 mx-auto rounded-full mb-6 flex items-center justify-center text-4xl font-bold bg-[#ff007a] text-white shadow-2xl animate-pulse">
-            {callerAvatar ? (
-              <img src={callerAvatar} alt={callerName} className="w-full h-full rounded-full object-cover" />
-            ) : (
-              getInitial(callerName)
-            )}
+        <div className="relative mb-6 flex items-center justify-center">
+          {callerAvatar ? (
+            <img
+              src={callerAvatar}
+              alt={callerName}
+              className="w-32 h-32 rounded-full object-cover border-4 border-[#ff007a] shadow-2xl relative z-10"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextElementSibling.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div className={`w-32 h-32 rounded-full flex items-center justify-center text-4xl font-bold bg-[#ff007a] text-white shadow-2xl relative z-10 ${callerAvatar ? 'hidden' : ''}`}>
+            {getInitial(callerName)}
           </div>
           
-          {/* Anillos de animación */}
-          {callStatus === 'calling' && (
+          {/* Anillos de animación - Siempre visibles cuando hay llamada activa */}
+          {(callStatus === 'calling' || callStatus === 'initiating') && (
             <>
-              <div className="absolute inset-0 rounded-full border-4 border-[#ff007a]/50 animate-ping"></div>
-              <div className="absolute inset-2 rounded-full border-2 border-[#ff007a]/30 animate-pulse"></div>
+              <div className="absolute w-32 h-32 rounded-full border-4 border-[#ff007a]/50 animate-ping"></div>
+              <div className="absolute w-28 h-28 rounded-full border-2 border-[#ff007a]/30 animate-pulse"></div>
             </>
           )}
         </div>
@@ -130,15 +137,21 @@ const CallingOverlay = ({
           )}
         </div>
 
-        {/* Animación de ondas de llamada */}
-        {callStatus === 'calling' && (
+        {/* Animación de ondas de llamada - MEJORADA - Siempre visible cuando hay llamada activa */}
+        {(callStatus === 'calling' || callStatus === 'initiating') && (
           <div className="flex justify-center mb-6">
-            <div className="flex space-x-1">
-              {[0, 1, 2, 3, 4].map((i) => (
+            <div className="flex items-center space-x-2">
+              <span className="text-white/60 text-sm mr-2">
+                {callStatus === 'initiating' ? 'Iniciando' : 'Llamando'}
+              </span>
+              {[0, 1, 2].map((i) => (
                 <div 
                   key={i}
-                  className="w-2 h-2 bg-[#ff007a] rounded-full animate-bounce"
-                  style={{animationDelay: `${i * 0.1}s`}}
+                  className="w-3 h-3 bg-[#ff007a] rounded-full animate-bounce"
+                  style={{
+                    animationDelay: `${i * 0.2}s`,
+                    animationDuration: '1s'
+                  }}
                 ></div>
               ))}
             </div>

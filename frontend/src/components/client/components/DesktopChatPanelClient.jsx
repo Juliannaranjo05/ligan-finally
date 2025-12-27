@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useMemo, useCallback, useState  } from 'react';
 import { Star, UserX, Gift, Send, Smile, Shield, Crown, MessageCircle,Globe, Settings, X  } from 'lucide-react';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../../i18n';
 
 const DesktopChatPanelClient = ({
   getDisplayName,
@@ -11,6 +13,7 @@ const DesktopChatPanelClient = ({
   isAddingFavorite,
   isBlocking,
   otherUser,
+  apodos,
   setShowGiftsModal,
   messages,
   mensaje,
@@ -21,8 +24,18 @@ const DesktopChatPanelClient = ({
   userBalance,
   handleAcceptGift,
   handleRejectGift,
-  t
+  t,
+  hardcodedTexts = {}
 }) => {
+  
+  // 🔥 FALLBACK A TEXTO EN ESPAÑOL SI NO HAY hardcodedTexts
+  const texts = {
+    chatWith: hardcodedTexts.chatWith || "Conversa con",
+    startConversation: hardcodedTexts.startConversation || "Inicia una conversación interesante y disfruta del chat",
+    writeMessage: hardcodedTexts.writeMessage || "Escribe tu mensaje...",
+    waitingModel: hardcodedTexts.waitingModel || "Esperando modelo...",
+    modelWillConnect: hardcodedTexts.modelWillConnect || "Una modelo se conectará pronto para chatear contigo"
+  };
 
   // Ref para el contenedor de mensajes
   const messagesEndRef = useRef(null);
@@ -47,6 +60,51 @@ const [localTranslationEnabled, setLocalTranslationEnabled] = useState(() => {
 
 const [translations, setTranslations] = useState(new Map());
 const [translatingIds, setTranslatingIds] = useState(new Set());
+
+// 🔥 OBTENER EL HOOK DE i18n PARA ESCUCHAR CAMBIOS
+const { i18n: i18nInstance } = useTranslation();
+
+// 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
+useEffect(() => {
+  const handleLanguageChange = (lng) => {
+    // Solo actualizar si el idioma realmente cambió
+    if (lng && lng !== currentLanguage) {
+      
+      setCurrentLanguage(lng);
+      localStorage.setItem('selectedLanguage', lng);
+      
+      // Habilitar traducción automáticamente si no es español
+      const shouldEnableTranslation = lng !== 'es';
+      setLocalTranslationEnabled(shouldEnableTranslation);
+      localStorage.setItem('translationEnabled', shouldEnableTranslation.toString());
+      
+      // Actualizar el contexto global también
+      if (typeof changeGlobalLanguage === 'function') {
+        try {
+          changeGlobalLanguage(lng);
+        } catch (error) {
+        }
+      }
+      
+      // Limpiar traducciones existentes para forzar retraducción
+      setTranslations(new Map());
+      setTranslatingIds(new Set());
+    }
+  };
+
+  // Escuchar cambios en el idioma de i18n
+  i18nInstance.on('languageChanged', handleLanguageChange);
+  
+  // También verificar el idioma inicial
+  const currentI18nLang = i18nInstance.language || i18n.language;
+  if (currentI18nLang && currentI18nLang !== currentLanguage) {
+    handleLanguageChange(currentI18nLang);
+  }
+
+  return () => {
+    i18nInstance.off('languageChanged', handleLanguageChange);
+  };
+}, [currentLanguage, changeGlobalLanguage, i18nInstance]);
 
 // 🔥 FUNCIÓN DE TRADUCCIÓN FALLBACK
 const translateWithFallback = useCallback(async (text, targetLang) => {
@@ -215,7 +273,6 @@ const handleLanguageChange = (languageCode) => {
     try {
       changeGlobalLanguage(languageCode);
     } catch (error) {
-      console.warn('❌ No se pudo cambiar idioma en contexto global:', error);
     }
   }
   
@@ -228,7 +285,6 @@ const handleLanguageChange = (languageCode) => {
   // 🎵 FUNCIONES DE SONIDO PARA SOLICITUDES DE REGALO (CLIENTE)
   const playGiftRequestSound = useCallback(async () => {
     try {
-      console.log('🔔 [CLIENT] Reproduciendo sonido de solicitud de regalo...');
       
       const audio = new Audio('/sounds/gift-request.mp3');
       audio.volume = 0.6;
@@ -236,13 +292,10 @@ const handleLanguageChange = (languageCode) => {
       
       try {
         await audio.play();
-        console.log('🎵 [CLIENT] Sonido de solicitud reproducido');
       } catch (playError) {
-        console.error('❌ Error reproduciendo sonido:', playError);
         playAlternativeRequestSound();
       }
     } catch (error) {
-      console.error('❌ Error general con audio:', error);
       playAlternativeRequestSound();
     }
   }, []);
@@ -275,9 +328,7 @@ const handleLanguageChange = (languageCode) => {
       playNote(440.00, now + 0.15, 0.2); // La  
       playNote(493.88, now + 0.3, 0.3);  // Si
       
-      console.log('🎵 [CLIENT] Sonido alternativo de solicitud reproducido');
     } catch (error) {
-      console.error('❌ Error con sonido alternativo:', error);
     }
   }, []);
 
@@ -293,11 +344,7 @@ useEffect(() => {
 
   // Solo actualizar si realmente cambiaron
   if (currentSignature !== lastSignature) {
-    console.log('🔄 [STABLE] Actualizando mensajes estables', {
-      before: stableMessages.length,
-      after: messages.length,
-      changed: true
-    });
+    // changed: signatures differ, actualizar estado de mensajes
 
     // Procesar mensajes
     const seenIds = new Set();
@@ -326,19 +373,7 @@ useEffect(() => {
       return idA - idB; // ← ORDEN ASCENDENTE por ID también
     });
 
-    console.log('📅 [SORT] Mensajes ordenados cronológicamente:', {
-      total: sortedMessages.length,
-      first: sortedMessages[0] ? {
-        id: sortedMessages[0].id,
-        type: sortedMessages[0].type,
-        time: sortedMessages[0].created_at || sortedMessages[0].timestamp
-      } : null,
-      last: sortedMessages[sortedMessages.length - 1] ? {
-        id: sortedMessages[sortedMessages.length - 1].id,
-        type: sortedMessages[sortedMessages.length - 1].type,
-        time: sortedMessages[sortedMessages.length - 1].created_at || sortedMessages[sortedMessages.length - 1].timestamp
-      } : null
-    });
+    // debug: resumen de sortedMessages eliminado
 
     // 🔥 DETECTAR NUEVAS SOLICITUDES DE REGALO ANTES DE ACTUALIZAR
     if (stableMessages.length > 0) {
@@ -356,7 +391,6 @@ useEffect(() => {
       );
       
       if (newGiftRequests.length > 0) {
-        console.log('🎁 [DESKTOP] ¡Nueva solicitud de regalo detectada!', newGiftRequests);
         
         // Reproducir sonido para cada solicitud nueva
         newGiftRequests.forEach(async (giftMsg, index) => {
@@ -378,31 +412,26 @@ useEffect(() => {
             if (Notification.permission === 'granted') {
               const giftData = parseGiftData(giftMsg);
               new Notification('💝 Solicitud de Regalo', {
-                body: `¡${otherUser?.name || 'Una modelo'} te pide: ${giftData.gift_name}!`,
+                body: `¡${safeGetDisplayName()} te pide: ${giftData.gift_name}!`,
                 icon: '/favicon.ico',
                 tag: 'gift-request',
                 requireInteraction: true
               });
             }
           } catch (error) {
-            console.error('❌ Error procesando sonido de solicitud:', error);
           }
         });
       }
     }
 
     setStableMessages(sortedMessages);
-  } else {
-    console.log('⏸️ [STABLE] Mensajes sin cambios - no re-render');
   }
-}, [messages, playGiftRequestSound, userData?.id, otherUser?.name]);
+}, [messages, playGiftRequestSound, userData?.id, otherUser, apodos]);
 
 // 🔥 TAMBIÉN AGREGAR ESTE DEBUG PARA VER EL ORDEN REAL
 useEffect(() => {
   if (stableMessages.length > 0) {
-    console.log('📋 [DEBUG] Orden actual de mensajes:');
     stableMessages.forEach((msg, index) => {
-      console.log(`${index + 1}. ID:${msg.id} | Tipo:${msg.type} | Tiempo:${msg.created_at || msg.timestamp}`);
     });
   }
 }, [stableMessages]);
@@ -455,7 +484,6 @@ const parseGiftData = useCallback((msg) => {
         giftData = msg.extra_data;
       }
     } catch (e) {
-      console.error('❌ Error parseando extra_data:', e);
     }
   }
   
@@ -469,7 +497,6 @@ const parseGiftData = useCallback((msg) => {
         giftData = { ...giftData, ...msg.gift_data };
       }
     } catch (e) {
-      console.error('❌ Error parseando gift_data:', e);
     }
   }
   
@@ -530,34 +557,46 @@ const parseGiftData = useCallback((msg) => {
     }
   }, [mensaje]);
 
-  // Función de fallback para getDisplayName
+  // Función de fallback para getDisplayName (con soporte para nickname)
   const safeGetDisplayName = () => {
     if (typeof getDisplayName === 'function') {
       try {
-        return getDisplayName();
+        const name = getDisplayName();
+        // Si retorna un mensaje de carga, intentar obtener de otherUser
+        if (name === 'Conectando...' || name === 'Detectando...' || name === 'Esperando modelo...' || name === 'Configurando...') {
+          if (otherUser) {
+            const nickname = apodos?.[otherUser.id];
+            const userName = nickname || otherUser.name || otherUser.display_name || otherUser.user_name;
+            if (userName && userName.trim()) {
+              return userName.trim();
+            }
+          }
+        }
+        return name;
       } catch (error) {
-        console.warn('Error calling getDisplayName:', error);
       }
     }
     
-    // Fallback manual
-    if (otherUser?.name) {
-      return otherUser.name;
+    // Fallback manual con soporte para nickname
+    if (otherUser) {
+      const nickname = apodos?.[otherUser.id];
+      const userName = nickname || otherUser.name || otherUser.display_name || otherUser.user_name;
+      return userName && userName.trim() ? userName.trim() : 'Modelo';
     }
     
-    return isDetectingUser ? 'Detectando...' : 'Esperando modelo...';
+    // Solo mostrar mensajes de carga si realmente estamos detectando
+    return isDetectingUser ? (hardcodedTexts.connecting || 'Conectando...') : texts.waitingModel;
   };
 
   const buildCompleteImageUrl = (imagePath) => {
       if (!imagePath) {
-          console.log('⚠️ No hay imagen para el regalo');
           return null;
       }
       
       // Si ya es una URL completa
       if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          console.log('✅ URL completa encontrada:', imagePath);
-          return imagePath;
+          // Si ya tiene parámetros, no agregar más
+          return imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
       }
       
       const baseUrl = import.meta.env.VITE_API_BASE_URL;
@@ -567,31 +606,39 @@ const parseGiftData = useCallback((msg) => {
       const cleanPath = imagePath.replace(/\\/g, '/');
       
       let finalUrl;
+      let fileName;
       
       if (cleanPath.startsWith('storage/')) {
-          // storage/gifts/image.png -> http://domain.com/storage/gifts/image.png
-          finalUrl = `${cleanBaseUrl}/${cleanPath}`;
+          // Codificar el nombre del archivo para caracteres especiales
+          const pathParts = cleanPath.split('/');
+          fileName = pathParts.pop();
+          const directory = pathParts.join('/');
+          const encodedFileName = encodeURIComponent(fileName);
+          finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
       } else if (cleanPath.startsWith('/')) {
-          // /storage/gifts/image.png -> http://domain.com/storage/gifts/image.png
-          finalUrl = `${cleanBaseUrl}${cleanPath}`;
+          // Codificar el nombre del archivo
+          const pathParts = cleanPath.split('/');
+          fileName = pathParts.pop();
+          const directory = pathParts.join('/');
+          const encodedFileName = encodeURIComponent(fileName);
+          finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
       } else {
           // image.png -> http://domain.com/storage/gifts/image.png
-          finalUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+          fileName = cleanPath;
+          const encodedFileName = encodeURIComponent(cleanPath);
+          finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
       }
       
-      console.log('🖼️ URL construida:', {
-          original: imagePath,
-          cleaned: cleanPath,
-          final: finalUrl
-      });
-      
-      return finalUrl;
+      // Agregar hash del nombre del archivo como versión para invalidar caché
+      // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+      const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+      return `${finalUrl}?v=${version}`;
   };
 
   return (
     <>
       {/* 🔥 CONTENEDOR PRINCIPAL CON MEDIA QUERIES RESPONSIVAS */}
-      <div className="chat-panel-responsive bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden">
+      <div className="w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden" style={{ maxHeight: 'calc(100vh - 180px)', minHeight: 0 }}>
         {/* Línea superior fucsia */}
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#ff007a]"></div>
         
@@ -657,56 +704,40 @@ const parseGiftData = useCallback((msg) => {
               >
                 <UserX size={18} />
               </button>
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="
-                  relative button-container rounded-lg transition-all duration-300 hover:scale-110 group overflow-hidden
-                  bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 shadow-lg
-                "
-                title="Configuración"
-              >
-                <Settings size={18} />
-              </button>
             </div>
           </div>
         </div>
         
         {/* 🔥 ÁREA DE MENSAJES REDISEÑADA CON AUTO-SCROLL */}
-         <div className="flex-1 relative">
+         <div className="flex-1 relative" style={{ minHeight: 0, maxHeight: 'calc(100vh - 280px)' }}>
           <div 
             ref={messagesContainerRef}
-            className="flex-1 max-h-[48vh] p-3 space-y-3 overflow-y-auto custom-scroll"
+            className="flex-1 p-3 space-y-3 overflow-y-auto custom-scroll flex flex-col"
+            style={{ maxHeight: 'calc(100vh - 280px)', minHeight: 0, height: '100%' }}
           >
             {stableMessages.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center flex-1 min-h-0">
                 <div className="text-center py-8">
                   <div className="empty-icon bg-[#ff007a]/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#ff007a]/20">
                     <MessageCircle size={32} className="text-[#ff007a]" />
                   </div>
                   <h4 className="text-white font-semibold mb-2 empty-title">
-                    {otherUser ? `Conversa con ${otherUser.name}` : 'Esperando modelo...'}
+                    {otherUser ? `${texts.chatWith} ${safeGetDisplayName()}` : texts.waitingModel}
                   </h4>
                   <p className="text-gray-400 empty-text leading-relaxed max-w-xs">
                     {otherUser 
-                      ? 'Inicia una conversación interesante y disfruta del chat' 
-                      : 'Una modelo se conectará pronto para chatear contigo'
+                      ? texts.startConversation
+                      : texts.modelWillConnect
                     }
                   </p>
                 </div>
               </div>
             ) : (
-              <>
+              <div className="flex flex-col">
                 {stableMessages.map((msg, index) => {
                   // 🔥 CONTROL DE LOGGING - Solo log si no se ha procesado antes
                   if (!processedMessageIds.current.has(msg.id)) {
-                    console.log('🔍 [CLIENT] Nuevo mensaje:', {
-                      id: msg.id,
-                      type: msg.type,
-                      text: msg.text?.substring(0, 30),
-                      message: msg.message?.substring(0, 30),
-                      isGift: isGiftMessage(msg),
-                      timestamp: msg.timestamp || msg.created_at
-                    });
+                    // debug: message summary removed
                     processedMessageIds.current.add(msg.id);
                   }
 
@@ -720,13 +751,7 @@ const parseGiftData = useCallback((msg) => {
                       {isGift && (() => {
                         const giftData = parseGiftData(msg);
                         const imageUrl = buildCompleteImageUrl(giftData.gift_image);
-                        
-                        console.log('🎁 [CLIENT] Renderizando regalo en orden:', {
-                          id: msg.id,
-                          type: msg.type,
-                          giftData,
-                          timestamp: msg.timestamp || msg.created_at
-                        });
+                        // debug: gift render details removed
 
                         // 🔥 DETERMINAR TIPO DE REGALO Y QUIÉN LO ENVIÓ
                         const isFromCurrentUser = msg.user_id === userData?.id || 
@@ -758,7 +783,7 @@ const parseGiftData = useCallback((msg) => {
                                     </span>
                                   </div>
                                   <span className="username-text text-[#ff007a] font-medium">
-                                    {otherUser?.name || 'Modelo'}
+                                    {safeGetDisplayName()}
                                   </span>
                                 </div>
                               </div>
@@ -782,6 +807,9 @@ const parseGiftData = useCallback((msg) => {
                                           src={imageUrl}
                                           alt={giftData.gift_name || 'Regalo'}
                                           className="gift-image object-contain"
+                                          loading="lazy"
+                                          decoding="async"
+                                          key={`gift-${giftData.gift_name}-${imageUrl}`}
                                           onError={(e) => {
                                             e.target.style.display = 'none';
                                             const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -844,6 +872,9 @@ const parseGiftData = useCallback((msg) => {
                                         src={imageUrl}
                                         alt={giftData.gift_name}
                                         className="gift-image object-contain"
+                                        loading="lazy"
+                                        decoding="async"
+                                        key={`gift-sent-${giftData.gift_name}-${imageUrl}`}
                                         onError={(e) => {
                                           e.target.style.display = 'none';
                                           const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -1060,12 +1091,12 @@ const parseGiftData = useCallback((msg) => {
                                   </span>
                                 </div>
                                 <span className="username-text text-[#ff007a] font-medium">
-                                  {msg.senderRole === 'modelo' ? otherUser?.name || 'Modelo' : 'Usuario'}
+                                  {msg.senderRole === 'modelo' ? safeGetDisplayName() : 'Usuario'}
                                 </span>
                               </div>
                             </div>
-                            <div className="bg-gradient-to-br from-gray-800/90 to-slate-800/90 message-bubble-other text-white shadow-lg border border-gray-600/30 backdrop-blur-sm hover:shadow-xl hover:scale-[1.02] transition-all duration-200">
-                              <span className="text-gray-100 message-text leading-relaxed break-words inline-block">
+                            <div className="bg-gradient-to-br from-gray-800/90 to-slate-800/90 message-bubble-other text-white shadow-lg border border-gray-600/30 backdrop-blur-sm hover:shadow-xl hover:scale-[1.02] transition-all duration-200" style={{ maxWidth: '250px', width: 'fit-content', wordBreak: 'break-word', overflowWrap: 'break-word', boxSizing: 'border-box' }}>
+                              <span className="text-gray-100 message-text leading-relaxed break-words inline-block" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
                                 {msg.type === 'emoji' ? (
                                   <div className="emoji-text">{renderMessageWithTranslation(msg, false)}</div>
                                 ) : (
@@ -1090,7 +1121,7 @@ const parseGiftData = useCallback((msg) => {
                 })}
                 {/* Elemento invisible para hacer scroll automático */}
                 <div ref={messagesEndRef} />
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -1107,7 +1138,7 @@ const parseGiftData = useCallback((msg) => {
                   value={mensaje}
                   onChange={(e) => setMensaje(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder={t?.('chat.writeMessage') || 'Escribe tu mensaje...'}
+                  placeholder={texts.writeMessage}
                   maxLength={200}
                   className="
                     w-full bg-gradient-to-r from-gray-800/60 to-slate-800/60 backdrop-blur-sm 
@@ -1388,9 +1419,9 @@ const parseGiftData = useCallback((msg) => {
         /* Pantallas Desktop Estándar (1440px-1919px) - QHD */
         @media (min-width: 1440px) and (max-width: 1919px) {
           .chat-panel-responsive {
-            width: 320px;
-            min-width: 320px;
-            max-width: 320px;
+            width: 280px;
+            min-width: 240px;
+            max-width: 280px;
           }
           .avatar-size {
             width: 40px;

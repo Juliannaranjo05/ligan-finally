@@ -45,7 +45,9 @@ const MobileControlsImproved = ({
   currentMicrophoneId = '',
   
   // NUEVA PROP: Determina si es vista de usuario o modelo
-  isModelView = false // false = usuario, true = modelo
+  isModelView = false, // false = usuario, true = modelo
+  // Prop para ocultar controles principales (para modelo cuando están arriba)
+  hideTopControls = false
 }) => {
   
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -72,37 +74,37 @@ const MobileControlsImproved = ({
   }, [currentMicrophoneId, selectedMicrophone]);
   
   const handleCameraChangeInternal = (deviceId) => {
-        
+    // 🔥 OPTIMIZADO: Cambio inmediato sin delays innecesarios
     // Marcar que el usuario está cambiando la cámara
     isUserChangingCamera.current = true;
     
     // Actualizar estado local inmediatamente
     setLocalSelectedCamera(deviceId);
     
-    // Llamar función padre
+    // Llamar función padre INMEDIATAMENTE
     onCameraChange(deviceId);
     
-    // Después de un breve delay, permitir sincronización automática
+    // 🔥 REDUCIDO: Delay mínimo solo para sincronización
     setTimeout(() => {
       isUserChangingCamera.current = false;
-    }, 500);
+    }, 100); // REDUCIDO DE 500ms A 100ms
   };
 
   const handleMicrophoneChangeInternal = (deviceId) => {
-        
+    // 🔥 OPTIMIZADO: Cambio inmediato sin delays innecesarios
     // Marcar que el usuario está cambiando el micrófono
     isUserChangingMicrophone.current = true;
     
     // Actualizar estado local inmediatamente
     setLocalSelectedMicrophone(deviceId);
     
-    // Llamar función padre
+    // Llamar función padre INMEDIATAMENTE
     onMicrophoneChange(deviceId);
     
-    // Después de un breve delay, permitir sincronización automática
+    // 🔥 REDUCIDO: Delay mínimo solo para sincronización
     setTimeout(() => {
       isUserChangingMicrophone.current = false;
-    }, 500);
+    }, 100); // REDUCIDO DE 500ms A 100ms
   };  
 
   const handleLoadDevicesInternal = () => {
@@ -183,10 +185,11 @@ const MobileControlsImproved = ({
   return (
     <>
       {/* CONTROLES PRINCIPALES */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 p-2 bg-gradient-to-t from-[#0a0d10] via-[#131418]/80 to-transparent backdrop-blur-sm">
-        <div className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl border border-[#ff007a]/20 shadow-xl">
+      <div className="fixed bottom-0 left-0 right-0 z-30">
+        <div className="bg-transparent">
           
-          {/* Barra de controles principales */}
+          {/* Barra de controles principales - Ocultar si hideTopControls es true */}
+          {!hideTopControls && (
           <div className="flex items-center justify-center gap-1 p-3 border-b border-gray-700/50">
             
             {/* 🎤 MICRÓFONO */}
@@ -207,25 +210,23 @@ const MobileControlsImproved = ({
               } animate-pulse`}></div>
             </button>
 
-            {/* 🔊 VOLUMEN - Solo para usuarios */}
-            {!isModelView && (
-              <button
-                onClick={() => setVolumeEnabled(!volumeEnabled)}
-                className={`
-                  relative p-3 rounded-xl transition-all duration-300 hover:scale-105
-                  ${volumeEnabled 
-                    ? 'bg-purple-500/20 text-purple-400 border border-purple-400/30' 
-                    : 'bg-red-500/20 text-red-400 border border-red-400/30'
-                  }
-                `}
-                title={volumeEnabled ? "Silenciar audio" : "Activar audio"}
-              >
-                {volumeEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                <div className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ${
-                  volumeEnabled ? 'bg-purple-400' : 'bg-red-400'
-                } animate-pulse`}></div>
-              </button>
-            )}
+            {/* 🔊 VOLUMEN */}
+            <button
+              onClick={() => setVolumeEnabled(!volumeEnabled)}
+              className={`
+                relative p-3 rounded-xl transition-all duration-300 hover:scale-105
+                ${volumeEnabled 
+                  ? 'bg-purple-500/20 text-purple-400 border border-purple-400/30' 
+                  : 'bg-red-500/20 text-red-400 border border-red-400/30'
+                }
+              `}
+              title={volumeEnabled ? "Silenciar audio" : "Activar audio"}
+            >
+              {volumeEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              <div className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ${
+                volumeEnabled ? 'bg-purple-400' : 'bg-red-400'
+              } animate-pulse`}></div>
+            </button>
 
             {/* 🔄 INTERCAMBIAR VISTA - Solo para modelos */}
             {isModelView && (
@@ -461,23 +462,24 @@ const MobileControlsImproved = ({
               </div>
             )}
           </div>
+          )}
 
-          {/* Input de mensaje */}
-          <div className="p-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 relative">
+          {/* Input de mensaje - Ocupa todo el espacio */}
+          <div className="w-full px-2 py-2">
+            <div className="flex items-center gap-2 w-full">
+              <div className="flex-1 relative w-full">
                 <input
                   value={mensaje}
                   onChange={(e) => setMensaje(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder={isModelView ? "Responde..." : "Escribe mensaje..."}
+                  placeholder="Type message..."
                   maxLength={200}
                   className="
-                    w-full bg-gray-800/60 backdrop-blur-sm px-3 py-2.5 rounded-xl 
+                    w-full bg-transparent px-3 py-3 
                     outline-none text-white text-sm placeholder-gray-400
-                    border border-gray-600/30 focus:border-[#ff007a]/50 
-                    transition-all duration-300 focus:bg-gray-800/80
-                    h-10
+                    border-none focus:outline-none
+                    transition-all duration-300
+                    h-auto min-h-[44px]
                   "
                 />
                 

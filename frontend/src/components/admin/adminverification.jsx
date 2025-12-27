@@ -13,7 +13,6 @@ export default function AdminVerification() {
         setVerificaciones(res.data);
       })
       .catch((err) => {
-        console.error("❌ Error cargando verificaciones", err);
       });
   }, []);
 
@@ -24,7 +23,6 @@ export default function AdminVerification() {
       // ✅ Elimina la verificación del estado
       setVerificaciones((prev) => prev.filter((v) => v.id !== id));
     } catch (error) {
-      console.error(`❌ Error al ${accion} verificación`, error);
       alert(`Error al ${accion} verificación.`);
     }
   };

@@ -22,8 +22,6 @@ const VerificarSesionActiva = () => {
       intervaloRef.current = null;
     }
 
-    console.log("🔥 Mostrando popup simple a Usuario A");
-
     try {
       const resultado = await Swal.fire({
         title: "¡Alguien entró a tu cuenta!",
@@ -43,16 +41,13 @@ const VerificarSesionActiva = () => {
 
       if (resultado.isConfirmed) {
         // Usuario A mantiene su sesión - expulsa a Usuario B
-        console.log("✅ Usuario A eligió mantener su sesión");
         await expulsarUsuarioB();
         
       } else {
         // Usuario A permite acceso - se desconecta
-        console.log("🔄 Usuario A eligió permitir acceso");
         await permitirAcceso();
       }
     } catch (error) {
-      console.error("❌ Error al mostrar popup:", error);
       resetearEstado();
     }
   };
@@ -60,14 +55,12 @@ const VerificarSesionActiva = () => {
   // Función para expulsar Usuario B
   const expulsarUsuarioB = async () => {
     try {
-      console.log("🔄 Expulsando Usuario B...");
       
       const response = await rechazarNuevaSesion();
       
       if (response.access_token) {
         // Usuario A recibe nuevo token
         localStorage.setItem("token", response.access_token);
-        console.log("✅ Nuevo token recibido para Usuario A");
       }
       
       await Swal.fire({
@@ -85,7 +78,6 @@ const VerificarSesionActiva = () => {
       setTimeout(() => iniciarVerificacion(), 3000);
       
     } catch (error) {
-      console.error("❌ Error expulsando usuario:", error);
       resetearEstado();
     }
   };
@@ -93,7 +85,6 @@ const VerificarSesionActiva = () => {
   // Función para permitir acceso
   const permitirAcceso = async () => {
     try {
-      console.log("🔄 Permitiendo acceso...");
       
       await allowNewSession();
       
@@ -117,7 +108,6 @@ const VerificarSesionActiva = () => {
       }, 2000);
       
     } catch (error) {
-      console.error("❌ Error permitiendo acceso:", error);
       resetearEstado();
     }
   };
@@ -147,14 +137,12 @@ const VerificarSesionActiva = () => {
       const response = await checkAuthStatus();
       
       if (response.authenticated && response.code === 'SESSION_DUPLICATED') {
-        console.log("🔥 DETECTADA SESIÓN DUPLICADA - Mostrando popup");
         
         setTimeout(() => {
           mostrarPopupSesionDuplicada(response.pending_session_info);
         }, 100);
       }
     } catch (error) {
-      console.log("❌ ERROR en verificar:", error);
     }
   };
 
@@ -170,7 +158,6 @@ const VerificarSesionActiva = () => {
 
   // Función para iniciar verificación
   const iniciarVerificacion = () => {
-    console.log("🚀 Iniciando verificación de sesión");
     
     setTimeout(() => {
       verificar();

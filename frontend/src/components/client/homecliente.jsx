@@ -1,36 +1,204 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "./headercliente";
 import { ProtectedPage } from '../hooks/usePageAccess';
 import { getUser } from "../../utils/auth";
 import CallingSystem from '../../components/CallingOverlay';
-import IncomingCallOverlay from '../../components/IncomingCallOverlay';
-import { useState, useEffect } from "react";
+// 🔥 REMOVIDO: IncomingCallOverlay ahora se maneja globalmente en GlobalCallContext
 import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
 import { useTranslation } from 'react-i18next';
+import { createLogger } from '../../utils/logger';
+import { useBrowsingHeartbeat } from '../../utils/heartbeat';
+import { useGlobalCall } from '../../contexts/GlobalCallContext';
 
+const logger = createLogger('HomeCliente');
+
+// 🔥 FUNCIÓN HELPER PARA DETECTAR Y MANEJAR ERRORES DE SESIÓN CERRADA
+const handleSessionClosedError = async (response, url, method = 'GET') => {
+  if ((response.status === 401 || response.status === 403)) {
+    try {
+      // Clonar response para poder leer el body sin consumirlo
+      const clonedResponse = response.clone();
+      const errorData = await clonedResponse.json().catch(() => ({}));
+      const codigo = errorData.code || errorData.codigo || '';
+      
+      if (codigo === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+        console.warn('🚫 [HomeCliente] Sesión cerrada por otro dispositivo detectada en:', url);
+        // Guardar flag en localStorage para persistencia
+        try {
+          localStorage.setItem('session_closed_by_other_device', 'true');
+        } catch (error) {
+          logger.warn('Error al guardar flag en localStorage:', error);
+        }
+        // Disparar evento para que SessionClosedAlert lo maneje
+        const customEvent = new CustomEvent("axiosError", {
+          detail: {
+            status: response.status,
+            mensaje: errorData.message || 'Se abrió tu cuenta en otro dispositivo',
+            codigo: codigo,
+            code: codigo,
+            url: url,
+            method: method,
+          },
+        });
+        window.dispatchEvent(customEvent);
+        return true; // Indica que se manejó el error
+      }
+    } catch (error) {
+      logger.warn('Error al procesar respuesta de sesión cerrada:', error);
+    }
+  }
+  return false;
+};
 
 export default function InterfazCliente() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+  // 🔥 HEARTBEAT DE RESPALDO: Asegura detección constante de sesión cerrada
+  // El heartbeat global en ProtectedPage ya está activo, esto es redundancia adicional
+  useBrowsingHeartbeat(25000); // 25 segundos
+
+  // 🔥 VALIDACIÓN ADICIONAL DE SEGURIDAD: Verificar token y rol al montar
+  useEffect(() => {
+    const validateAccess = () => {
+      // Verificar flag de sesión cerrada primero
+      const sessionClosedFlag = localStorage.getItem('session_closed_by_other_device');
+      if (sessionClosedFlag === 'true') {
+        // Si hay flag de sesión cerrada, no hacer nada aquí
+        // SessionClosedAlert se encargará de mostrar el alert y redirigir
+        return;
+      }
+
+      // Verificar que existe token
+      const token = localStorage.getItem('token');
+      if (!token || token.trim() === '') {
+        // No hay token, limpiar todo y redirigir a /home
+        try {
+          localStorage.removeItem('user');
+          localStorage.removeItem('session_closed_by_other_device');
+        } catch (e) {
+          // Ignorar errores
+        }
+        window.location.href = '/home';
+        return;
+      }
+
+      // Verificar rol del usuario desde localStorage (caché)
+      // Solo como validación adicional, pero no confiar solo en esto
+      try {
+        const userString = localStorage.getItem('user');
+        if (userString) {
+          const cachedUser = JSON.parse(userString);
+          const userRole = cachedUser?.rol || cachedUser?.role;
+          
+          // Si el rol no es 'cliente', redirigir a home correspondiente
+          if (userRole && userRole !== 'cliente') {
+            if (userRole === 'modelo') {
+              navigate('/homellamadas', { replace: true });
+            } else if (userRole === 'admin') {
+              navigate('/admin/dashboard', { replace: true });
+            } else {
+              // Si no hay rol válido, limpiar y redirigir a /home
+              try {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+              } catch (e) {
+                // Ignorar errores
+              }
+              window.location.href = '/home';
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        // Si hay error al parsear, limpiar y redirigir a /home
+        try {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        } catch (e2) {
+          // Ignorar errores
+        }
+        window.location.href = '/home';
+        return;
+      }
+    };
+
+    validateAccess();
+  }, [navigate]);
+
   // Estados
-  const [user, setUser] = React.useState(null);
-  const [chicasActivas, setChicasActivas] = React.useState([]);
-  const [loadingUsers, setLoadingUsers] = React.useState(true);
-  const [initialLoad, setInitialLoad] = React.useState(true);
+  const [user, setUser] = useState(null);
+  const [chicasActivas, setChicasActivas] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [showBuyMinutes, setShowBuyMinutes] = useState(false);
   const [userBalance, setUserBalance] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [showNoBalanceModal, setShowNoBalanceModal] = useState(false);
   const [balanceDetails, setBalanceDetails] = useState(null); // ✅ ESTADO FALTANTE
-  
+  const [notification, setNotification] = useState(null); // Notificación temporal
+
+  // Verificar pago de Wompi cuando el usuario regresa
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    const reference = searchParams.get('reference');
+    const purchaseId = searchParams.get('purchase_id');
+
+    if (payment === 'wompi' && purchaseId) {
+      // Verificar el estado del pago
+      const checkPaymentStatus = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const data = await response.json();
+
+          if (data.success && data.purchase) {
+            if (data.purchase.status === 'completed') {
+              showNotification(`¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`, 'success');
+              // Actualizar balance
+              consultarSaldoUsuario();
+            } else if (data.purchase.status === 'pending') {
+              showNotification('Tu pago está siendo procesado. Las monedas se agregarán cuando se confirme.', 'info');
+            } else {
+              showNotification('El pago no se completó. Por favor intenta nuevamente.', 'error');
+            }
+          }
+
+          // Limpiar parámetros de la URL
+          searchParams.delete('payment');
+          searchParams.delete('reference');
+          searchParams.delete('purchase_id');
+          setSearchParams(searchParams, { replace: true });
+        } catch (error) {
+          console.error('Error verificando estado del pago:', error);
+        }
+      };
+
+      checkPaymentStatus();
+    } else if (payment === 'cancelled') {
+      showNotification('El pago fue cancelado.', 'info');
+      searchParams.delete('payment');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, API_BASE_URL]);
+
   const abrirModalCompraMinutos = () => {
     setShowBuyMinutes(true);
   };
   const cerrarModalCompraMinutos = () => {
     setShowBuyMinutes(false);
+    // Forzar actualización del último pago y balance cuando se cierra el modal
+    setTimeout(() => {
+      consultarSaldoUsuario();
+    }, 500); // Pequeño delay para asegurar que el pago se haya procesado
   };
 
   const consultarSaldoUsuario = async () => {
@@ -42,6 +210,13 @@ export default function InterfazCliente() {
         headers: getAuthHeaders()
       });
       
+      // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
+      const isSessionClosed = await handleSessionClosedError(response, `${API_BASE_URL}/api/videochat/coins/balance`);
+      if (isSessionClosed) {
+        setLoadingBalance(false);
+        return null;
+      }
+      
       if (response.ok) {
         const data = await response.json();
         
@@ -49,6 +224,29 @@ export default function InterfazCliente() {
           setUserBalance(data.balance);
           // ✅ GUARDAMOS LOS DATOS COMPLETOS PARA EL MODAL
           setBalanceDetails(data);
+          
+          // 🔥 CARGAR SALDO DE REGALOS DESDE EL ENDPOINT CORRECTO (user_gift_coins)
+          try {
+            const giftsResponse = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
+              method: 'GET',
+              headers: getAuthHeaders()
+            });
+            
+            if (giftsResponse.ok) {
+              const giftsData = await giftsResponse.json();
+              if (giftsData.success && giftsData.balance) {
+                // 🔥 ACTUALIZAR EL SALDO DE REGALOS CON EL VALOR CORRECTO
+                setUserBalance(prev => ({
+                  ...prev,
+                  gift_coins: giftsData.balance.gift_balance || 0,
+                  gift_balance: giftsData.balance.gift_balance || 0
+                }));
+              }
+            }
+          } catch (giftError) {
+            // Silenciar errores al cargar gift balance
+          }
+          
           return data;
         } else {
                     return null;
@@ -61,6 +259,12 @@ export default function InterfazCliente() {
     } finally {
       setLoadingBalance(false);
     }
+  };
+
+  // Función para mostrar notificación
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000); // Ocultar después de 4 segundos
   };
 
   const validarSaldoYRedireccionar = async () => {
@@ -125,33 +329,87 @@ export default function InterfazCliente() {
   };
 
   // 🔥 ESTADOS DE LLAMADAS
-  const [isCallActive, setIsCallActive] = React.useState(false);
-  const [currentCall, setCurrentCall] = React.useState(null);
-  const [isReceivingCall, setIsReceivingCall] = React.useState(false);
-  const [incomingCall, setIncomingCall] = React.useState(null);
-  const [callPollingInterval, setCallPollingInterval] = React.useState(null);
-  const [incomingCallPollingInterval, setIncomingCallPollingInterval] = React.useState(null);
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [currentCall, setCurrentCall] = useState(null);
+  const [callPollingInterval, setCallPollingInterval] = useState(null);
+  
+  // 🔥 USAR CONTEXTO GLOBAL PARA LLAMADAS ENTRANTES
+  const { isReceivingCall } = useGlobalCall();
   // 🔥 ESTADOS PARA MODAL DE CONFIRMACIÓN
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
 
-  // 🔥 ESTADOS PARA AUDIO DE LLAMADAS
-  const [incomingCallAudio, setIncomingCallAudio] = useState(null);
-  const audioRef = React.useRef(null);
+  // 🔥 REMOVIDO: Audio de llamadas entrantes ahora se maneja en GlobalCallContext
 
   // 🔥 ESTADO PARA USUARIOS BLOQUEADOS
   const [usuariosBloqueados, setUsuariosBloqueados] = useState([]);
   const [loadingBloqueados, setLoadingBloqueados] = useState(false);
 
-  const historial = [
-    { nombre: "SofiSweet", accion: "Llamada finalizada", hora: "Hoy, 11:12 AM" },
-    { nombre: "Mia88", accion: "Te envió un mensaje", hora: "Hoy, 8:45 AM" },
-    { nombre: "ValentinaXX", accion: "Agregada a favoritos", hora: "Ayer, 9:30 PM" },
-  ];
+  // 🔥 ESTADOS PARA HISTORIAL DE LLAMADAS
+  const [callHistory, setCallHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  
+  // Estado para controlar las secciones expandidas del acordeón
+  const [expandedSections, setExpandedSections] = useState({
+    balance: true,       // Siempre abierto
+    activeGirls: false,  // Se abrirá automáticamente si hay chicas activas
+    history: false       // Por defecto cerrado
+  });
 
   const { t } = useTranslation();
 
   // 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
+  // 🔥 FUNCIÓN PARA CARGAR HISTORIAL DE LLAMADAS
+  const cargarHistorialLlamadas = async () => {
+    try {
+      setLoadingHistory(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token || token === 'null' || token === 'undefined') {
+        setLoadingHistory(false);
+        setCallHistory([]); // 🔥 Establecer array vacío si no hay token
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/calls/history`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
+      const isSessionClosed = await handleSessionClosedError(response, `${API_BASE_URL}/api/calls/history`);
+      if (isSessionClosed) {
+        setLoadingHistory(false);
+        return;
+      }
+      
+      if (response.ok) {
+        try {
+          const data = await response.json();
+          if (data.success && data.history) {
+            setCallHistory(data.history);
+          } else {
+            // 🔥 Si no hay éxito o no hay historial, establecer array vacío
+            setCallHistory([]);
+          }
+        } catch (jsonError) {
+          logger.error('Error parseando JSON del historial:', jsonError);
+          setCallHistory([]); // 🔥 Establecer array vacío si hay error parseando
+        }
+      } else {
+        // 🔥 Si la respuesta no es OK, establecer array vacío
+        logger.warn('Respuesta no OK al cargar historial:', response.status);
+        setCallHistory([]);
+      }
+    } catch (error) {
+      logger.error('Error cargando historial de llamadas', error);
+      setCallHistory([]); // 🔥 Establecer array vacío en caso de error
+    } finally {
+      // 🔥 SIEMPRE establecer loadingHistory en false, incluso si hay errores
+      setLoadingHistory(false);
+    }
+  };
+
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
     return {
@@ -174,11 +432,16 @@ export default function InterfazCliente() {
         setLoadingUsers(true);
       }
       
-      
       const response = await fetch(`${API_BASE_URL}/api/chat/users/my-contacts`, {
         method: 'GET',
         headers: getAuthHeaders()
       });
+      
+      // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
+      const isSessionClosed = await handleSessionClosedError(response, `${API_BASE_URL}/api/chat/users/my-contacts`);
+      if (isSessionClosed) {
+        return; // No continuar si la sesión fue cerrada
+      }
       
       if (response.ok) {
         const data = await response.json();
@@ -203,12 +466,12 @@ export default function InterfazCliente() {
         });
         
       } else {
-                if (initialLoad) {
+        if (initialLoad) {
           await handleFallbackData();
         }
       }
     } catch (error) {
-            if (initialLoad) {
+      if (initialLoad) {
         await handleFallbackData();
       }
     } finally {
@@ -228,6 +491,12 @@ export default function InterfazCliente() {
         method: 'GET',
         headers: getAuthHeaders()
       });
+      
+      // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
+      const isSessionClosed = await handleSessionClosedError(conversationsResponse, `${API_BASE_URL}/api/chat/conversations`);
+      if (isSessionClosed) {
+        return; // No continuar si la sesión fue cerrada
+      }
       
       if (conversationsResponse.ok) {
         const conversationsData = await conversationsResponse.json();
@@ -286,14 +555,42 @@ export default function InterfazCliente() {
 
   // 🔥 FUNCIÓN PARA NAVEGAR A CHAT CON CHICA ESPECÍFICA
   const abrirChatConChica = (chica) => {
+    logger.debug('Abriendo chat con chica:', chica);
     
-    navigate('/messageclient', {
+    const otherUserId = chica.id || chica.user_id;
+    const otherUserName = chica.display_name || chica.name || chica.alias || 'Usuario';
+    const userRole = chica.role || 'modelo';
+    
+    // Generar room_name (mismo formato que usa el backend)
+    const currentUserFromState = user?.id;
+    const currentUserFromStorage = getUser()?.id;
+    const currentUserId = currentUserFromState || currentUserFromStorage;
+    
+    if (!currentUserId || !otherUserId) {
+      logger.error('No se pudo obtener IDs de usuario para crear el chat');
+      showNotification('Error al abrir el chat. Por favor, intenta de nuevo.', 'error');
+      return;
+    }
+    
+    // Crear room_name ordenando los IDs para que sea consistente
+    const roomName = [currentUserId, otherUserId].sort().join('_');
+    
+    const chatData = {
+      other_user_id: otherUserId,
+      other_user_name: otherUserName,
+      other_user_role: userRole,
+      room_name: roomName,
+      createdLocally: true,
+      needsSync: true
+    };
+    
+    logger.debug('Datos del chat:', chatData);
+    
+    navigate({
+      pathname: '/message',
+      search: `?user=${encodeURIComponent(otherUserName)}`,
       state: {
-        openChatWith: {
-          userId: chica.id,
-          userName: chica.name || chica.alias,
-          userRole: chica.role
-        }
+        openChatWith: chatData
       }
     });
   };
@@ -305,6 +602,33 @@ export default function InterfazCliente() {
       // 🔥 VARIABLES CORRECTAS PARA LA VALIDACIÓN
       const otherUserId = chica.id;
       const otherUserName = chica.name || chica.alias;
+      
+      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA
+      const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json();
+        logger.debug('Respuesta de balance', balanceData);
+        
+        // 🔥 VERIFICAR SI PUEDE INICIAR LLAMADA (puede venir como success.can_start_call o directamente can_start_call)
+        const canStartCall = balanceData.success?.can_start_call ?? balanceData.can_start_call ?? true;
+        
+        logger.debug('can_start_call', { canStartCall });
+        
+        if (!canStartCall) {
+          // ❌ NO TIENE SALDO SUFICIENTE - MOSTRAR MODAL DE COMPRA
+          logger.info('Saldo insuficiente detectado, mostrando modal', balanceData);
+          setBalanceDetails(balanceData);
+          setShowNoBalanceModal(true);
+          return;
+        }
+      } else {
+        // Si no se puede verificar el saldo, intentar igual pero manejar el error después
+        logger.warn('No se pudo verificar el saldo, continuando con la llamada');
+      }
       
       // 🚫 VERIFICAR SI YO LA BLOQUEÉ
       const yoLaBloquee = usuariosBloqueados.some((user) => user.id === otherUserId);
@@ -321,30 +645,35 @@ export default function InterfazCliente() {
       }
 
       // 🚫 VERIFICAR SI ELLA ME BLOQUEÓ
-      const blockCheckResponse = await fetch(`${API_BASE_URL}/api/check-if-blocked-by`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          user_id: otherUserId
-        })
-      });
+      try {
+        const blockCheckResponse = await fetch(`${API_BASE_URL}/api/blocks/check-if-blocked-by`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            user_id: otherUserId
+          })
+        });
 
-      if (blockCheckResponse.ok) {
-        const blockData = await blockCheckResponse.json();
-        if (blockData.success && blockData.is_blocked_by_them) {
-          setConfirmAction({
-            type: 'blocked',
-            title: t('clientInterface.notAvailable'),
-            message: t('clientInterface.userBlockedYou', { name: 'nombre' }),
-            confirmText: t('clientInterface.understood'),
-            action: () => setShowConfirmModal(false)
-          });
-          setShowConfirmModal(true);
-          return;
+        if (blockCheckResponse.ok) {
+          const blockData = await blockCheckResponse.json();
+          if (blockData.success && blockData.is_blocked_by_them) {
+            setConfirmAction({
+              type: 'blocked',
+              title: t('clientInterface.notAvailable'),
+              message: t('clientInterface.userBlockedYou', { name: 'nombre' }),
+              confirmText: t('clientInterface.understood'),
+              action: () => setShowConfirmModal(false)
+            });
+            setShowConfirmModal(true);
+            return;
+          }
         }
+        // Si el endpoint no está disponible (404) o hay error, continuar normalmente
+      } catch (error) {
+        // Silenciar errores de red o del endpoint (endpoint puede no estar disponible)
       }
 
-      // ✅ SIN BLOQUEOS - PROCEDER CON LA LLAMADA (resto del código original)
+      // ✅ SIN BLOQUEOS Y CON SALDO - PROCEDER CON LA LLAMADA
       setCurrentCall({
         ...chica,
         status: 'initiating'
@@ -375,23 +704,80 @@ export default function InterfazCliente() {
         });
         iniciarPollingLlamada(data.call_id);
       } else {
-                setIsCallActive(false);
+        setIsCallActive(false);
         setCurrentCall(null);
         
-        // Mostrar error específico
-        setConfirmAction({
-          type: 'error',
-          title: t('clientInterface.callError'),
-          message: data.error || t('clientInterface.callFailed'),
-          confirmText: t('clientInterface.understood'),
-          action: () => setShowConfirmModal(false)
-        });
-        setShowConfirmModal(true);
+        // 🔥 DETECTAR ERRORES ESPECÍFICOS DE SALDO
+        const errorMessage = data.error || data.message || '';
+        const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                               errorMessage.toLowerCase().includes('balance') ||
+                               errorMessage.toLowerCase().includes('insufficient') ||
+                               errorMessage.toLowerCase().includes('coins') ||
+                               response.status === 402; // Payment Required
+        
+        if (isBalanceError) {
+          // Mostrar modal de compra en lugar de error genérico
+          const balanceCheck = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+            method: 'GET',
+            headers: getAuthHeaders()
+          });
+          if (balanceCheck.ok) {
+            const balanceInfo = await balanceCheck.json();
+            setBalanceDetails(balanceInfo);
+            setShowNoBalanceModal(true);
+          } else {
+            setConfirmAction({
+              type: 'error',
+              title: t('clientInterface.insufficientBalanceTitle') || 'Saldo Insuficiente',
+              message: t('clientInterface.insufficientBalanceMessage') || 'No tienes saldo suficiente para realizar esta llamada. Por favor, recarga tu cuenta.',
+              confirmText: t('clientInterface.understood'),
+              action: () => {
+                setShowConfirmModal(false);
+                setShowBuyMinutes(true);
+              }
+            });
+            setShowConfirmModal(true);
+          }
+        } else {
+          // Otros errores - mostrar mensaje genérico
+          setConfirmAction({
+            type: 'error',
+            title: t('clientInterface.callError'),
+            message: errorMessage || t('clientInterface.callFailed'),
+            confirmText: t('clientInterface.understood'),
+            action: () => setShowConfirmModal(false)
+          });
+          setShowConfirmModal(true);
+        }
       }
     } catch (error) {
-            setIsCallActive(false);
+      setIsCallActive(false);
       setCurrentCall(null);
-      alert(t('clientInterface.errorStartingCall'));
+      
+      // 🔥 DETECTAR ERRORES DE SALDO EN LA EXCEPCIÓN
+      const errorMessage = error.message || '';
+      const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                             errorMessage.toLowerCase().includes('balance') ||
+                             errorMessage.toLowerCase().includes('insufficient') ||
+                             errorMessage.toLowerCase().includes('coins') ||
+                             (error.response && error.response.status === 402);
+      
+      if (isBalanceError) {
+        // Mostrar modal de compra
+        const balanceCheck = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (balanceCheck.ok) {
+          const balanceInfo = await balanceCheck.json();
+          setBalanceDetails(balanceInfo);
+          setShowNoBalanceModal(true);
+        } else {
+          setShowBuyMinutes(true);
+        }
+      } else {
+        alert(t('clientInterface.errorStartingCall') || 'Error al iniciar la llamada');
+      }
     }
   };
 
@@ -419,93 +805,231 @@ export default function InterfazCliente() {
   };
 
   // 🔥 FUNCIONES DE AUDIO
-  const playIncomingCallSound = async () => {
-    try {
-      
-      if (audioRef.current) {
-        return;
-      }
-      
-      const audio = new Audio('/sounds/incoming-call.mp3');
-      
-      audio.loop = true;
-      audio.volume = 0.8;
-      audio.preload = 'auto';
-      
-      audioRef.current = audio;
-      
-      try {
-        await audio.play();
-      } catch (playError) {
-                if (playError.name === 'NotAllowedError') {
-        }
-      }
-    } catch (error) {
-          }
-  };
-
-  const stopIncomingCallSound = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
-    }
-  };
+  // 🔥 REMOVIDO: playIncomingCallSound y stopIncomingCallSound ahora se manejan en GlobalCallContext
 
   // 🔥 NUEVA FUNCIÓN: POLLING PARA VERIFICAR ESTADO DE LLAMADA SALIENTE
   const iniciarPollingLlamada = (callId) => {
+    let isPolling = true;
+    let interval = null;
+    let notificationInterval = null;
+    let consecutive403Errors = 0; // Contador de errores 403 consecutivos
     
-    const interval = setInterval(async () => {
+    // 🔥 FUNCIÓN PARA VERIFICAR NOTIFICACIONES (MÁS CONFIABLE)
+    const checkCallAcceptedNotification = async () => {
+      if (!isPolling || !isCallActive) {
+        return;
+      }
+      
       try {
         const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        const response = await fetch(`${API_BASE_URL}/api/status/updates`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // 🔥 LOG DETALLADO SOLO CUANDO HAY NOTIFICACIONES O CADA 5 INTENTOS
+          if (data.has_notifications || Math.random() < 0.2) {
+            console.log('📢 [CALL][CLIENTE] Verificando notificaciones:', {
+              has_notifications: data.has_notifications,
+              notification_type: data.notification?.type,
+              notification_full: data.notification,
+              callId,
+              isCallActive,
+              currentCall: currentCall?.callId
+            });
+          }
+          
+          if (data.success && data.has_notifications) {
+            const notification = data.notification;
+            
+            console.log('🔔 [CALL][CLIENTE] Notificación recibida:', {
+              type: notification.type,
+              data: notification.data,
+              full_notification: notification
+            });
+            
+            // 🔥 DETECTAR NOTIFICACIÓN DE LLAMADA ACEPTADA
+            if (notification.type === 'call_accepted') {
+              console.log('✅ [CALL][CLIENTE] ¡Notificación de llamada aceptada recibida!', notification);
+              
+              isPolling = false;
+              if (interval) clearInterval(interval);
+              if (notificationInterval) clearInterval(notificationInterval);
+              setCallPollingInterval(null);
+              
+              // Obtener datos de la notificación
+              const notificationData = typeof notification.data === 'string' 
+                ? JSON.parse(notification.data) 
+                : notification.data;
+              
+              console.log('📦 [CALL][CLIENTE] Datos de notificación procesados:', notificationData);
+              
+              const roomName = notificationData.room_name || currentCall?.roomName;
+              const receiverName = notificationData.receiver?.name || notificationData.receiver_name || 'Modelo';
+              
+              console.log('🚀 [CALL][CLIENTE] Preparando redirección:', {
+                roomName,
+                receiverName,
+                hasRoomName: !!roomName
+              });
+              
+              if (roomName) {
+                // Redirigir inmediatamente
+                redirigirAVideochat({
+                  room_name: roomName,
+                  receiver: notificationData.receiver,
+                  call_id: notificationData.call_id || callId
+                });
+              } else {
+                console.error('❌ [CALL][CLIENTE] No se pudo obtener roomName de la notificación');
+              }
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [CALL][CLIENTE] Error verificando notificaciones:', error);
+      }
+    };
+    
+    // 🔥 FUNCIÓN PARA VERIFICAR ESTADO (FALLBACK)
+    const checkCallStatus = async () => {
+      if (!isPolling) return;
+      
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.warn('⚠️ [CALL][CLIENTE] No hay token disponible');
+          return;
+        }
+        
         const response = await fetch(`${API_BASE_URL}/api/calls/status`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
           },
           body: JSON.stringify({ call_id: callId })
         });
         
-        const data = await response.json();
-        
-        if (data.success) {
-          const callStatus = data.call.status;
+        if (response.ok) {
+          const data = await response.json();
           
-          if (callStatus === 'active') {
-            // ¡Llamada aceptada por la chica!
-            clearInterval(interval);
-            setCallPollingInterval(null);
-            redirigirAVideochat(data.call);
+          if (data.success) {
+            const callStatus = data.call.status;
             
-          } else if (callStatus === 'rejected') {
-            // Llamada rechazada por la chica
-            clearInterval(interval);
-            setCallPollingInterval(null);
-            setIsCallActive(false);
-            setCurrentCall(null);
-            alert(t('clientInterface.callRejected'));
+            console.log('📞 [CALL][CLIENTE] Estado de llamada:', callStatus);
             
-          } else if (callStatus === 'cancelled') {
-            // Llamada cancelada por timeout
-            clearInterval(interval);
-            setCallPollingInterval(null);
-            setIsCallActive(false);
-            setCurrentCall(null);
-            alert(t('clientInterface.callExpired'));
+            if (callStatus === 'active') {
+              // ¡Llamada aceptada por la chica!
+              isPolling = false;
+              if (interval) clearInterval(interval);
+              if (notificationInterval) clearInterval(notificationInterval);
+              setCallPollingInterval(null);
+              redirigirAVideochat(data.call);
+              
+            } else if (callStatus === 'rejected') {
+              // Llamada rechazada por la chica
+              isPolling = false;
+              if (interval) clearInterval(interval);
+              if (notificationInterval) clearInterval(notificationInterval);
+              setCallPollingInterval(null);
+              setIsCallActive(false);
+              setCurrentCall(null);
+              alert(t('clientInterface.callRejected'));
+              
+            } else if (callStatus === 'cancelled') {
+              // Llamada cancelada por timeout
+              isPolling = false;
+              if (interval) clearInterval(interval);
+              if (notificationInterval) clearInterval(notificationInterval);
+              setCallPollingInterval(null);
+              setIsCallActive(false);
+              setCurrentCall(null);
+              alert(t('clientInterface.callExpired'));
+            }
           }
+        } else if (response.status === 403) {
+          // Si hay error 403, incrementar contador y reducir frecuencia
+          consecutive403Errors++;
+          
+          // Si hay muchos errores 403 consecutivos, reducir frecuencia del polling de status
+          if (consecutive403Errors >= 3) {
+            // Reducir frecuencia a cada 2 segundos en lugar de 500ms
+            if (interval) {
+              clearInterval(interval);
+              interval = setInterval(checkCallStatus, 2000);
+            }
+          }
+          
+          // Intentar obtener más información del error
+          try {
+            const errorData = await response.json();
+            console.warn('⚠️ [CALL][CLIENTE] Error 403 en status:', {
+              error: errorData.error || errorData.message,
+              callId,
+              hasToken: !!token,
+              consecutiveErrors: consecutive403Errors
+            });
+          } catch (e) {
+            console.warn('⚠️ [CALL][CLIENTE] Error 403 en status (sin detalles):', {
+              callId,
+              hasToken: !!token,
+              consecutiveErrors: consecutive403Errors
+            });
+          }
+          // Continuar con notificaciones - no detener el polling
+        } else if (response.status === 401) {
+          // Token inválido o expirado
+          console.error('❌ [CALL][CLIENTE] Error 401 - Token inválido o expirado');
+          // No detener el polling, el sistema de notificaciones puede seguir funcionando
+        } else if (response.ok) {
+          // Si la respuesta es exitosa, resetear el contador de errores
+          consecutive403Errors = 0;
         }
         
       } catch (error) {
-              }
-    }, 2000);
+        // Solo loggear errores críticos, no detener el polling
+        if (error.name !== 'AbortError') {
+          console.error('❌ [CALL][CLIENTE] Error en checkCallStatus:', error.message);
+        }
+      }
+    };
+    
+    // 🔥 EJECUTAR AMBOS INMEDIATAMENTE
+    console.log('🔄 [CALL][CLIENTE] Iniciando polling dual para callId:', callId);
+    checkCallStatus();
+    checkCallAcceptedNotification();
+    
+    // 🔥 POLLING DE ESTADO CADA 500ms (más frecuente)
+    interval = setInterval(checkCallStatus, 500);
+    
+    // 🔥 POLLING DE NOTIFICACIONES CADA 500ms (más confiable y rápido)
+    notificationInterval = setInterval(checkCallAcceptedNotification, 500);
     
     setCallPollingInterval(interval);
     
+    console.log('✅ [CALL][CLIENTE] Polling dual iniciado:', {
+      statusInterval: '500ms',
+      notificationInterval: '500ms',
+      callId
+    });
+    
     // Timeout de seguridad
     setTimeout(() => {
-      if (interval) {
+      if (interval && isPolling) {
+        isPolling = false;
         clearInterval(interval);
+        if (notificationInterval) clearInterval(notificationInterval);
         setCallPollingInterval(null);
         if (isCallActive) {
           setIsCallActive(false);
@@ -547,101 +1071,37 @@ export default function InterfazCliente() {
     setCurrentCall(null);
   };
 
-  // 🔥 NUEVA FUNCIÓN: POLLING PARA LLAMADAS ENTRANTES
-  const verificarLlamadasEntrantes = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/api/calls/check-incoming`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.has_incoming && data.incoming_call) {
-          
-          const isMyOutgoingCall = currentCall && 
-                                  currentCall.callId === data.incoming_call.id;
-          
-          if (isMyOutgoingCall) {
-            return;
-          }
-          
-          if (!isReceivingCall && !isCallActive) {
-            playIncomingCallSound();
-            setIncomingCall(data.incoming_call);
-            setIsReceivingCall(true);
-          }
-        } else if (isReceivingCall && !data.has_incoming) {
-          stopIncomingCallSound();
-          setIsReceivingCall(false);
-          setIncomingCall(null);
-        }
-      }
-    } catch (error) {
-    }
-  };
-
-  // 🔥 NUEVA FUNCIÓN: RESPONDER LLAMADA ENTRANTE
-  const responderLlamada = async (accion) => {
-    if (!incomingCall) return;
-    
-    try {
-      
-      stopIncomingCallSound(); // 🔥 AGREGAR ESTA LÍNEA
-      
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/api/calls/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          call_id: incomingCall.id,
-          action: accion
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        if (accion === 'accept') {
-          setIsReceivingCall(false);
-          setIncomingCall(null);
-          redirigirAVideochat(data);
-        } else {
-          setIsReceivingCall(false);
-          setIncomingCall(null);
-        }
-      } else {
-                setIsReceivingCall(false);
-        setIncomingCall(null);
-      }
-    } catch (error) {
-            setIsReceivingCall(false);
-      setIncomingCall(null);
-    }
-  };
+  // 🔥 REMOVIDO: verificarLlamadasEntrantes y responderLlamada ahora se manejan en GlobalCallContext
 
   // 🔥 NUEVA FUNCIÓN: REDIRIGIR AL VIDEOCHAT CLIENTE
   const redirigirAVideochat = (callData) => {
+    // 🔥 Obtener room_name de diferentes posibles ubicaciones
+    const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
+    
+    if (!roomName) {
+      console.error('❌ [CALL][CLIENTE] No se pudo obtener room_name');
+      return;
+    }
+    
+    // 🔥 Obtener el nombre del receptor/modelo
+    const receiverName = callData.receiver?.name || callData.receiver_name || callData.modelo?.name || 'Modelo';
+    
+    console.log('🚀 [CALL][CLIENTE] Redirigiendo a videochat:', {
+      roomName,
+      receiverName,
+      callData
+    });
     
     // Guardar datos de la llamada
-    localStorage.setItem('roomName', callData.room_name);
-    localStorage.setItem('userName', user?.name || 'Cliente');
-    localStorage.setItem('currentRoom', callData.room_name);
+    localStorage.setItem('roomName', roomName);
+    localStorage.setItem('userName', receiverName);
+    localStorage.setItem('currentRoom', roomName);
     localStorage.setItem('inCall', 'true');
     localStorage.setItem('videochatActive', 'true');
     
     // Limpiar estados de llamada
     setIsCallActive(false);
     setCurrentCall(null);
-    setIsReceivingCall(false);
-    setIncomingCall(null);
     
     // Limpiar intervals
     if (callPollingInterval) {
@@ -649,20 +1109,30 @@ export default function InterfazCliente() {
       setCallPollingInterval(null);
     }
     
-    // Redirigir al videochat cliente
-    navigate('/videochatclient', {
-      state: {
-        roomName: callData.room_name,
-        userName: user?.name || 'Cliente',
-        callId: callData.call_id || callData.id,
-        from: 'call',
-        callData: callData
-      }
-    });
+    // 🔥 REDIRIGIR CON URL COMPLETA Y PARÁMETROS
+    const videochatUrl = `/videochatclient?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(receiverName)}`;
+    
+    try {
+      navigate(videochatUrl, {
+        state: {
+          roomName: roomName,
+          userName: receiverName,
+          callId: callData.call_id || callData.id || callData.incoming_call?.id,
+          from: 'call',
+          callData: callData
+        },
+        replace: true
+      });
+      console.log('✅ [CALL][CLIENTE] Navegación ejecutada a:', videochatUrl);
+    } catch (navError) {
+      console.error('❌ [CALL][CLIENTE] Error en navigate, usando window.location:', navError);
+      // Fallback: usar window.location
+      window.location.href = videochatUrl;
+    }
   };
 
   // 🔄 POLLING MEJORADO - SIN PARPADEO
-  React.useEffect(() => {
+  useEffect(() => {
     if (!user?.id) return;
 
     cargarChicasActivas(false);
@@ -674,40 +1144,94 @@ export default function InterfazCliente() {
     return () => clearInterval(interval);
   }, [user?.id]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchUser = async () => {
       try {
         const userData = await getUser();
-        setUser(userData);
+        // Verificar que se obtuvo un usuario válido
+        if (!userData || (!userData.user && !userData.id)) {
+          // No hay usuario válido, limpiar y redirigir
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('session_closed_by_other_device');
+          } catch (e) {
+            // Ignorar errores
+          }
+          window.location.href = '/home';
+          return;
+        }
+        
+        const user = userData.user || userData;
+        // Verificar que el usuario tiene rol cliente
+        if (user.rol !== 'cliente') {
+          // Rol incorrecto, redirigir según rol
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          } catch (e) {
+            // Ignorar errores
+          }
+          if (user.rol === 'modelo') {
+            window.location.href = '/homellamadas';
+          } else if (user.rol === 'admin') {
+            window.location.href = '/admin/dashboard';
+          } else {
+            window.location.href = '/home';
+          }
+          return;
+        }
+        
+        setUser(user);
       } catch (err) {
-              }
+        // getUser usa axios, que ya dispara el evento axiosError automáticamente
+        // Si hay error de sesión cerrada, el evento ya fue disparado
+        logger.warn('Error al obtener usuario:', err);
+        
+        // Si hay error, verificar si es por sesión cerrada
+        const sessionClosedFlag = localStorage.getItem('session_closed_by_other_device');
+        if (sessionClosedFlag !== 'true') {
+          // No es sesión cerrada por otro dispositivo, limpiar y redirigir
+          try {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          } catch (e) {
+            // Ignorar errores
+          }
+          window.location.href = '/home';
+        }
+      }
     };
     fetchUser();
   }, []);
 
-  // 🔥 NUEVO USEEFFECT: POLLING PARA LLAMADAS ENTRANTES
-  React.useEffect(() => {
-    if (!user?.id) return;
-
-    
-    verificarLlamadasEntrantes();
-    
-    const interval = setInterval(verificarLlamadasEntrantes, 3000);
-    setIncomingCallPollingInterval(interval);
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [user?.id, isReceivingCall, isCallActive]);
+  // 🔥 REMOVIDO: Polling de llamadas entrantes ahora se maneja en GlobalCallContext
 
   // 🔥 CARGAR USUARIOS BLOQUEADOS
-  React.useEffect(() => {
+  useEffect(() => {
     if (!user?.id) return;
     cargarUsuariosBloqueados();
     consultarSaldoUsuario();
   }, [user?.id]);
+
+  // 🔥 CARGAR HISTORIAL DE LLAMADAS
+  useEffect(() => {
+    if (user?.id) {
+      cargarHistorialLlamadas();
+    } else {
+    }
+  }, [user?.id]);
+
+  // 🔥 ABRIR AUTOMÁTICAMENTE "CHICAS ACTIVAS" SI HAY CHICAS ACTIVAS
+  useEffect(() => {
+    if (chicasActivas.length > 0) {
+      setExpandedSections(prev => ({
+        ...prev,
+        activeGirls: true
+      }));
+    }
+  }, [chicasActivas.length]);
+
 
   const ModalSinSaldo = ({ isVisible, onClose, onGoToRecharge }) => {
     if (!isVisible) return null;
@@ -815,7 +1339,7 @@ export default function InterfazCliente() {
             <span className="text-white/70">{userBalance.minutes_available || 0}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/50">Estado:</span>
+            <span className="text-white/50">{t('clientInterface.status')}</span>
             <span className={
               (userBalance.total_coins || userBalance.total_available || 0) <= 29
                 ? "text-red-400"
@@ -824,10 +1348,10 @@ export default function InterfazCliente() {
                   : "text-green-400"
             }>
               {(userBalance.total_coins || userBalance.total_available || 0) <= 29
-                ? "❌ Insuficiente"
+                ? t('clientInterface.insufficientBalance')
                 : (userBalance.total_coins || userBalance.total_available || 0) <= 39
-                  ? "⚠️ Mínimo"
-                  : "Estable"
+                  ? t('clientInterface.minimumBalance')
+                  : t('clientInterface.stableBalance')
               }
             </span>
           </div>
@@ -837,7 +1361,7 @@ export default function InterfazCliente() {
   };
 
   // 🔥 CONFIGURAR SISTEMA DE AUDIO
-  React.useEffect(() => {
+  useEffect(() => {
     
     const enableAudioContext = async () => {
       try {
@@ -861,15 +1385,13 @@ export default function InterfazCliente() {
   }, []);
 
   // 🔥 CLEANUP MEJORADO
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
-      stopIncomingCallSound();
+      // 🔥 REMOVIDO: stopIncomingCallSound ahora se maneja en GlobalCallContext
       if (callPollingInterval) {
         clearInterval(callPollingInterval);
       }
-      if (incomingCallPollingInterval) {
-        clearInterval(incomingCallPollingInterval);  
-      }
+      // 🔥 REMOVIDO: incomingCallPollingInterval ahora se maneja en GlobalCallContext
     };
   }, []);
 
@@ -880,23 +1402,50 @@ export default function InterfazCliente() {
       role: "cliente",
       blockIfInCall: true
     }}>
-      <div className="min-h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white p-6">
-        <Header />
+      <div className="min-h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white flex flex-col p-3 sm:p-4 lg:p-6">
+        {/* Notificación Toast */}
+        {notification && (
+          <div className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto z-[9999] px-4 py-3 rounded-lg shadow-2xl border flex items-center gap-2 animate-slide-in-right max-w-sm sm:max-w-md backdrop-blur-sm ${
+            notification.type === 'success' 
+              ? 'bg-green-500/20 border-green-500/30 text-green-400'
+              : notification.type === 'error'
+              ? 'bg-red-500/20 border-red-500/30 text-red-400'
+              : notification.type === 'warning'
+              ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
+              : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+          }`}>
+            {notification.type === 'success' && <span className="text-base">✓</span>}
+            {notification.type === 'error' && <span className="text-base">✗</span>}
+            {notification.type === 'warning' && <span className="text-base">⚠</span>}
+            {notification.type === 'info' && <span className="text-base">ℹ</span>}
+            <span className="text-xs sm:text-sm font-medium flex-1">{notification.message}</span>
+            <button
+              onClick={() => setNotification(null)}
+              className="ml-2 text-white/60 hover:text-white text-lg font-bold"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <div className="flex-shrink-0 mb-3 sm:mb-4">
+          <Header />
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6">
           {/* Panel central */}
-          <main className="lg:col-span-3 bg-[#1f2125] rounded-2xl p-8 shadow-xl flex flex-col items-center">
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-6 mt-16">
-              {t('clientInterface.greeting', { name: user?.name })}
-            </h2>
-            <p className="text-center text-white/70 mb-8 max-w-md">
-              {t('clientInterface.mainDescription')}
-            </p>
+          <main className="flex-1 lg:w-3/4 bg-[#1f2125] rounded-2xl p-4 sm:p-5 lg:p-6 shadow-xl flex flex-col items-center justify-center">
+            <div className="w-full flex-shrink-0 flex flex-col items-center">
+              <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-center mb-3 sm:mb-4 lg:mb-5 mt-2 sm:mt-3 lg:mt-4 px-2">
+                {t('clientInterface.greeting', { name: user?.name })}
+              </h2>
+              <p className="text-center text-white/70 mb-4 sm:mb-5 lg:mb-6 max-w-md text-xs sm:text-sm lg:text-base px-4">
+                {t('clientInterface.mainDescription')}
+              </p>
 
-            {/* Botones verticales */}
-            <div className="flex flex-col items-center gap-4 w-full max-w-xs">
+              {/* Botones verticales */}
+              <div className="flex flex-col items-center gap-3 sm:gap-4 lg:gap-5 w-full max-w-xs px-2 pb-2 sm:pb-3">
               <button
-                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-8 py-4 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 onClick={validarSaldoYRedireccionarConLoading} // ✅ Usar la función con loading
                 disabled={loadingBalance}
               >
@@ -916,160 +1465,341 @@ export default function InterfazCliente() {
               </button>
 
               <button
-                className="w-full bg-[#ffe4f1] hover:bg-[#ffd1e8] text-[#4b2e35] px-8 py-4 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
+                className="w-full bg-[#ffe4f1] hover:bg-[#ffd1e8] text-[#4b2e35] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  console.log('💰 Click en Comprar Monedas - ANTES');
-                  console.log('💰 Estado actual showBuyMinutes:', showBuyMinutes);
+                  logger.debug('Click en Comprar Monedas');
                   setShowBuyMinutes(true);
-                  console.log('💰 DESPUÉS de setShowBuyMinutes(true)');
-                  setTimeout(() => {
-                    console.log('💰 Estado después de timeout:', showBuyMinutes);
-                  }, 100);
                 }}
               >
                 {t('clientInterface.buyCoins')}
               </button>
 
               {/* Consejo del día */}
-              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-4 text-center mt-2">
-                <p className="text-white text-sm mb-1 font-semibold">{t('clientInterface.tipOfTheDay')}</p>
-                <p className="text-white/70 text-sm italic">
+              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-3 sm:p-4 text-center mt-1 sm:mt-2">
+                <p className="text-white text-xs sm:text-sm mb-1 font-semibold">{t('clientInterface.tipOfTheDay')}</p>
+                <p className="text-white/70 text-xs sm:text-sm italic">
                   {t('clientInterface.dailyTip')}
                 </p>
               </div>
             </div>
+            </div>
           </main>
 
-          {/* Panel lateral derecho */}
-          <aside className="flex flex-col gap-2 h-[82vh] overflow-y-auto">
-            <SaldoWidget />
-            {/* Chicas activas */}
-            <section className="bg-[#2b2d31] rounded-2xl p-5 shadow-lg h-[44vh]">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-[#ff007a]">
-                  {t('clientInterface.activeGirls')}
-                </h3>
-                {chicasActivas.length > 0 && (
-                  <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
-                    {chicasActivas.length}
-                  </span>
-                )}
-              </div>
-              
-              {loadingUsers && initialLoad ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                  <span className="ml-3 text-sm text-white/60">
-                    {t('clientInterface.loadingGirls')}
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-3 h-[calc(100%-4rem)] overflow-y-auto pr-2">
-                  <style>
-                    {`
-                      .space-y-3::-webkit-scrollbar {
-                        width: 4px;
-                      }
-                      .space-y-3::-webkit-scrollbar-track {
-                        background: #2b2d31;
-                        border-radius: 2px;
-                      }
-                      .space-y-3::-webkit-scrollbar-thumb {
-                        background: #ff007a;
-                        border-radius: 2px;
-                      }
-                      .space-y-3::-webkit-scrollbar-thumb:hover {
-                        background: #cc0062;
-                      }
-                    `}
-                  </style>
-                  
-                  {chicasActivas.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                      <Users size={32} className="text-white/20 mb-3" />
-                      <p className="text-sm text-white/60 font-medium">
-                        {t('clientInterface.noActiveGirls')}
-                      </p>
-                      <p className="text-xs text-white/40 mt-1">
-                        {t('clientInterface.girlsWillAppear')}
-                      </p>
+          {/* Panel lateral derecho - Acordeón */}
+          <aside className="w-full lg:w-1/4 flex flex-col min-h-0 max-h-full">
+            <div className="bg-[#2b2d31] rounded-2xl border border-[#ff007a]/20 overflow-hidden flex flex-col h-full max-h-full overflow-y-auto custom-scrollbar">
+              {/* Sección 1: Saldo (siempre visible, colapsable) */}
+              {userBalance && (
+                <div className="border-b border-[#ff007a]/10 flex-shrink-0">
+                  <button
+                    onClick={() => setExpandedSections(prev => ({
+                      balance: !prev.balance,
+                      activeGirls: false,
+                      history: false
+                    }))}
+                    className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors"
+                  >
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                      <span className="text-xs sm:text-sm font-semibold text-white whitespace-nowrap">{t('clientInterface.yourBalance')}</span>
+                      <span className="text-[#ff007a] font-bold text-base sm:text-lg">
+                        {userBalance.minutes_available || 0}
+                      </span>
+                      <span className="text-xs text-white/60 whitespace-nowrap">{t('clientInterface.minutes')}</span>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {chicasActivas.map((chica, index) => (
-                        <div
-                          key={chica.id}
-                          className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
-                          style={{
-                            animationDelay: `${index * 50}ms`
-                          }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm relative">
-                              {getInitial(chica.name || chica.alias)}
-                              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
-                            </div>
-                            <div>
-                              <div className="font-semibold text-sm">
-                                {chica.name || chica.alias}
-                              </div>
-                              <div className="text-xs text-green-400">
-                                {t('clientInterface.online')}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => iniciarLlamadaAChica(chica)}
-                              disabled={isCallActive || isReceivingCall}
-                              className={`p-2 rounded-full transition-colors duration-200 ${
-                                isCallActive || isReceivingCall 
-                                  ? 'bg-gray-500/20 cursor-not-allowed' 
-                                  : 'hover:bg-[#ff007a]/20'
-                              }`}
-                              title={
-                                isCallActive || isReceivingCall 
-                                  ? t('clientInterface.callInProgress')
-                                  : t('clientInterface.callThisGirl')
-                              }
-                            >
-                              <Phone 
-                                size={16} 
-                                className={`${
-                                  isCallActive || isReceivingCall 
-                                    ? 'text-gray-500' 
-                                    : 'text-[#ff007a] hover:text-white'
-                                } transition-colors`} 
-                              />
-                            </button>
-                            <button
-                              onClick={() => abrirChatConChica(chica)}
-                              className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
-                              title={t('clientInterface.messageThisGirl')}
-                            >
-                              <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
-                            </button>
-                          </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          consultarSaldoUsuario();
+                        }}
+                        className="text-[#ff007a] hover:text-[#e6006e] transition-colors p-1.5 rounded-lg hover:bg-[#ff007a]/10"
+                        disabled={loadingBalance}
+                        title="Actualizar saldo"
+                      >
+                        {loadingBalance ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                      </button>
+                      <svg
+                        className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.balance ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                  
+                  {expandedSections.balance && (
+                    <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10">
+                      <div className="pt-2 sm:pt-3 space-y-2 sm:space-y-3">
+                        <div className="flex justify-between text-xs sm:text-sm">
+                          <span className="text-white/70">{t('clientInterface.total')}</span>
+                          <span className="text-[#ff007a] font-semibold">
+                            {userBalance.total_coins || userBalance.total_available || 0}
+                          </span>
                         </div>
-                      ))}
+                        <div className="flex justify-between text-xs sm:text-sm">
+                          <span className="text-white/70">Saldo de minutos</span>
+                          <span className="text-white font-semibold">
+                            {userBalance.purchased_coins || userBalance.purchased_balance || 0}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs sm:text-sm">
+                          <span className="text-white/70">Saldo de regalo</span>
+                          <span className="text-white font-semibold">
+                            {userBalance.gift_coins || userBalance.gift_balance || 0}
+                          </span>
+                        </div>
+
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-            </section>
 
-            {/* Historial */}
-            <section className="bg-[#2b2d31] rounded-2xl p-5 shadow-lg h-[20vh]">
-              <h3 className="text-lg font-bold text-[#ff007a] mb-4 text-center">Tu Historial</h3>
-            
-            </section>
+              {/* Sección 2: Chicas Activas */}
+              <div className={`border-b border-[#ff007a]/10 flex flex-col ${expandedSections.activeGirls ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}>
+                <button
+                  onClick={() => setExpandedSections(prev => ({
+                    balance: false,
+                    activeGirls: !prev.activeGirls,
+                    history: false
+                  }))}
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
+                      {t('clientInterface.activeGirls')}
+                    </h3>
+                    {chicasActivas.length > 0 && (
+                      <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
+                        {chicasActivas.length}
+                      </span>
+                    )}
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.activeGirls ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                  {expandedSections.activeGirls && (
+                  <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
+                    
+                    {loadingUsers && initialLoad ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
+                        <span className="ml-3 text-sm text-white/60">
+                          {t('clientInterface.loadingGirls')}
+                        </span>
+                      </div>
+                    ) : chicasActivas.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center text-center py-8">
+                        <Users size={32} className="text-white/20 mb-3" />
+                        <p className="text-sm text-white/60 font-medium">
+                          {t('clientInterface.noActiveGirls')}
+                        </p>
+                        <p className="text-xs text-white/40 mt-1">
+                          {t('clientInterface.girlsWillAppear')}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 pt-3">
+                        {chicasActivas.map((chica, index) => (
+                          <div
+                            key={chica.id}
+                            className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
+                            style={{
+                              animationDelay: `${index * 50}ms`
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                {chica.avatar_url ? (
+                                  <img 
+                                    src={chica.avatar_url} 
+                                    alt={chica.display_name || chica.name || chica.alias} 
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextElementSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : null}
+                                <div 
+                                  className={`w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${chica.avatar_url ? 'hidden' : ''}`}
+                                >
+                                  {getInitial(chica.display_name || chica.name || chica.alias)}
+                                </div>
+                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
+                              </div>
+                              <div>
+                                <div className="font-semibold text-sm">
+                                  {chica.display_name || chica.name || chica.alias}
+                                </div>
+                                <div className="text-xs text-green-400">
+                                  {t('clientInterface.online')}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => iniciarLlamadaAChica(chica)}
+                                disabled={isCallActive || isReceivingCall}
+                                className={`p-2 rounded-full transition-colors duration-200 ${
+                                  isCallActive || isReceivingCall 
+                                    ? 'bg-gray-500/20 cursor-not-allowed' 
+                                    : 'hover:bg-[#ff007a]/20'
+                                }`}
+                                title={
+                                  isCallActive || isReceivingCall 
+                                    ? t('clientInterface.callInProgress')
+                                    : t('clientInterface.callThisGirl')
+                                }
+                              >
+                                <Phone 
+                                  size={16} 
+                                  className={`${
+                                    isCallActive || isReceivingCall 
+                                      ? 'text-gray-500' 
+                                      : 'text-[#ff007a] hover:text-white'
+                                  } transition-colors`} 
+                                />
+                              </button>
+                              <button
+                                onClick={() => abrirChatConChica(chica)}
+                                className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
+                                title={t('clientInterface.messageThisGirl')}
+                              >
+                                <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Sección 3: Historial */}
+              <div className={`flex flex-col ${expandedSections.history ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}>
+                <button
+                  onClick={() => setExpandedSections(prev => {
+                    const newHistoryState = !prev.history;
+                    return {
+                      balance: false,      // Cerrar Tu Saldo cuando se abre Historial
+                      activeGirls: false,  // Cerrar Chicas Activas cuando se abre Historial
+                      history: newHistoryState
+                    };
+                  })}
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0"
+                >
+                  <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
+                    {t('clientInterface.yourHistory')}
+                  </h3>
+                  <svg
+                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {expandedSections.history && (
+                  <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
+                    <div className="space-y-2 sm:space-y-3 pt-2 sm:pt-3">
+                      {(() => {
+                        return loadingHistory ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
+                          </div>
+                        ) : callHistory.length === 0 ? (
+                          <div className="text-center py-8">
+                            <p className="text-white/60 text-sm">
+                              {t("client.history.noHistory")}
+                            </p>
+                          </div>
+                        ) : (
+                        callHistory.map((item) => (
+                          <div 
+                            key={item.id} 
+                            className="flex justify-between items-start bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-colors duration-200"
+                          >
+                            <div className="flex gap-3 items-center flex-1 min-w-0">
+                              <div className={`w-9 h-9 flex-shrink-0 ${item.type === 'favorite' ? 'bg-yellow-500' : 'bg-pink-400'} text-[#1a1c20] font-bold rounded-full flex items-center justify-center text-sm`}>
+                                {item.type === 'favorite' ? <Star size={16} className="text-[#1a1c20]" /> : getInitial(item.user_name)}
+                              </div>
+                              <div className="text-sm min-w-0 flex-1">
+                                <p className="font-medium text-white truncate">{item.user_name}</p>
+                                <p className="text-white/60 text-xs">
+                                  {item.type === 'favorite' 
+                                    ? `${item.user_name} ${t("client.history.addedToFavorites")}`
+                                    : item.status === 'ended' 
+                                    ? t("client.history.callEnded")
+                                    : item.status === 'rejected'
+                                    ? t("client.history.callRejected")
+                                    : t("client.history.callCancelled")
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <div className="text-right text-white/40 text-xs">
+                                {item.formatted_date || new Date(item.timestamp).toLocaleDateString()}
+                              </div>
+                              {item.user_id && (
+                                <>
+                                  {item.type === 'favorite' ? (
+                                    <button
+                                      onClick={() => abrirChatConChica({ id: item.user_id, name: item.user_name, role: 'modelo' })}
+                                      className="p-1.5 hover:bg-[#ff007a]/20 rounded-lg transition-colors"
+                                      title={t("client.history.sendMessage")}
+                                    >
+                                      <MessageSquare size={14} className="text-[#ff007a]" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => iniciarLlamadaAChica({ id: item.user_id, name: item.user_name, role: 'modelo' })}
+                                      className="p-1.5 hover:bg-[#ff007a]/20 rounded-lg transition-colors"
+                                      title={t("client.history.callAgain")}
+                                    >
+                                      <Phone size={14} className="text-[#ff007a]" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </aside>
         </div>
 
-        {/* Estilos adicionales para animaciones */}
-        <style jsx>{`
+        {/* Estilos adicionales para animaciones y scrollbar */}
+        <style>{`
           @keyframes fadeIn {
             from {
               opacity: 0;
@@ -1083,6 +1813,39 @@ export default function InterfazCliente() {
           
           .animate-fadeIn {
             animation: fadeIn 0.3s ease-out forwards;
+          }
+          
+          /* Scrollbar personalizado mejorado */
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(43, 45, 49, 0.5);
+            border-radius: 10px;
+            margin: 4px 0;
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #ff007a 0%, #cc0062 100%);
+            border-radius: 10px;
+            border: 2px solid rgba(43, 45, 49, 0.3);
+            box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
+            box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+          }
+          
+          .custom-scrollbar::-webkit-scrollbar-thumb:active {
+            background: linear-gradient(180deg, #cc0062 0%, #99004d 100%);
+          }
+          
+          /* Para Firefox */
+          .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
           }
         `}</style>
 
@@ -1109,7 +1872,6 @@ export default function InterfazCliente() {
         {/* 🔄 CAMBIO: Reemplazar StripeBuyMinutes con UnifiedPaymentModal */}
         {showBuyMinutes && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)' }}>
-            {console.log('✅ Renderizando UnifiedPaymentModal, showBuyMinutes:', showBuyMinutes)}
             <UnifiedPaymentModal onClose={cerrarModalCompraMinutos} />
           </div>
         )}
@@ -1117,18 +1879,22 @@ export default function InterfazCliente() {
         {/* 🔥 OVERLAY PARA LLAMADAS SALIENTES */}
         <CallingSystem
           isVisible={isCallActive}
-          callerName={currentCall?.name || currentCall?.alias}
-          callerAvatar={currentCall?.avatar}
+          callerName={currentCall?.display_name || currentCall?.name || currentCall?.alias}
+          callerAvatar={currentCall?.avatar_url || null}
           onCancel={cancelarLlamada}
           callStatus={currentCall?.status || 'initiating'}
         />
 
-        {/* 🔥 OVERLAY PARA LLAMADAS ENTRANTES */}
-        <IncomingCallOverlay
-          isVisible={isReceivingCall}
-          callData={incomingCall}
-          onAnswer={() => responderLlamada('accept')}
-          onDecline={() => responderLlamada('reject')}
+        {/* 🔥 REMOVIDO: IncomingCallOverlay ahora se maneja globalmente en GlobalCallContext */}
+
+        {/* 🔥 MODAL DE SALDO INSUFICIENTE */}
+        <ModalSinSaldo
+          isVisible={showNoBalanceModal}
+          onClose={() => setShowNoBalanceModal(false)}
+          onGoToRecharge={() => {
+            setShowNoBalanceModal(false);
+            setShowBuyMinutes(true);
+          }}
         />
 
       </div>

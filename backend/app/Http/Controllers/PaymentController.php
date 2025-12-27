@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Payment;
 use App\Models\User;
+use App\Models\UserPaymentMethod;
+use App\Models\CoinPurchase;
 use App\Notifications\PaymentMethodChanged;
 use App\Mail\VerificationCodeMail;
 use Illuminate\Http\Request;
@@ -11,7 +13,9 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Services\PlatformSettingsService;
 
 class PaymentController extends Controller
 {
@@ -272,7 +276,7 @@ class PaymentController extends Controller
             'account_details' => $user->account_details,
             'account_holder_name' => $user->account_holder_name,
             'is_verified' => $user->payment_method_verified ?? false,
-            'minimum_payout' => $user->minimum_payout ?? 40.00,
+            'minimum_payout' => $user->minimum_payout ?? PlatformSettingsService::getDecimal('default_minimum_payout', 40.00),
             'available_methods' => [
                 'bancolombia' => 'Bancolombia',
                 'nequi' => 'Nequi',
@@ -347,9 +351,315 @@ class PaymentController extends Controller
         ]);
         
         return response()->json([
-            'minimum_payout' => $user->minimum_payout ?? 40.00,
+            'minimum_payout' => $user->minimum_payout ?? PlatformSettingsService::getDecimal('default_minimum_payout', 40.00),
             'available_amounts' => [40, 80, 120, 180, 240],
             'currency' => 'USD'
         ]);
+    }
+
+    /**
+     * Obtener métodos de pago guardados del usuario
+     */
+    public function getSavedPaymentMethods()
+    {
+        if (!auth('sanctum')->check()) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $user = auth('sanctum')->user();
+
+        $methods = UserPaymentMethod::where('user_id', $user->id)
+            ->active()
+            ->orderBy('is_default', 'desc')
+            ->orderBy('last_used_at', 'desc')
+            ->get()
+            ->map(function ($method) {
+                return [
+                    'id' => $method->id,
+                    'payment_type' => $method->payment_type,
+                    'display_name' => $method->display_name,
+                    'last_four_digits' => $method->last_four_digits,
+                    'bank_name' => $method->bank_name,
+                    'account_type' => $method->account_type,
+                    'is_default' => $method->is_default,
+                    'last_used_at' => $method->last_used_at?->toISOString(),
+                    'formatted_last_used' => $method->formatted_last_used,
+                    'usage_count' => $method->usage_count,
+                    'metadata' => $method->metadata
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'methods' => $methods
+        ]);
+    }
+
+    /**
+     * Agregar nuevo método de pago
+     */
+    public function addPaymentMethod(Request $request)
+    {
+        if (!auth('sanctum')->check()) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $user = auth('sanctum')->user();
+
+        $validator = Validator::make($request->all(), [
+            'payment_type' => 'required|in:card', // Solo tarjetas permitidas
+            'last_four_digits' => 'required|string|size:4|regex:/^[0-9]{4}$/', // Requerido y exactamente 4 dígitos
+            'is_default' => 'boolean',
+            'metadata' => 'nullable|array'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => $validator->errors()->first()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $isDefault = $request->input('is_default', false);
+
+            // Si se marca como default, desmarcar otros
+            if ($isDefault) {
+                UserPaymentMethod::where('user_id', $user->id)
+                    ->update(['is_default' => false]);
+            }
+
+            $method = UserPaymentMethod::create([
+                'user_id' => $user->id,
+                'payment_type' => 'card', // Solo tarjetas
+                'last_four_digits' => $request->input('last_four_digits'),
+                'bank_name' => null, // No aplica para tarjetas
+                'account_type' => null, // No aplica para tarjetas
+                'is_default' => $isDefault,
+                'is_active' => true,
+                'metadata' => $request->input('metadata')
+            ]);
+
+            DB::commit();
+
+            Log::info('✅ Método de pago agregado', [
+                'user_id' => $user->id,
+                'method_id' => $method->id,
+                'payment_type' => $method->payment_type
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Método de pago agregado correctamente',
+                'method' => [
+                    'id' => $method->id,
+                    'payment_type' => $method->payment_type,
+                    'display_name' => $method->display_name,
+                    'is_default' => $method->is_default
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('❌ Error agregando método de pago: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al agregar el método de pago'
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualizar método de pago guardado (principalmente para marcar como default)
+     */
+    public function updateSavedPaymentMethod(Request $request, $id)
+    {
+        if (!auth('sanctum')->check()) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $user = auth('sanctum')->user();
+
+        $method = UserPaymentMethod::where('user_id', $user->id)
+            ->where('id', $id)
+            ->first();
+
+        if (!$method) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Método de pago no encontrado'
+            ], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'is_default' => 'boolean',
+            'metadata' => 'nullable|array'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error' => $validator->errors()->first()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Si se marca como default, desmarcar otros
+            if ($request->has('is_default') && $request->input('is_default')) {
+                UserPaymentMethod::where('user_id', $user->id)
+                    ->where('id', '!=', $id)
+                    ->update(['is_default' => false]);
+            }
+
+            $method->update($request->only([
+                'is_default',
+                'metadata'
+            ]));
+
+            DB::commit();
+
+            Log::info('✅ Método de pago actualizado', [
+                'user_id' => $user->id,
+                'method_id' => $method->id
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Método de pago actualizado correctamente',
+                'method' => [
+                    'id' => $method->id,
+                    'display_name' => $method->display_name,
+                    'is_default' => $method->is_default
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('❌ Error actualizando método de pago: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al actualizar el método de pago'
+            ], 500);
+        }
+    }
+
+    /**
+     * Eliminar método de pago (soft delete)
+     */
+    public function deletePaymentMethod($id)
+    {
+        if (!auth('sanctum')->check()) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $user = auth('sanctum')->user();
+
+        $method = UserPaymentMethod::where('user_id', $user->id)
+            ->where('id', $id)
+            ->first();
+
+        if (!$method) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Método de pago no encontrado'
+            ], 404);
+        }
+
+        try {
+            $method->deactivate();
+
+            Log::info('✅ Método de pago eliminado', [
+                'user_id' => $user->id,
+                'method_id' => $method->id
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Método de pago eliminado correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error eliminando método de pago: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al eliminar el método de pago'
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener métodos de pago desde historial de compras
+     */
+    public function getPaymentMethodsFromHistory()
+    {
+        if (!auth('sanctum')->check()) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $user = auth('sanctum')->user();
+
+        try {
+            // Obtener compras completadas con Wompi
+            $purchases = CoinPurchase::where('user_id', $user->id)
+                ->where('payment_method', 'wompi')
+                ->where('status', 'completed')
+                ->whereNotNull('payment_data')
+                ->orderBy('completed_at', 'desc')
+                ->limit(50)
+                ->get();
+
+            $methodsFromHistory = [];
+
+            foreach ($purchases as $purchase) {
+                $paymentData = is_string($purchase->payment_data) 
+                    ? json_decode($purchase->payment_data, true) 
+                    : $purchase->payment_data;
+
+                if (!$paymentData) continue;
+
+                // Intentar extraer información del método de pago usado
+                // Wompi puede incluir esta info en payment_data
+                $paymentType = $paymentData['payment_type'] ?? null;
+                $lastFour = $paymentData['last_four_digits'] ?? null;
+                $bankName = $paymentData['bank_name'] ?? null;
+
+                if ($paymentType) {
+                    $key = "{$paymentType}_{$lastFour}_{$bankName}";
+                    
+                    if (!isset($methodsFromHistory[$key])) {
+                        $methodsFromHistory[$key] = [
+                            'payment_type' => $paymentType,
+                            'last_four_digits' => $lastFour,
+                            'bank_name' => $bankName,
+                            'last_used_at' => $purchase->completed_at?->toISOString(),
+                            'usage_count' => 1
+                        ];
+                    } else {
+                        $methodsFromHistory[$key]['usage_count']++;
+                        if ($purchase->completed_at && 
+                            (!$methodsFromHistory[$key]['last_used_at'] || 
+                             $purchase->completed_at->gt($methodsFromHistory[$key]['last_used_at']))) {
+                            $methodsFromHistory[$key]['last_used_at'] = $purchase->completed_at->toISOString();
+                        }
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'methods' => array_values($methodsFromHistory)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo métodos del historial: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al obtener métodos del historial'
+            ], 500);
+        }
     }
 }

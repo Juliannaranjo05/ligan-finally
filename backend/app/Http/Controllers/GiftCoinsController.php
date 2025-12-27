@@ -78,24 +78,32 @@ class GiftCoinsController extends Controller
 
             Log::info('✅ DEBUGGING - Usuario encontrado:', ['user_id' => $userId, 'name' => $user->name]);
 
-            // Obtener o crear registro de coins de regalo
-            $giftCoins = $this->getUserGiftCoins($userId);
+            // 🔥 USAR UserCoins EN LUGAR DE UserGiftCoins (sistema unificado)
+            $userCoins = \App\Models\UserCoins::where('user_id', $userId)->first();
+            
+            if (!$userCoins) {
+                $userCoins = \App\Models\UserCoins::create([
+                    'user_id' => $userId,
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
+                ]);
+            }
 
-            Log::info('✅ DEBUGGING - Registro de gift coins obtenido:', [
-                'current_balance' => $giftCoins->balance,
-                'total_received' => $giftCoins->total_received
+            Log::info('✅ DEBUGGING - Registro de UserCoins obtenido:', [
+                'current_gift_balance' => $userCoins->gift_balance,
+                'purchased_balance' => $userCoins->purchased_balance
             ]);
 
-            // Actualizar balance
-            $oldBalance = $giftCoins->balance;
-            $giftCoins->balance += $amount;
-            $giftCoins->total_received += $amount;
-            $giftCoins->last_received_at = now();
-            $giftCoins->save();
+            // Actualizar gift_balance en UserCoins
+            $oldBalance = $userCoins->gift_balance;
+            $userCoins->gift_balance += $amount;
+            $userCoins->save();
 
-            Log::info('✅ DEBUGGING - Balance actualizado:', [
-                'old_balance' => $oldBalance,
-                'new_balance' => $giftCoins->balance,
+            Log::info('✅ DEBUGGING - Balance de regalos actualizado en UserCoins:', [
+                'old_gift_balance' => $oldBalance,
+                'new_gift_balance' => $userCoins->gift_balance,
                 'amount_added' => $amount
             ]);
 
@@ -120,14 +128,14 @@ class GiftCoinsController extends Controller
                 'user_id' => $userId,
                 'amount' => $amount,
                 'source' => $source,
-                'new_balance' => $giftCoins->balance
+                'new_gift_balance' => $userCoins->gift_balance
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Coins de regalo agregados exitosamente',
                 'added' => $amount,
-                'new_gift_balance' => $giftCoins->balance,
+                'new_gift_balance' => $userCoins->gift_balance,
                 'transaction_id' => $transaction->id
             ]);
 
@@ -161,16 +169,27 @@ class GiftCoinsController extends Controller
     {
         try {
             $user = Auth::user();
-            $giftCoins = $this->getUserGiftCoins($user->id);
+            
+            // 🔥 USAR UserCoins EN LUGAR DE UserGiftCoins (sistema unificado)
+            $userCoins = \App\Models\UserCoins::where('user_id', $user->id)->first();
+            
+            if (!$userCoins) {
+                $userCoins = \App\Models\UserCoins::create([
+                    'user_id' => $user->id,
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
                 'balance' => [
-                    'gift_balance' => $giftCoins->balance,
-                    'total_received' => $giftCoins->total_received,
-                    'total_sent' => $giftCoins->total_sent,
-                    'last_received_at' => $giftCoins->last_received_at,
-                    'last_sent_at' => $giftCoins->last_sent_at
+                    'gift_balance' => $userCoins->gift_balance,
+                    'purchased_balance' => $userCoins->purchased_balance,
+                    'total_balance' => $userCoins->purchased_balance + $userCoins->gift_balance,
+                    'total_consumed' => $userCoins->total_consumed
                 ]
             ]);
             

@@ -7,6 +7,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
+use App\Models\Verificacion;
+use App\Models\User;
+use Illuminate\Validation\ValidationException;
 
 
 class VerificacionController extends Controller
@@ -17,48 +22,39 @@ class VerificacionController extends Controller
     public function store(Request $request)
     {
         try {
-            // Validar archivos con reglas mejoradas
+            Log::info('📥 Recibiendo verificación', [
+                'has_selfie' => $request->hasFile('selfie'),
+                'has_documento' => $request->hasFile('documento'),
+                'has_selfie_doc' => $request->hasFile('selfie_doc'),
+                'has_video' => $request->hasFile('video'),
+                'has_video_directo' => $request->hasFile('video_directo'),
+                'video_upload_id' => $request->input('video_upload_id'),
+                'all_files' => array_keys($request->allFiles())
+            ]);
+            
+            // Validar archivos con reglas simplificadas
             $validatedData = $request->validate([
                 'selfie' => [
                     'required',
                     'image',
                     'mimes:jpeg,png,jpg,webp',
                     'max:5120', // 5MB
-                    'dimensions:min_width=200,min_height=200,max_width=4000,max_height=4000'
                 ],
                 'documento' => [
                     'required', 
                     'image',
                     'mimes:jpeg,png,jpg,webp',
                     'max:5120', // 5MB
-                    'dimensions:min_width=200,min_height=200,max_width=4000,max_height=4000'
                 ],
                 'selfie_doc' => [
                     'required',
                     'image', 
                     'mimes:jpeg,png,jpg,webp',
                     'max:5120', // 5MB
-                    'dimensions:min_width=200,min_height=200,max_width=4000,max_height=4000'
                 ],
-                'video' => [
-                    'required',
-                    'file',
-                    'mimetypes:video/webm,video/mp4,video/quicktime',
-                    'max:102400', // 100MB para mayor flexibilidad
-                    function ($attribute, $value, $fail) {
-                        // Validación de tamaño mínimo
-                        $sizeInMB = $value->getSize() / 1024 / 1024;
-                        if ($sizeInMB < 0.5) {
-                            $fail('El video debe tener al menos 0.5MB.');
-                        }
-                        
-                        // Validación de duración aproximada (opcional)
-                        $extension = $value->getClientOriginalExtension();
-                        if (!in_array($extension, ['webm', 'mp4', 'mov'])) {
-                            $fail('El formato de video no es válido.');
-                        }
-                    }
-                ]
+                'video' => 'nullable|file|mimes:webm,mp4,mov|max:102400',
+                'video_directo' => 'nullable|file|mimes:webm,mp4,mov|max:102400',
+                'video_upload_id' => 'nullable|string'
             ], [
                 // Mensajes personalizados
                 'selfie.required' => 'La foto selfie es obligatoria.',
@@ -83,6 +79,10 @@ class VerificacionController extends Controller
                 'video.file' => 'Debe adjuntar un archivo de video válido.',
                 'video.mimetypes' => 'El video debe ser formato: webm, mp4 o mov.',
                 'video.max' => 'El video no puede superar 100MB.',
+                'video_directo.required' => 'El video de verificación es obligatorio.',
+                'video_directo.file' => 'Debe adjuntar un archivo de video válido.',
+                'video_directo.mimetypes' => 'El video debe ser formato: webm, mp4 o mov.',
+                'video_directo.max' => 'El video no puede superar 100MB.',
             ]);
 
             $user = $request->user();
@@ -119,11 +119,48 @@ class VerificacionController extends Controller
                 // Crear directorio único para el usuario
                 $userFolder = 'verificaciones/' . $user->id . '/' . Carbon::now()->format('Y-m-d_H-i-s');
 
-                // Guardar archivos con nombres únicos y seguros
-                $selfie = $this->storeFileSecurely($request->file('selfie'), $userFolder, 'selfie');
-                $documento = $this->storeFileSecurely($request->file('documento'), $userFolder, 'documento');
-                $selfieDoc = $this->storeFileSecurely($request->file('selfie_doc'), $userFolder, 'selfie_doc');
-                $video = $this->storeFileSecurely($request->file('video'), $userFolder, 'video');
+                // SIMPLIFICADO: Guardar archivos directamente
+                $selfieFile = $request->file('selfie');
+                $documentoFile = $request->file('documento');
+                $selfieDocFile = $request->file('selfie_doc');
+                
+                $selfieName = 'selfie_' . time() . '_' . uniqid() . '.' . $selfieFile->getClientOriginalExtension();
+                $documentoName = 'documento_' . time() . '_' . uniqid() . '.' . $documentoFile->getClientOriginalExtension();
+                $selfieDocName = 'selfie_doc_' . time() . '_' . uniqid() . '.' . $selfieDocFile->getClientOriginalExtension();
+                
+                $selfieFile->storeAs($userFolder, $selfieName, 'local');
+                $documentoFile->storeAs($userFolder, $documentoName, 'local');
+                $selfieDocFile->storeAs($userFolder, $selfieDocName, 'local');
+                
+                $selfie = $userFolder . '/' . $selfieName;
+                $documento = $userFolder . '/' . $documentoName;
+                $selfieDoc = $userFolder . '/' . $selfieDocName;
+                
+                // SIMPLIFICADO: Manejar video directamente
+                $videoFile = $request->file('video_directo') ?? $request->file('video');
+                
+                if (!$videoFile) {
+                    Log::error('❌ No se recibió ningún archivo de video', [
+                        'has_video_directo' => $request->hasFile('video_directo'),
+                        'has_video' => $request->hasFile('video'),
+                        'all_files' => array_keys($request->allFiles())
+                    ]);
+                    throw new \Exception('El video de verificación es obligatorio.');
+                }
+                
+                Log::info('📹 Guardando video', [
+                    'name' => $videoFile->getClientOriginalName(),
+                    'size' => $videoFile->getSize(),
+                    'mime' => $videoFile->getMimeType()
+                ]);
+                
+                // Guardar video directamente
+                $videoFileName = 'video_' . time() . '_' . uniqid() . '.' . $videoFile->getClientOriginalExtension();
+                $videoPath = $userFolder . '/' . $videoFileName;
+                $videoFile->storeAs($userFolder, $videoFileName, 'local');
+                $video = $videoPath;
+                
+                Log::info('✅ Video guardado', ['path' => $video]);
 
                 // Crear registro de verificación
                 $verificacion = Verificacion::create([
@@ -442,6 +479,490 @@ class VerificacionController extends Controller
         return Verificacion::with('user:id,name,email')->latest()->take(10)->get();
     }
 
+    /**
+     * ADMIN: Obtener verificaciones pendientes
+     */
+    public function getPendientes(Request $request)
+    {
+        try {
+            $verificaciones = Verificacion::where('estado', 'pendiente')
+                ->with(['user:id,name,email,country,created_at'])
+                ->latest()
+                ->get()
+                ->map(function ($verificacion) {
+                    return [
+                        'id' => $verificacion->id,
+                        'user_id' => $verificacion->user_id,
+                        'user' => [
+                            'id' => $verificacion->user->id ?? null,
+                            'name' => $verificacion->user->name ?? 'Usuario eliminado',
+                            'email' => $verificacion->user->email ?? 'N/A',
+                            'country' => $verificacion->user->country ?? '🌐 No especificado'
+                        ],
+                        'documentos' => [
+                            'selfie' => $verificacion->selfie,
+                            'documento' => $verificacion->documento,
+                            'selfie_doc' => $verificacion->selfie_doc,
+                            'video' => $verificacion->video
+                        ],
+                        'estado' => $verificacion->estado,
+                        'fecha' => $verificacion->created_at->diffForHumans(),
+                        'created_at' => $verificacion->created_at->toISOString()
+                    ];
+                });
 
+            return response()->json([
+                'success' => true,
+                'data' => $verificaciones,
+                'count' => $verificaciones->count()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo verificaciones pendientes (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Aprobar verificación
+     */
+    public function aprobar(Request $request, $id)
+    {
+        try {
+            $verificacion = Verificacion::findOrFail($id);
+
+            if ($verificacion->estado !== 'pendiente') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta verificación ya ha sido procesada'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            // Obtener admin_id del request si no hay usuario autenticado
+            $adminId = auth()->id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+
+            $verificacion->update([
+                'estado' => 'aprobada',
+                'procesada_por' => $adminId,
+                'procesada_at' => Carbon::now()
+            ]);
+
+            $verificacion->user->update([
+                'verificacion_completa' => true,
+                'verificado_at' => Carbon::now(),
+                'verificacion_estado' => 'aprobada'
+            ]);
+
+            DB::commit();
+
+            Log::info('Verificación aprobada (admin)', [
+                'verificacion_id' => $verificacion->id,
+                'user_id' => $verificacion->user_id,
+                'admin_id' => $adminId
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verificación aprobada correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error aprobando verificación (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Rechazar verificación
+     */
+    public function rechazar(Request $request, $id)
+    {
+        try {
+            $verificacion = Verificacion::findOrFail($id);
+            
+            // Obtener admin_id del request si no hay usuario autenticado
+            $adminId = auth()->id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+
+            if ($verificacion->estado !== 'pendiente') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta verificación ya ha sido procesada'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            // Eliminar archivos
+            $files = [$verificacion->selfie, $verificacion->documento, $verificacion->selfie_doc, $verificacion->video];
+            foreach ($files as $file) {
+                if ($file && Storage::disk('local')->exists($file)) {
+                    Storage::disk('local')->delete($file);
+                }
+            }
+
+            // Eliminar verificación
+            $verificacion->delete();
+
+            DB::commit();
+
+            Log::info('Verificación rechazada y eliminada (admin)', [
+                'verificacion_id' => $id,
+                'user_id' => $verificacion->user_id,
+                'admin_id' => $adminId
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verificación rechazada y eliminada correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error rechazando verificación (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Ver documento específico
+     */
+    public function verDocumento($id, $tipo)
+    {
+        try {
+            $verificacion = Verificacion::findOrFail($id);
+
+            $filePath = null;
+            switch ($tipo) {
+                case 'selfie':
+                    $filePath = $verificacion->selfie;
+                    break;
+                case 'documento':
+                    $filePath = $verificacion->documento;
+                    break;
+                case 'selfie_doc':
+                    $filePath = $verificacion->selfie_doc;
+                    break;
+                case 'video':
+                    $filePath = $verificacion->video;
+                    break;
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Tipo de documento inválido'
+                    ], 400);
+            }
+
+            if (!$filePath || !Storage::disk('local')->exists($filePath)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Archivo no encontrado'
+                ], 404);
+            }
+
+            $fullPath = Storage::disk('local')->path($filePath);
+            $mimeType = Storage::disk('local')->mimeType($filePath);
+
+            // Para imágenes y videos, devolver URL
+            if (strpos($mimeType, 'image/') === 0 || strpos($mimeType, 'video/') === 0) {
+                $url = Storage::disk('local')->url($filePath);
+                // Si no funciona, construir URL manualmente
+                if (!$url || strpos($url, 'http') !== 0) {
+                    $url = url('/storage/' . str_replace('storage/', '', $filePath));
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'url' => $url,
+                        'tipo' => $tipo,
+                        'nombre' => basename($filePath),
+                        'es_video' => strpos($mimeType, 'video/') === 0
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Tipo de archivo no soportado'
+            ], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo documento (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Obtener estadísticas de verificaciones
+     */
+    public function getStats()
+    {
+        try {
+            $totalUsuarios = User::count();
+            $modelosActivas = User::where('rol', 'modelo')
+                ->where('verificacion_completa', true)
+                ->where('verificacion_estado', 'aprobada')
+                ->count();
+            $verificacionesPendientes = Verificacion::where('estado', 'pendiente')->count();
+            $clientesActivos = User::where('rol', 'cliente')
+                ->where('email_verified_at', '!=', null)
+                ->count();
+            $verificacionesEstaSemana = Verificacion::whereBetween('created_at', [
+                Carbon::now()->startOfWeek(),
+                Carbon::now()->endOfWeek()
+            ])->count();
+            $modelosNuevas = User::where('rol', 'modelo')
+                ->where('verificacion_estado', 'aprobada')
+                ->whereBetween('verificado_at', [
+                    Carbon::now()->subDays(7),
+                    Carbon::now()
+                ])
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_usuarios' => $totalUsuarios,
+                    'modelos_activas' => $modelosActivas,
+                    'verificaciones_pendientes' => $verificacionesPendientes,
+                    'clientes_activos' => $clientesActivos,
+                    'verificaciones_esta_semana' => $verificacionesEstaSemana,
+                    'modelos_nuevas' => $modelosNuevas
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo estadísticas de verificaciones (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Guardar observaciones
+     */
+    public function guardarObservaciones(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'observaciones' => 'required|string|max:1000'
+            ]);
+
+            $verificacion = Verificacion::findOrFail($id);
+            
+            // Obtener admin_id del request si no hay usuario autenticado
+            $adminId = auth()->id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+
+            // Si la tabla tiene columna observaciones, actualizarla
+            if (Schema::hasColumn('verificaciones', 'observaciones')) {
+                $verificacion->update([
+                    'observaciones' => $request->observaciones
+                ]);
+            } else {
+                // Si no existe, guardar en logs o en otra tabla
+                Log::info('Observaciones de verificación (admin)', [
+                    'verificacion_id' => $verificacion->id,
+                    'user_id' => $verificacion->user_id,
+                    'admin_id' => $adminId,
+                    'observaciones' => $request->observaciones
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Observaciones guardadas correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error guardando observaciones (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Obtener usuarios
+     */
+    public function getUsuarios(Request $request)
+    {
+        try {
+            $query = User::query();
+
+            // Filtros
+            if ($request->has('rol') && $request->rol !== 'all') {
+                $query->where('rol', $request->rol);
+            }
+
+            if ($request->has('search') && $request->search) {
+                $search = $request->search;
+                $query->where(function($q) use ($search) {
+                    $q->where('name', 'LIKE', "%{$search}%")
+                      ->orWhere('email', 'LIKE', "%{$search}%");
+                });
+            }
+
+            $perPage = $request->get('per_page', 20);
+            $users = $query->latest()->paginate($perPage);
+
+            $formattedUsers = $users->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->rol,
+                    'status' => $user->last_seen && $user->last_seen->isAfter(now()->subMinutes(5)) ? 'online' : 'offline',
+                    'verified' => $user->verificacion_completa ?? false,
+                    'email_verified' => $user->email_verified_at !== null,
+                    'country' => $user->country ?? '🌐 No especificado',
+                    'registered' => $user->created_at->format('d M'),
+                    'lastAccess' => $user->last_seen ? $user->last_seen->diffForHumans() : 'Nunca'
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formattedUsers,
+                'pagination' => [
+                    'current_page' => $users->currentPage(),
+                    'last_page' => $users->lastPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo usuarios (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Obtener usuario específico
+     */
+    public function getUsuario($id)
+    {
+        try {
+            $user = User::findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->rol,
+                    'country' => $user->country,
+                    'country_name' => $user->country_name,
+                    'city' => $user->city,
+                    'verified' => $user->verificacion_completa ?? false,
+                    'email_verified' => $user->email_verified_at !== null,
+                    'created_at' => $user->created_at->format('Y-m-d')
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo usuario (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Actualizar usuario
+     */
+    public function actualizarUsuario($id, Request $request)
+    {
+        try {
+            $user = User::findOrFail($id);
+
+            $validated = $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $user->id,
+                'country' => 'sometimes|string|max:2',
+                'country_name' => 'sometimes|string|max:255',
+                'city' => 'sometimes|string|max:255'
+            ]);
+
+            $user->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario actualizado correctamente',
+                'data' => $user->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error actualizando usuario (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ADMIN: Eliminar usuario
+     */
+    public function eliminarUsuario(Request $request, $id)
+    {
+        try {
+            $user = User::findOrFail($id);
+            
+            // Obtener admin_id del request si no hay usuario autenticado
+            $adminId = auth()->id() ?? $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+
+            DB::beginTransaction();
+
+            // Eliminar verificaciones relacionadas
+            $user->verificacion()->delete();
+
+            // Eliminar usuario
+            $user->delete();
+
+            DB::commit();
+
+            Log::info('Usuario eliminado (admin)', [
+                'user_id' => $id,
+                'admin_id' => $adminId
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario eliminado correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error eliminando usuario (admin): ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
 
 }

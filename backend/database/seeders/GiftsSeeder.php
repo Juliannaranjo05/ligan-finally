@@ -12,8 +12,10 @@ class GiftsSeeder extends Seeder
         // Método alternativo más seguro - eliminar registros en lugar de truncate
         DB::table('gifts')->delete();
         
-        // Reiniciar el auto-increment (opcional)
-        DB::statement('ALTER TABLE gifts AUTO_INCREMENT = 1;');
+        // Reiniciar el auto-increment (solo para MySQL, SQLite no lo necesita)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE gifts AUTO_INCREMENT = 1;');
+        }
 
         $gifts = [
             // PRIMERA SECCIÓN: Regalos básicos (accesibles)

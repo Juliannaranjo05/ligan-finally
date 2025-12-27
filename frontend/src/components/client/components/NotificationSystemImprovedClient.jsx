@@ -63,7 +63,7 @@ const NotificationSystemImprovedClient = ({ notifications, onRemove }) => {
 
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] max-w-sm w-full space-y-3">
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] space-y-2">
       {limitedNotifications.map((notification, index) => {
         const styles = getNotificationStyles(notification.type);
         const icon = getNotificationIcon(notification.type);
@@ -73,10 +73,11 @@ const NotificationSystemImprovedClient = ({ notifications, onRemove }) => {
             key={notification.id}
             className={`
               ${styles.bg} ${styles.border} ${styles.text}
-              bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl border rounded-2xl shadow-2xl
-              transform transition-all duration-500 ease-out
-              hover:scale-[1.02] cursor-pointer relative overflow-hidden
-              animate-slide-in-right
+              bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl border rounded-lg shadow-lg
+              transition-all duration-500 ease-out
+              hover:scale-105 cursor-pointer relative overflow-hidden
+              animate-slide-in-top
+              px-3 py-2
             `}
             style={{
               animationDelay: `${index * 100}ms`
@@ -84,74 +85,53 @@ const NotificationSystemImprovedClient = ({ notifications, onRemove }) => {
             onClick={() => onRemove(notification.id)}
           >
             {/* Línea de acento lateral */}
-            <div className={`absolute left-0 top-0 bottom-0 w-1 ${styles.accent} rounded-l-2xl`}></div>
+            <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${styles.accent} rounded-l-lg`}></div>
             
-            {/* Efecto de brillo animado */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 -translate-x-full animate-shimmer"></div>
-            
-            <div className="p-4 pl-6">
-              <div className="flex items-start gap-3">
-                {/* Icono con fondo */}
-                <div className={`
-                  flex-shrink-0 p-2 rounded-xl ${styles.bg} border ${styles.border}
-                  backdrop-blur-sm shadow-lg
-                `}>
-                  {icon}
-                </div>
-                
-                {/* Contenido */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm mb-1 text-white leading-tight">
-                        {notification.title}
-                      </h4>
-                      <p className="text-xs opacity-90 leading-relaxed text-gray-200">
-                        {notification.message}
-                      </p>
-                    </div>
-                    
-                    {/* Botón cerrar mejorado */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove(notification.id);
-                      }}
-                      className="flex-shrink-0 p-1.5 rounded-lg transition-all duration-200 
-                                 text-white/60 hover:text-white hover:bg-white/10 
-                                 hover:scale-110 group"
-                    >
-                      <X size={14} className="group-hover:rotate-90 transition-transform duration-200" />
-                    </button>
-                  </div>
-                  
-                  {/* Timestamp con mejor diseño */}
-                  <div className="flex items-center gap-2 mt-3">
-                    <Sparkles size={10} className="text-[#ff007a]/40" />
-                    <span className="text-xs text-white/50 font-mono">
-                      {new Date(notification.timestamp).toLocaleTimeString('es-ES', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                      })}
-                    </span>
-                  </div>
-                </div>
+            <div className="flex items-center gap-2 pl-3">
+              {/* Icono */}
+              <div className="flex-shrink-0">
+                {icon}
               </div>
               
-              {/* Barra de progreso mejorada */}
-              <div className="mt-4 relative">
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full bg-gradient-to-r ${styles.progressBar} rounded-full transition-all duration-100 ease-linear relative overflow-hidden`}
-                    style={{
-                      animation: `shrinkProgress ${notification.duration}ms linear forwards`
-                    }}
-                  >
-                    {/* Efecto de brillo en la barra */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent transform -skew-x-12 animate-pulse"></div>
+              {/* Contenido compacto */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-xs text-white leading-tight truncate">
+                      {notification.title}
+                    </h4>
+                    {notification.message && (
+                      <p className="text-xs opacity-80 leading-tight text-gray-300 truncate">
+                        {notification.message}
+                      </p>
+                    )}
                   </div>
+                  
+                  {/* Botón cerrar pequeño */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove(notification.id);
+                    }}
+                    className="flex-shrink-0 p-0.5 rounded transition-all duration-200 
+                               text-white/60 hover:text-white hover:bg-white/10 
+                               hover:scale-110 group"
+                  >
+                    <X size={12} className="group-hover:rotate-90 transition-transform duration-200" />
+                  </button>
                 </div>
+              </div>
+            </div>
+            
+            {/* Barra de progreso compacta */}
+            <div className="mt-1.5 relative">
+              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full bg-gradient-to-r ${styles.progressBar} rounded-full transition-all duration-100 ease-linear`}
+                  style={{
+                    animation: `shrinkProgress ${notification.duration}ms linear forwards`
+                  }}
+                ></div>
               </div>
             </div>
           </div>
@@ -176,13 +156,13 @@ const NotificationSystemImprovedClient = ({ notifications, onRemove }) => {
           to { width: 0%; }
         }
         
-        @keyframes slideInRight {
+        @keyframes slideInTop {
           from {
-            transform: translateX(100%);
+            transform: translate(-50%, -20px);
             opacity: 0;
           }
           to {
-            transform: translateX(0);
+            transform: translate(-50%, 0);
             opacity: 1;
           }
         }
@@ -192,8 +172,8 @@ const NotificationSystemImprovedClient = ({ notifications, onRemove }) => {
           100% { transform: translateX(300%) skewX(-12deg); }
         }
         
-        .animate-slide-in-right {
-          animation: slideInRight 0.5s ease-out forwards;
+        .animate-slide-in-top {
+          animation: slideInTop 0.5s ease-out forwards;
         }
         
         .animate-shimmer {

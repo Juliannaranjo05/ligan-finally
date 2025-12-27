@@ -145,8 +145,8 @@ class StoryController extends Controller
                 'file' => [
                     'required',
                     'file',
-                    'mimes:jpeg,png,jpg,mp4,webm,mov,qt', // ✅ AGREGAR mov,qt para quicktime
-                    'max:51200' // 50MB
+                    'mimes:jpeg,png,jpg,mp4,webm,mov,qt', // Solo fotos o videos
+                    // Sin límite de peso - permitir archivos de alta calidad
                 ],
                 'source_type' => 'in:upload,record'
             ]);
@@ -173,45 +173,82 @@ class StoryController extends Controller
             ], 422);
         }
 
-        // Validar tamaño
-        if ($file->getSize() > 50 * 1024 * 1024) { // 50MB
-            return response()->json([
-                'message' => 'Archivo muy grande',
-                'errors' => ['file' => ['El archivo no puede ser mayor a 50MB']]
-            ], 422);
-        }
+        // No hay límite de peso - permitir archivos de alta calidad
+        // El peso no importa, solo la duración para videos
 
-        // Validar por extensión (más confiable que MIME type)
+        // Validar por extensión - solo fotos o videos
         $extension = strtolower($file->getClientOriginalExtension());
-        $allowedExtensions = ['jpg', 'jpeg', 'png', 'mp4', 'webm', 'mov'];
+        $allowedImageExtensions = ['jpg', 'jpeg', 'png'];
+        $allowedVideoExtensions = ['mp4', 'webm', 'mov'];
+        $allowedExtensions = array_merge($allowedImageExtensions, $allowedVideoExtensions);
         
         if (!in_array($extension, $allowedExtensions)) {
             return response()->json([
                 'message' => 'Tipo de archivo no válido',
                 'errors' => ['file' => [
-                    'El archivo debe tener una de estas extensiones: ' . implode(', ', $allowedExtensions)
+                    'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM, MOV).'
                 ]]
             ], 422);
         }
+        
+        // Determinar si es imagen o video
+        $isImage = in_array($extension, $allowedImageExtensions);
+        $isVideo = in_array($extension, $allowedVideoExtensions);
 
-        // Validar MIME type de forma más permisiva
+        // Validar MIME type - solo fotos o videos
         $mimeType = $file->getMimeType();
-        $allowedMimes = [
+        $allowedImageMimes = [
             'image/jpeg',
-            'image/png',
+            'image/png'
+        ];
+        $allowedVideoMimes = [
             'video/mp4',
             'video/webm',
-            'video/quicktime', // ✅ AGREGAR ESTE
-            'video/x-msvideo', // .avi
-            'application/octet-stream' // Para archivos sin tipo detectado
+            'video/quicktime', // .mov files
+            'video/x-msvideo' // .avi files
         ];
+        $allowedMimes = array_merge($allowedImageMimes, $allowedVideoMimes);
 
+        // Si el MIME type no está en la lista, verificar por extensión
         if (!in_array($mimeType, $allowedMimes)) {
-            // Log para debug pero no fallar inmediatamente
-            Log::warning('Archivo con MIME type no estándar aceptado por extensión', [
+            Log::warning('Archivo con MIME type no estándar - validando por extensión', [
                 'original_name' => $file->getClientOriginalName(),
                 'detected_mime' => $mimeType,
                 'extension' => $extension
+            ]);
+            
+            // Si la extensión es válida pero el MIME no, permitirlo (puede ser un falso negativo)
+            if (!in_array($extension, $allowedExtensions)) {
+                return response()->json([
+                    'message' => 'Tipo de archivo no válido',
+                    'errors' => ['file' => [
+                        'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM, MOV).'
+                    ]]
+                ], 422);
+            }
+        }
+
+        // Validar duración del video si es un video (máximo 15 segundos)
+        if ($isVideo) {
+            $videoDuration = $this->getVideoDuration($file);
+            
+            if ($videoDuration === null) {
+                Log::warning('No se pudo determinar la duración del video', [
+                    'file' => $file->getClientOriginalName()
+                ]);
+                // Continuar - la validación del frontend ya lo validó
+            } elseif ($videoDuration > 15) {
+                return response()->json([
+                    'message' => 'El video excede la duración máxima',
+                    'errors' => ['file' => [
+                        'Los videos no pueden durar más de 15 segundos. Duración actual: ' . round($videoDuration, 1) . 's'
+                    ]]
+                ], 422);
+            }
+            
+            Log::info('✅ Duración del video validada', [
+                'duration' => $videoDuration,
+                'file' => $file->getClientOriginalName()
             ]);
         }
 
@@ -220,7 +257,9 @@ class StoryController extends Controller
             'name' => $file->getClientOriginalName(),
             'mime' => $mimeType,
             'extension' => $extension,
-            'size' => $file->getSize()
+            'size' => $file->getSize(),
+            'is_video' => $isVideo,
+            'is_image' => $isImage
         ]);
 
         // ... resto de tu código para guardar la historia ...
@@ -291,6 +330,11 @@ class StoryController extends Controller
                 $assetUrl = asset('storage/' . $story->file_path);
                 $manualUrl = config('app.url') . '/storage/' . $story->file_path;
                 
+                // Asegurar que las URLs no tengan doble slash
+                $storageUrl = str_replace('//storage', '/storage', $storageUrl);
+                $assetUrl = str_replace('//storage', '/storage', $assetUrl);
+                $manualUrl = str_replace('//storage', '/storage', $manualUrl);
+                
                 Log::info('🔗 DEBUG COMPLETO DE ARCHIVO:', [
                     'file_path' => $story->file_path,
                     'file_exists' => $fileExists,
@@ -303,10 +347,11 @@ class StoryController extends Controller
                     'filesystem_config' => config('filesystems.disks.public')
                 ]);
                 
-                // Usar la URL que funcione mejor
-                $storyData['file_url'] = $storageUrl;
+                // Usar la URL manual como principal (más confiable)
+                $storyData['file_url'] = $manualUrl;
                 $storyData['file_url_asset'] = $assetUrl;
                 $storyData['file_url_manual'] = $manualUrl;
+                $storyData['file_url_storage'] = $storageUrl; // Agregar también la storage URL
                 $storyData['file_exists'] = $fileExists;
             }
 
@@ -596,6 +641,40 @@ class StoryController extends Controller
                 'message' => 'No se pudieron cargar las historias',
                 'details' => app()->environment('local') ? $e->getMessage() : 'Error interno'
             ], 500);
+        }
+    }
+
+    /**
+     * Obtener la duración de un video en segundos
+     * Intenta usar ffprobe si está disponible, si no retorna null
+     */
+    private function getVideoDuration($file)
+    {
+        try {
+            $filePath = $file->getRealPath();
+            
+            // Intentar usar ffprobe si está disponible
+            if (shell_exec('which ffprobe')) {
+                $command = sprintf(
+                    'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "%s" 2>&1',
+                    escapeshellarg($filePath)
+                );
+                
+                $output = shell_exec($command);
+                $duration = floatval(trim($output));
+                
+                if ($duration > 0 && is_finite($duration)) {
+                    return $duration;
+                }
+            }
+            
+            // Si ffprobe no está disponible o falló, intentar con getID3 si está instalado
+            // Por ahora retornamos null y confiamos en la validación del frontend
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::warning('Error al obtener duración del video: ' . $e->getMessage());
+            return null;
         }
     }
 }

@@ -112,7 +112,7 @@ const StoriesModal = ({
 
       if (response.data && response.data.length > 0) {
         setStories(response.data);
-              } else {
+      } else {
         setStories([]);
         notifications.info(t('storiesModal.noStoriesAvailable'));
       }
@@ -126,8 +126,26 @@ const StoriesModal = ({
 
   // 📊 Cargar datos específicos de la historia actual
   const loadStoryData = (story) => {
-    setViewsCount(story.views_count || 0);
-    setLikesCount(story.likes_count || 0);
+    console.log({
+      storyId: story.id,
+      views_count: story.views_count,
+      likes_count: story.likes_count,
+      storyObject: story
+    });
+    
+    // Usar los valores del objeto story que viene del servidor
+    const views = story.views_count || 0;
+    const likes = story.likes_count || 0;
+    
+    console.log({
+      views,
+      likes,
+      storyLikesCount: story.likes_count,
+      storyViewsCount: story.views_count
+    });
+    
+    setViewsCount(views);
+    setLikesCount(likes);
     
     // Verificar si el usuario ya dio like (esto requeriría un endpoint adicional)
     checkIfUserLiked(story.id);
@@ -186,27 +204,62 @@ const StoriesModal = ({
     if (stories.length === 0) return;
     
     const currentStory = stories[currentStoryIndex];
-    
-    try {
-      const token = localStorage.getItem('token');
-      const endpoint = hasLiked ? 'unlike' : 'like';
-      
-      await axios.post(`${API_BASE_URL}/api/stories/${currentStory.id}/${endpoint}`, {}, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+
+      try {
+        const token = localStorage.getItem('token');
+        const endpoint = hasLiked ? 'unlike' : 'like';
+        const url = `${API_BASE_URL}/api/stories/${currentStory.id}/${endpoint}`;
+
+        const response = await axios.post(url, {}, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.data.has_liked !== undefined) {
+          setHasLiked(response.data.has_liked);
+        } else {
+          setHasLiked(!hasLiked);
         }
-      });
       
-      // Actualizar estado local
-      setHasLiked(!hasLiked);
-      setLikesCount(prev => hasLiked ? prev - 1 : prev + 1);
+      // Usar el contador del servidor si está disponible, sino hacer cálculo local
+      if (response.data.likes_count !== undefined) {
+        setLikesCount(response.data.likes_count);
+        
+        // Actualizar también el array de stories para mantener sincronización
+        setStories(prevStories => 
+          prevStories.map(story => 
+            story.id === currentStory.id 
+              ? { ...story, likes_count: response.data.likes_count }
+              : story
+          )
+        );
+      } else {
+        const newCount = hasLiked ? likesCount - 1 : likesCount + 1;
+        setLikesCount(newCount);
+        
+        // Actualizar también el array de stories
+        setStories(prevStories => 
+          prevStories.map(story => 
+            story.id === currentStory.id 
+              ? { ...story, likes_count: newCount }
+              : story
+          )
+        );
+      }
       
       if (!hasLiked) {
         notifications.success(t('storiesModal.likedStory'));
       }
     } catch (error) {
-        notifications.error(t('storiesModal.errorProcessingReaction'));
+      console.error('handleLike error', error);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          t('storiesModal.errorProcessingReaction');
+      notifications.error(errorMessage);
     }
   };
 
@@ -289,8 +342,32 @@ const StoriesModal = ({
     
     const currentStory = stories[currentStoryIndex];
     const modelo = currentStory.user;
+    // Obtener el nombre a mostrar (nickname o name)
+    const modeloDisplayName = modelo?.display_name || modelo?.nickname || modelo?.name || 'Usuario';
     
     try {
+      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA
+      const token = localStorage.getItem('token');
+      const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json();
+        if (balanceData.success && !balanceData.can_start_call) {
+          // ❌ NO TIENE SALDO SUFICIENTE - CERRAR MODAL Y REDIRIGIR
+          notifications.error(t('storiesModal.insufficientBalance') || 'No tienes saldo suficiente para llamar');
+          onClose();
+          setTimeout(() => {
+            window.location.href = '/buy-minutes';
+          }, 1000);
+          return;
+        }
+      }
             
       // Pausar historia durante la llamada
       stopStoryProgress();
@@ -301,7 +378,6 @@ const StoriesModal = ({
       });
       setIsCallActive(true);
       
-      const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
         headers: {
@@ -328,13 +404,29 @@ const StoriesModal = ({
         // Iniciar polling para verificar estado de la llamada
         startCallPolling(data.call_id);
         
-        notifications.success(t('storiesModal.callingUser', { name: modelo.name }));
+        notifications.success(t('storiesModal.callingUser', { name: modeloDisplayName }));
         
       } else {
-                setIsCallActive(false);
+        setIsCallActive(false);
         setCurrentCall(null);
         
-        if (data.error.includes('bloqueado')) {
+        // 🔥 DETECTAR ERRORES ESPECÍFICOS
+        const errorMessage = data.error || data.message || '';
+        const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                              errorMessage.toLowerCase().includes('balance') ||
+                              errorMessage.toLowerCase().includes('insufficient') ||
+                              errorMessage.toLowerCase().includes('coins');
+        
+        if (isBalanceError) {
+          notifications.error(t('storiesModal.insufficientBalance') || 'No tienes saldo suficiente para llamar');
+          onClose();
+          setTimeout(() => {
+            window.location.href = '/buy-minutes';
+          }, 1000);
+          return;
+        }
+        
+        if (data.error && data.error.includes('bloqueado')) {
           notifications.warning(t('storiesModal.cannotCallUser'));
         } else {
           notifications.error(t('storiesModal.callStartError'));
@@ -345,8 +437,25 @@ const StoriesModal = ({
       }
       
     } catch (error) {
-            setIsCallActive(false);
+      setIsCallActive(false);
       setCurrentCall(null);
+      
+      // 🔥 DETECTAR ERRORES DE SALDO EN LA EXCEPCIÓN
+      const errorMessage = error.message || '';
+      const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                            errorMessage.toLowerCase().includes('balance') ||
+                            errorMessage.toLowerCase().includes('insufficient') ||
+                            errorMessage.toLowerCase().includes('coins');
+      
+      if (isBalanceError) {
+        notifications.error(t('storiesModal.insufficientBalance') || 'No tienes saldo suficiente para llamar');
+        onClose();
+        setTimeout(() => {
+          window.location.href = '/buy-minutes';
+        }, 1000);
+        return;
+      }
+      
       notifications.error('Error al iniciar llamada');
       
       // Reanudar historia
@@ -488,8 +597,11 @@ const StoriesModal = ({
     // Cerrar modal de historias
     onClose();
     
+    // Obtener el nombre a mostrar (nickname o name)
+    const modeloDisplayName = modelo?.display_name || modelo?.nickname || modelo?.name || 'Usuario';
+    
     // Navegar al chat con estado para abrir conversación específica
-    window.location.href = `/mensajes?openChatWith=${modelo.id}&userName=${encodeURIComponent(modelo.name)}&userRole=${modelo.role || 'modelo'}`;
+    window.location.href = `/mensajes?openChatWith=${modelo.id}&userName=${encodeURIComponent(modeloDisplayName)}&userRole=${modelo.role || 'modelo'}`;
   };
 
   // 🎨 Obtener inicial del nombre
@@ -536,6 +648,17 @@ const StoriesModal = ({
   const fileUrl = currentStory?.file_url?.startsWith('http') 
     ? currentStory.file_url 
     : `${API_BASE_URL}${currentStory.file_url}`;
+  
+  // Debug: verificar datos del usuario actual
+  if (currentStory?.user) {
+      console.log({
+        id: currentStory.user.id,
+        name: currentStory.user.name,
+        display_name: currentStory.user.display_name,
+        nickname: currentStory.user.nickname,
+        willShow: currentStory.user.display_name || currentStory.user.nickname || currentStory.user.name
+      });
+  }
 
   return (
     <>
@@ -547,11 +670,11 @@ const StoriesModal = ({
             {/* Info de la modelo */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm">
-                {getInitial(currentStory.user?.name)}
+                {getInitial(currentStory.user?.display_name || currentStory.user?.nickname || currentStory.user?.name)}
               </div>
               <div>
                 <p className="text-white font-semibold text-sm">
-                  {currentStory.user?.name || 'Usuario'}
+                  {currentStory.user?.display_name || currentStory.user?.nickname || currentStory.user?.name || 'Usuario'}
                 </p>
                 <p className="text-white/60 text-xs">
                   {new Date(currentStory.created_at).toLocaleDateString()}
@@ -775,7 +898,7 @@ const StoriesModal = ({
                         : 'bg-[#ff007a] hover:bg-[#e6006e] text-white'
                     }`}
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-5 h-5" />
                   </button>
                 </div>
 
@@ -883,7 +1006,7 @@ const StoriesModal = ({
       {/* Overlays de llamadas */}
       <CallingSystem
         isVisible={isCallActive}
-        callerName={currentCall?.name}
+        callerName={currentCall?.display_name || currentCall?.nickname || currentCall?.name}
         callerAvatar={currentCall?.avatar}
         onCancel={cancelCall}
         callStatus={currentCall?.status || 'initiating'}

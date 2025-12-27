@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Gift;
 use App\Models\GiftTransaction;
 use App\Models\UserGiftCoins;
+use App\Models\UserCoins;
 use App\Models\GiftRequest;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
@@ -154,26 +155,32 @@ class VideoChatGiftController extends Controller
             // Crear lock temporal
             \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
 
-            // Verificar saldo del cliente con bloqueo de fila
-            $clientCoins = UserGiftCoins::lockForUpdate()
+            // 🔥 VERIFICAR SALDO DEL CLIENTE USANDO UserCoins (balance total)
+            $clientUserCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
 
-            if (!$clientCoins) {
-                $clientCoins = UserGiftCoins::create([
+            if (!$clientUserCoins) {
+                $clientUserCoins = UserCoins::create([
                     'user_id' => $user->id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
-            if ($clientCoins->balance < $gift->price) {
+            // Obtener balance total (purchased_balance + gift_balance)
+            $totalBalance = $clientUserCoins->purchased_balance + $clientUserCoins->gift_balance;
+
+            if ($totalBalance < $gift->price) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [VIDEOCHAT] Saldo insuficiente para regalo directo", [
                     'client_id' => $user->id,
-                    'balance' => $clientCoins->balance,
+                    'total_balance' => $totalBalance,
+                    'purchased_balance' => $clientUserCoins->purchased_balance,
+                    'gift_balance' => $clientUserCoins->gift_balance,
                     'required' => $gift->price
                 ]);
                 
@@ -182,23 +189,38 @@ class VideoChatGiftController extends Controller
                     'error' => 'insufficient_balance',
                     'message' => 'Saldo insuficiente para este regalo',
                     'data' => [
-                        'current_balance' => $clientCoins->balance,
+                        'current_balance' => $totalBalance,
                         'required_amount' => $gift->price,
-                        'missing_amount' => $gift->price - $clientCoins->balance
+                        'missing_amount' => $gift->price - $totalBalance
                     ]
                 ], 400);
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
             Log::info("💰 [VIDEOCHAT] Procesando regalo directo", [
-                'client_balance_before' => $clientCoins->balance,
+                'client_balance_before' => $totalBalance,
+                'purchased_balance' => $clientUserCoins->purchased_balance,
+                'gift_balance' => $clientUserCoins->gift_balance,
                 'amount' => $gift->price,
                 'room_name' => $roomName
             ]);
             
-            // 1. Descontar del cliente
-            $clientCoins->decrement('balance', $gift->price);
-            $clientCoins->increment('total_sent', $gift->price);
+            // 1. Descontar del cliente (consumir primero de gift_balance, luego de purchased_balance)
+            $remainingToConsume = $gift->price;
+            
+            if ($clientUserCoins->gift_balance > 0 && $remainingToConsume > 0) {
+                $giftConsumed = min($clientUserCoins->gift_balance, $remainingToConsume);
+                $clientUserCoins->gift_balance -= $giftConsumed;
+                $remainingToConsume -= $giftConsumed;
+            }
+            
+            if ($remainingToConsume > 0) {
+                $clientUserCoins->purchased_balance -= $remainingToConsume;
+            }
+            
+            $clientUserCoins->total_consumed += $gift->price;
+            $clientUserCoins->last_consumption_at = now();
+            $clientUserCoins->save();
 
             // 2. Obtener/crear monedas de la modelo
             $modeloCoins = UserGiftCoins::lockForUpdate()
@@ -214,9 +236,13 @@ class VideoChatGiftController extends Controller
                 ]);
             }
 
-            // 3. Calcular comisión (70% para la modelo, 30% para la plataforma)
-            $modeloAmount = $gift->price * 0.60;
-            $platformCommission = $gift->price * 0.40;
+            // 3. Calcular comisión dinámicamente desde configuración
+            $giftCommissionPercentage = \App\Services\PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $giftCommissionDecimal = $giftCommissionPercentage / 100;
+            $modeloPercentage = 1 - $giftCommissionDecimal;
+            
+            $modeloAmount = $gift->price * $modeloPercentage;
+            $platformCommission = $gift->price * $giftCommissionDecimal;
 
             // 4. Agregar monedas a la modelo
             $modeloCoins->increment('balance', $modeloAmount);
@@ -1061,8 +1087,13 @@ class VideoChatGiftController extends Controller
             }
 
             // 3. Calcular comisión (70% para la modelo, 30% para la plataforma)
-            $modeloAmount = $giftRequest->amount * 0.60;
-            $platformCommission = $giftRequest->amount * 0.40;
+            // Usar configuración dinámica de comisión
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modeloRate = 1 - $platformCommissionRate;
+            
+            $modeloAmount = $giftRequest->amount * $modeloRate;
+            $platformCommission = $giftRequest->amount * $platformCommissionRate;
 
             // 4. Agregar monedas a la modelo
             $modeloCoins->increment('balance', $modeloAmount);
@@ -1389,22 +1420,29 @@ class VideoChatGiftController extends Controller
        try {
            $user = Auth::user();
            
-           $userCoins = UserGiftCoins::where('user_id', $user->id)->first();
+           // 🔥 USAR UserCoins EN LUGAR DE UserGiftCoins
+           $userCoins = UserCoins::where('user_id', $user->id)->first();
            
            if (!$userCoins) {
-               $userCoins = UserGiftCoins::create([
+               $userCoins = UserCoins::create([
                    'user_id' => $user->id,
-                   'balance' => 0,
-                   'total_received' => 0,
-                   'total_sent' => 0
+                   'purchased_balance' => 0,
+                   'gift_balance' => 0,
+                   'total_purchased' => 0,
+                   'total_consumed' => 0
                ]);
            }
 
+           // Balance total para regalos
+           $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
+
            return response()->json([
                'success' => true,
-               'balance' => $userCoins->balance,
-               'total_sent' => $userCoins->total_sent,
-               'total_received' => $userCoins->total_received,
+               'balance' => $totalBalance,
+               'gift_balance' => $totalBalance, // Para compatibilidad con frontend
+               'purchased_balance' => $userCoins->purchased_balance,
+               'gift_balance_coins' => $userCoins->gift_balance,
+               'total_consumed' => $userCoins->total_consumed,
                'user_role' => $user->rol,
                'context' => 'videochat'
            ]);

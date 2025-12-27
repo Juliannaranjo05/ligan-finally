@@ -477,22 +477,440 @@
     "takePhoto": "Tomar foto",
     "deletePhoto": "Eliminar foto de perfil",
     "editAlias": "Editar alias o nombre visible",
+    "editAliasModal": {
+      "title": "Editar Apodo",
+      "customNickname": "Tu apodo personalizado",
+      "nicknamePlaceholder": "Ingresa tu apodo",
+      "characters": "caracteres",
+      "preview": "Vista previa:",
+      "nicknameInfo": "Tu apodo es como te verán otros usuarios. Tu nombre real seguirá siendo",
+      "useRealName": "Usar nombre real",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "deleting": "Eliminando..."
+    },
     "language": "Idioma preferido",
+    "languageModal": {
+      "title": "Seleccionar Idioma",
+      "description": "Selecciona tu idioma preferido para las traducciones automáticas",
+      "current": "Actual",
+      "cancel": "Cancelar",
+      "saveLanguage": "Guardar idioma",
+      "saving": "Guardando..."
+    },
+    "managePhotoModal": {
+      "uploadFromFile": "Subir desde archivo",
+      "selectFile": "Seleccionar archivo",
+      "fileFormats": "JPEG, PNG, WebP (máx. 5MB)",
+      "preview": "Vista previa",
+      "confirmUpload": "Confirmar subida",
+      "uploading": "Subiendo...",
+      "cancel": "Cancelar",
+      "or": "o",
+      "takePhoto": "Tomar foto",
+      "activateCamera": "Activar cámara",
+      "activating": "Activando...",
+      "loadingCamera": "Cargando cámara...",
+      "capturePhoto": "Tomar foto",
+      "processing": "Procesando...",
+      "deleteCurrentPhoto": "Eliminar foto actual",
+      "deleting": "Eliminando...",
+      "deletePhoto": "Eliminar foto"
+    },
     "payments": "Suscripción y Pagos",
     "managePaymentMethod": "Agregar o eliminar método de pago",
     "country": "País de residencia (fiscal)",
     "minimumPayout": "Definir pago mínimo",
+    "payoutAccountModal": {
+      "currentConfiguration": "Configuración actual",
+      "country": "País",
+      "changeConfiguration": "Cambiar configuración",
+      "selectCountry": "Selecciona tu país",
+      "selectPaymentMethod": "Selecciona método de pago",
+      "localMethodsAvailable": "(Métodos locales disponibles)",
+      "cryptoOnly": "(Solo criptomonedas)",
+      "accountDetails": "Detalles de la cuenta",
+      "walletAddress": "Dirección de wallet TRC-20",
+      "accountHolderName": "Nombre del titular",
+      "accountHolderPlaceholder": "Nombre completo del titular de la cuenta",
+      "verifyWalletWarning": "⚠️ Verifica que la dirección sea correcta. Las transacciones son irreversibles.",
+      "sendVerificationCode": "Enviar código de verificación",
+      "sendingCode": "Enviando código...",
+      "verified": "Verificado",
+      "pendingVerification": "Pendiente de verificación",
+      "confirmPaymentMethod": "Confirma tu método de pago",
+      "enterVerificationCode": "Ingresa el código de 6 dígitos enviado a tu correo para confirmar el cambio de método de pago",
+      "codeValidFor": "Código válido por:",
+      "verificationCode": "Código de verificación",
+      "back": "Volver",
+      "verifyCode": "Verificar código",
+      "verifying": "Verificando...",
+      "resendCode": "Reenviar código",
+      "paymentMethodUpdated": "¡Método de pago actualizado!",
+      "paymentMethodUpdatedDescription": "Tu método de pago ha sido verificado y actualizado correctamente. Ya puedes recibir pagos.",
+      "continue": "Continuar",
+      "close": "Cerrar",
+      "success": {
+        "codeSent": "Código de verificación enviado a tu correo",
+        "verified": "¡Método de pago verificado con éxito!"
+      },
+      "errors": {
+        "selectCountry": "Por favor selecciona tu país",
+        "selectPaymentMethod": "Por favor selecciona un método de pago",
+        "enterAccountDetails": "Por favor completa todos los campos",
+        "enterAccountHolderName": "Por favor ingresa el nombre del titular",
+        "enterVerificationCode": "Por favor ingresa un código de 6 dígitos",
+        "invalidCode": "Código de verificación incorrecto",
+        "codeExpired": "El código ha expirado",
+        "codeExpiredMessage": "El código de verificación ha expirado",
+        "connectionError": "Error de conexión"
+      }
+    },
+    "minimumPayoutModal": {
+      "title": "Configurar Pago Mínimo",
+      "description": "Define el monto mínimo para recibir tus pagos. Las ganancias se acumularán hasta alcanzar este monto.",
+      "currentConfiguration": "Configuración actual",
+      "selectNewMinimum": "Selecciona nuevo monto mínimo:",
+      "recommended": "Recomendado",
+      "customPayout": "Pago personalizado",
+      "newAmountSelected": "Nuevo monto seleccionado",
+      "newAmountDescription": "Con",
+      "asMinimum": "como mínimo, solo recibirás pagos cuando tus ganancias acumuladas alcancen este monto.",
+      "moreEarningsNeeded": "Esto significa que necesitarás más ganancias antes de recibir un pago.",
+      "moreFrequentPayments": "Esto significa que recibirás pagos más frecuentemente.",
+      "cancel": "Cancelar",
+      "updateMinimum": "Actualizar Mínimo",
+      "updating": "Actualizando...",
+      "loadingConfiguration": "Cargando configuración...",
+      "payoutOptions": {
+        "basic": "Pago mínimo básico",
+        "recommended": "Pago mínimo recomendado",
+        "medium": "Pago mínimo medio",
+        "high": "Pago mínimo alto",
+        "maximum": "Pago mínimo máximo"
+      },
+      "payoutInfo": "Solo recibirás pagos cuando alcances este monto",
+      "errors": {
+        "loadingError": "Error cargando configuración actual",
+        "selectDifferentAmount": "Selecciona un monto diferente al actual",
+        "updateError": "Error al actualizar el pago mínimo",
+        "connectionError": "Error de conexión"
+      },
+      "success": {
+        "updated": "Pago mínimo actualizado a"
+      }
+    },
+    "privacyNotifications": "Privacidad y Notificaciones",
+    "notifications": "Notificaciones",
+    "privacy": "Privacidad",
+    "favoriteModels": "Modelos Favoritos",
+    "transactionHistory": "Historial de Transacciones",
     "others": "Otros",
     "support": "Soporte o ayuda",
     "terms": "Términos y condiciones",
     "report": "Reportar un problema",
-    "modalInstruction": "Aquí puedes implementar el formulario o contenido correspondiente para {{item}}."
+    "modalInstruction": "Funcionalidad de {{item}} próximamente disponible.",
+    "googlePasswordSetup": {
+      "description": "Como te registraste con Google, no tienes una contraseña establecida. Te enviaremos un enlace por correo para que puedas establecer una contraseña.",
+      "info": "Después de establecer tu contraseña, podrás iniciar sesión tanto con Google como con tu email y contraseña.",
+      "sendEmailButton": "Enviar enlace por email",
+      "sending": "Enviando...",
+      "emailSent": "Enlace enviado",
+      "emailSentDescription": "Se ha enviado un enlace a {{email}}. Haz clic en el enlace del correo para establecer tu contraseña.",
+      "emailSentTip": "El enlace expirará en 24 horas. Si no recibes el correo, verifica tu carpeta de spam."
+    },
+    "changePasswordModal": {
+      "title": "Cambiar Contraseña",
+      "verifyIdentity": "Para cambiar tu contraseña, necesitamos verificar tu identidad.",
+      "currentPassword": "Contraseña actual",
+      "newPassword": "Nueva contraseña (mín. 8 caracteres)",
+      "confirmPassword": "Confirmar nueva contraseña",
+      "codeSent": "Código enviado",
+      "codeSentDescription": "Te hemos enviado un código de 6 dígitos a tu correo electrónico.",
+      "codePlaceholder": "Código de 6 dígitos",
+      "resendCode": "¿No recibiste el código? Reenviar",
+      "successTitle": "¡Contraseña cambiada!",
+      "successMessage": "Tu contraseña ha sido actualizada exitosamente.",
+      "autoClose": "Este modal se cerrará automáticamente...",
+      "processing": "Procesando...",
+      "sendCode": "Enviar código",
+      "changePassword": "Cambiar contraseña",
+      "cancel": "Cancelar",
+      "errors": {
+        "enterCurrentPassword": "Ingresa tu contraseña actual",
+        "passwordMinLength": "La nueva contraseña debe tener al menos 8 caracteres",
+        "passwordsDontMatch": "Las contraseñas nuevas no coinciden",
+        "enterCode": "Ingresa el código de 6 dígitos",
+        "codeSent": "Código enviado a tu correo electrónico",
+        "errorRequestingCode": "Error solicitando código",
+        "connectionError": "Error de conexión",
+        "passwordChanged": "🎉 ¡Contraseña cambiada exitosamente!",
+        "errorChangingPassword": "Error cambiando contraseña"
+      }
+    },
+    "logoutAllModal": {
+      "title": "Cerrar Todas las Sesiones",
+      "whatWillHappen": "¿Qué va a pasar?",
+      "willCloseAll": "Se cerrarán todas tus sesiones activas",
+      "willNeedLogin": "Tendrás que volver a iniciar sesión en otros dispositivos",
+      "currentStays": "Tu sesión actual se mantendrá activa",
+      "sendCodeDescription": "Para continuar, te enviaremos un código de verificación a tu correo electrónico.",
+      "codeSent": "Código enviado",
+      "codeSentDescription": "Te hemos enviado un código de verificación a tu correo electrónico.",
+      "codePlaceholder": "Código de 6 dígitos",
+      "resendCode": "¿No recibiste el código? Reenviar",
+      "successTitle": "¡Sesiones cerradas!",
+      "successMessage": "Todas tus sesiones han sido cerradas exitosamente.",
+      "autoClose": "Este modal se cerrará automáticamente...",
+      "processing": "Procesando...",
+      "sendCode": "Enviar código",
+      "closeSessions": "Cerrar sesiones",
+      "cancel": "Cancelar",
+      "errors": {
+        "enterCode": "Ingresa el código de 6 dígitos",
+        "codeSent": "Código enviado a tu correo electrónico",
+        "errorRequestingCode": "Error solicitando código",
+        "connectionError": "Error de conexión",
+        "sessionsClosed": "🎉 ¡Todas las sesiones han sido cerradas exitosamente!",
+        "errorClosingSessions": "Error cerrando sesiones"
+      }
+    },
+      "deleteAccountModal": {
+        "title": "Eliminar Cuenta",
+        "warning": "ADVERTENCIA",
+        "warningPermanent": "Esta acción es PERMANENTE e IRREVERSIBLE",
+        "warningDeleteData": "Se eliminarán todos tus datos y conversaciones",
+        "warningNoRecovery": "No podrás recuperar tu cuenta",
+        "warningLoseAccess": "Perderás acceso a todas las funciones",
+        "confirmPassword": "Para continuar, confirma tu contraseña:",
+        "currentPassword": "Tu contraseña actual",
+        "finalVerification": "Verificación final",
+        "finalVerificationDescription": "Te hemos enviado un código de verificación. Esta es tu última oportunidad para cancelar.",
+        "confirmText": "Para confirmar, escribe \"ELIMINAR\":",
+        "confirmPlaceholder": "ELIMINAR",
+        "codePlaceholder": "Código de 6 dígitos",
+        "resendCode": "¿No recibiste el código? Reenviar",
+        "successTitle": "Cuenta eliminada",
+        "successMessage": "Tu cuenta ha sido eliminada permanentemente.",
+        "redirecting": "Redirigiendo al inicio...",
+        "processing": "Procesando...",
+        "sendCode": "Enviar código",
+        "deleteAccount": "ELIMINAR CUENTA",
+        "cancel": "Cancelar",
+        "errors": {
+          "enterPassword": "Ingresa tu contraseña",
+          "enterCode": "Ingresa el código de 6 dígitos",
+          "mustWriteDelete": "Debes escribir \"ELIMINAR\" para confirmar",
+          "codeSent": "Código enviado a tu correo electrónico",
+          "errorRequestingCode": "Error solicitando código",
+          "connectionError": "Error de conexión",
+          "accountDeleted": "🗑️ Cuenta eliminada correctamente. Redirigiendo...",
+          "errorDeletingAccount": "Error eliminando cuenta",
+          "sessionExpired": "Sesión expirada. Por favor, inicia sesión nuevamente."
+        }
+      },
+      "paymentMethods": {
+        "title": "Métodos de Pago",
+        "addMethod": "Agregar Método",
+        "addCard": "Agregar Tarjeta",
+        "deleteMethod": "Eliminar",
+        "setDefault": "Marcar como predeterminado",
+        "noMethods": "No tienes tarjetas guardadas",
+        "addFirst": "Agrega una tarjeta como referencia",
+        "info": "Estos métodos son solo para referencia. Los pagos se procesan directamente a través de Wompi.",
+        "cardInfo": "Esta información es solo para referencia. Los pagos se procesan directamente a través de Wompi.",
+        "card": "Tarjeta",
+        "pse": "PSE",
+        "nequi": "Nequi",
+        "bancolombia": "Bancolombia",
+        "lastUsed": "Último uso",
+        "default": "Predeterminado",
+        "suggestions": "Tarjetas usadas anteriormente",
+        "add": "Agregar",
+        "type": "Tipo de método",
+        "lastFourDigits": "Últimos 4 dígitos",
+        "lastFourDigitsHint": "Ingresa los últimos 4 dígitos de tu tarjeta como referencia",
+        "bankName": "Banco",
+        "bankPlaceholder": "Nombre del banco",
+        "accountType": "Tipo de cuenta",
+        "accountPlaceholder": "Ej: Ahorros",
+        "setAsDefault": "Marcar como predeterminado",
+        "save": "Guardar",
+        "cancel": "Cancelar",
+        "confirmDelete": "Confirmar eliminación",
+        "deleteMessage": "¿Estás seguro de que quieres eliminar este método de pago?",
+        "delete": "Eliminar",
+        "errors": {
+          "loadFailed": "Error al cargar métodos de pago",
+          "selectType": "Selecciona un tipo de método",
+          "invalidDigits": "Ingresa los últimos 4 dígitos de tu tarjeta",
+          "addFailed": "Error al agregar método",
+          "updateFailed": "Error al actualizar método",
+          "deleteFailed": "Error al eliminar método"
+        }
+      },
+      "modals": {
+      "transactionHistory": {
+        "title": "Historial de Transacciones",
+        "description": "Revisa todas tus compras, recargas de créditos y transacciones realizadas.",
+        "loading": "Cargando historial...",
+        "retry": "Reintentar",
+        "searchPlaceholder": "Buscar por ID, descripción...",
+        "empty": "No hay transacciones registradas",
+        "emptyDesc": "Tus transacciones aparecerán aquí",
+        "noResults": "No se encontraron resultados",
+        "noResultsDesc": "Intenta ajustar los filtros de búsqueda",
+        "filters": {
+          "all": "Todas",
+          "purchase": "Compras",
+          "consumption": "Consumo",
+          "gift": "Regalos"
+        },
+        "types": {
+          "purchase": "Compra",
+          "coinPurchase": "Compra de Monedas",
+          "coinGift": "Regalo de Monedas",
+          "consumption": "Consumo",
+          "giftSent": "Regalo Enviado",
+          "giftReceived": "Regalo Recibido"
+        },
+        "status": {
+          "completed": "Completado",
+          "pending": "Pendiente",
+          "failed": "Fallido",
+          "cancelled": "Cancelado"
+        },
+        "details": {
+          "title": "Detalles de Transacción",
+          "description": "Descripción",
+          "type": "Tipo",
+          "amount": "Monto",
+          "status": "Estado",
+          "date": "Fecha"
+        },
+        "errors": {
+          "title": "Error al cargar historial",
+          "loadFailed": "Error al obtener historial"
+        }
+      },
+      "notifications": {
+        "title": "Configuración de Notificaciones",
+        "description": "Personaliza qué notificaciones quieres recibir",
+        "loading": "Cargando preferencias...",
+        "saving": "Guardando...",
+        "save": "Guardar Preferencias",
+        "success": "Preferencias guardadas exitosamente",
+        "options": {
+          "messages": {
+            "label": "Notificaciones de Mensajes",
+            "description": "Ser notificado cuando recibas nuevos mensajes"
+          },
+          "calls": {
+            "label": "Notificaciones de Llamadas",
+            "description": "Ser notificado cuando recibas llamadas o solicitudes de videochat"
+          },
+          "gifts": {
+            "label": "Notificaciones de Regalos",
+            "description": "Ser notificado cuando recibas regalos"
+          },
+          "favorites": {
+            "label": "Modelos Favoritos Online",
+            "description": "Ser notificado cuando tus modelos favoritos estén en línea"
+          }
+        },
+        "errors": {
+          "saveFailed": "Error al guardar preferencias"
+        }
+      },
+      "notificationsFull": {
+        "title": "Configuración de Notificaciones",
+        "description": "Personaliza qué notificaciones quieres recibir: mensajes nuevos, modelos en línea, ofertas especiales, etc."
+      },
+      "privacy": {
+        "title": "Configuración de Privacidad",
+        "description": "Controla quién puede contactarte y gestiona tus bloqueos",
+        "loading": "Cargando información de privacidad...",
+        "confirmUnblock": "¿Estás seguro de que quieres desbloquear a este usuario?",
+        "blockedUsers": {
+          "title": "Usuarios Bloqueados",
+          "empty": "No has bloqueado a ningún usuario",
+          "emptyDesc": "Los usuarios que bloquees no podrán enviarte mensajes ni contactarte",
+          "blockedOn": "Bloqueado el",
+          "reason": "Motivo",
+          "unblock": "Desbloquear",
+          "unblocking": "Desbloqueando..."
+        },
+        "blockedByUsers": {
+          "title": "Usuarios que te han Bloqueado",
+          "empty": "Nadie te ha bloqueado",
+          "blockedOn": "Te bloqueó el",
+          "cannotContact": "No puedes contactar a este usuario"
+        },
+        "info": {
+          "title": "Información de Privacidad",
+          "point1": "Los usuarios bloqueados no pueden enviarte mensajes ni llamarte",
+          "point2": "Puedes desbloquear usuarios en cualquier momento",
+          "point3": "Si alguien te bloquea, no podrás contactarlo",
+          "point4": "Los bloqueos son privados y el otro usuario no será notificado"
+        },
+        "errors": {
+          "loadFailed": "Error al obtener estado de bloqueos",
+          "unblockFailed": "Error al desbloquear usuario"
+        }
+      },
+      "privacyFull": {
+        "title": "Configuración de Privacidad",
+        "description": "Controla quién puede verte en línea, enviar mensajes privados y ver tu perfil."
+      },
+      "favorites": {
+        "title": "Modelos Favoritos",
+        "description": "Administra tu lista de modelos favoritos"
+      },
+      "favoritesFull": {
+        "title": "Modelos Favoritos",
+        "description": "Administra tu lista de modelos favoritos y recibe notificaciones cuando estén en línea."
+      },
+      "paymentMethods": {
+        "title": "Agregar o eliminar método de pago",
+        "description": "Administra tus métodos de pago para realizar compras en la plataforma."
+      },
+      "support": {
+        "title": "Soporte o ayuda",
+        "description": "Para dudas, problemas técnicos o ayuda con tu cuenta, escríbenos a support@ligando.online y nuestro equipo te responderá lo antes posible.",
+        "contactButton": "Contactar soporte por correo"
+      },
+      "report": {
+        "title": "Reportar un problema",
+        "description": "Cuéntanos qué problema tuviste. Usaremos esta información para mejorar la plataforma.",
+        "problemType": "Tipo de problema",
+        "problemTechnical": "Problema técnico",
+        "problemPayment": "Problema con pagos / monedas",
+        "problemInappropriate": "Comportamiento inapropiado",
+        "problemOther": "Otro",
+        "describeProblem": "Describe lo que pasó",
+        "describePlaceholder": "Incluye el mayor detalle posible: qué estabas haciendo, en qué pantalla, si viste algún mensaje de error, hora aproximada, etc.",
+        "sendReport": "Enviar reporte por correo"
+      },
+      "close": "Cerrar"
+    }
   },
   "subirHistoria": {
     "titulo": "Sube o graba tu historia",
+    "tituloNoDisponible": "Historia no disponible",
     "grabar": "Grabar historia",
+    "noDisponible": "No disponible",
     "subir": "Subir desde tu dispositivo",
     "publicar": "Publicar historia",
+    "subiendo": "Subiendo...",
+    "verHistoria": "Ver Historia",
+    "eliminar": "Eliminar",
+    "eliminarYCrearNueva": "Eliminar y Crear Nueva",
+    "seleccionaCamara": "Selecciona tu cámara",
+    "consejo": "Consejo",
+    "informacion": "Información",
+    "consejoAprobacion": "Las historias pasan por aprobación antes de ser públicas. Los videos no pueden durar más de 15 segundos.",
+    "informacionRestriccion": "Solo puedes tener una historia activa a la vez. Cada historia dura 24 horas desde su aprobación.",
     "alerta_grabacion": "Función de grabación en desarrollo o integra getUserMedia para capturar video."
   },
   "esperandoVerificacion": {
@@ -549,7 +967,107 @@
     "sessionEnded": "¡Sesión terminada!",
     "connecting": "Conectando...",
     "redirectingIn": "Redirigiendo en {{seconds}}s...",
-    "dontWorry": "No te preocupes, te conectaremos con otro chico"
+    "dontWorry": "No te preocupes, te conectaremos con otro chico",
+    "waitingRoomParams": "Esperando parámetros de la sala...",
+    "waitingRoomParamsSubtext": "Esto puede tardar unos segundos",
+    "backToHome": "Volver al Inicio",
+    "back": "Atrás",
+    "connectingToRoom": "Conectando a la sala...",
+    "waitingModel": "Esperando modelo...",
+    "back": "Atrás",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Faltan parámetros de la sala",
+      "couldNotGetParams": "No se pudieron obtener los parámetros necesarios para iniciar la videollamada.",
+      "couldNotSendMessage": "No se pudo enviar el mensaje. Intenta de nuevo.",
+      "sendMessageError": "Error al enviar mensaje",
+      "connectionError": "Error de conexión",
+      "connectionErrorTitle": "Error de Conexión",
+      "favoritesConnectionError": "Error de conexión con favoritos",
+      "blockUserError": "Error al bloquear usuario",
+      "couldNotProcessGift": "No se pudo procesar el regalo. Verifica tu conexión.",
+      "couldNotSendGift": "No se pudo enviar el regalo",
+      "sendGiftError": "Error enviando regalo",
+      "couldNotLoadUserInfo": "No se pudo cargar la información del usuario",
+      "cameraErrorTitle": "Error de Cámara",
+      "couldNotConnectCamera": "No se pudo conectar la cámara. Verifica los permisos.",
+      "cameraPermissionDenied": "Permisos de cámara denegados",
+      "cameraNotFound": "Cámara no encontrada",
+      "deviceErrorTitle": "Error de Dispositivos",
+      "devicePermissionDenied": "Permisos de cámara/micrófono denegados. Por favor, permite el acceso en la configuración del navegador.",
+      "deviceNotFound": "No se encontraron dispositivos de cámara/micrófono",
+      "couldNotGetDevices": "No se pudieron obtener los dispositivos de audio/video",
+      "generic": "Error",
+      "identityConflict": "Se detectó un conflicto de identidad. Por favor, intenta de nuevo.",
+      "livekitLimitReached": "Límite de LiveKit Alcanzado",
+      "livekitLimitReachedMessage": "Se ha alcanzado el límite de minutos de LiveKit. Por favor, contacta al administrador para actualizar el plan.",
+      "livekitLimitReachedError": "Límite de LiveKit alcanzado. Se requiere actualizar el plan."
+    },
+    "chat": {
+      "title": "Chat",
+      "notReady": "El chat no está listo aún. Intenta de nuevo.",
+      "startConversation": "Inicia una conversación interesante y disfruta del chat",
+      "chatWith": "Conversa con {{name}}",
+      "waitingModel": "Esperando modelo...",
+      "modelWillConnect": "Una modelo se conectará pronto para chatear contigo"
+    },
+    "connecting": "Conectando...",
+    "gifts": "Regalos",
+    "minutes": "Minutos",
+    "connected": "Conectado",
+    "connectionEstablished": "Videollamada establecida exitosamente",
+    "favorite": {
+      "removed": "Favorito removido",
+      "removedMessage": "{{name}} removido de favoritos",
+      "added": "Favorito agregado",
+      "addedMessage": "{{name}} agregado a favoritos ⭐"
+    },
+    "block": {
+      "userBlocked": "Usuario bloqueado",
+      "userBlockedMessage": "Has bloqueado a {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Cámara Cambiada",
+      "microphoneChanged": "Micrófono Cambiado",
+      "deviceUpdated": "Dispositivo actualizado"
+    },
+    "balance": {
+      "balanceExhausted": "Saldo Agotado",
+      "sessionEnding": "Sesión terminando",
+      "sessionEndingAuto": "⚠️ Sesión finalizando automáticamente - saldo insuficiente",
+      "insufficientBalance": "Saldo Insuficiente",
+      "insufficientBalanceMessage": "Necesitas {{required}} monedas. Tienes {{current}}",
+      "rechargeToContinue": "Recarga monedas para continuar",
+      "insufficientGiftCoins": "Gift Coins Insuficientes",
+      "insufficientGiftCoinsMessage": "Necesitas {{required}} gift coins para aceptar este regalo. Tienes {{current}}",
+      "insufficientBalanceToAcceptGift": "Saldo insuficiente para aceptar regalo",
+      "notEnoughGiftCoins": "No tienes suficientes gift coins para aceptar este regalo"
+    },
+    "gift": {
+      "sent": "🎁 Regalo Enviado",
+      "sentMessage": "{{giftName}} enviado a {{userName}} (-{{cost}} gift coins)",
+      "gift": "Regalo",
+      "requestExpired": "Solicitud Expirada",
+      "requestExpiredMessage": "Esta solicitud de regalo ya expiró",
+      "alreadyProcessed": "Ya Procesado",
+      "alreadyProcessedMessage": "Este regalo ya fue procesado anteriormente",
+      "youSent": "Enviaste",
+      "giftRejected": "Rechazaste una solicitud de regalo",
+      "giftSentTitle": "🎁 Regalo Enviado",
+      "giftSentTo": "{{giftName}} enviado a {{userName}}"
+    },
+    "disconnect": {
+      "client": "El cliente",
+      "model": "La modelo",
+      "clientWentNext": "El cliente fue a la siguiente modelo",
+      "modelSkipped": "La modelo te saltó y fue a la siguiente persona",
+      "clientEnded": "El cliente finalizó la videollamada",
+      "modelEnded": "La modelo finalizó la videollamada",
+      "partnerLeftSession": "{{partner}} salió de la sesión",
+      "youWentNext": "Fuiste a la siguiente modelo",
+      "modelAcceptedAnotherCall": "La modelo aceptó otra llamada. Serás redirigido a buscar otra persona."
+    },
+    "model": "Modelo"
   },
   "time": {
     "callDuration": "Tiempo"
@@ -677,10 +1195,15 @@
   "earnings": {
     "title": "Sistema de Pagos",
     "subtitle": "Ganancias y pagos semanales",
+    "unifiedPaymentSystem": "Sistema de Pagos Unificado",
+    "earningsByTimeAndGifts": "Ganancias por tiempo y regalos",
     "loading": "Cargando...",
     "error": "Error",
     "retry": "Reintentar",
     "tabs": {
+      "all": "Todo",
+      "sessions": "Sesiones",
+      "gifts": "Regalos",
       "thisWeek": "Esta Semana",
       "pending": "Pendientes",
       "paid": "Pagados"
@@ -695,6 +1218,14 @@
       "chatSessions": "Sesiones de chat",
       "giftsReceived": "Regalos recibidos",
       "sessions": "sesiones",
+      "regalos": "regalos",
+      "time": "Tiempo",
+      "thisWeek": "Esta Semana",
+      "unprocessed": "Sin procesar",
+      "received": "Recibido",
+      "mixed": "Mixto",
+      "timeOnly": "Solo Tiempo",
+      "giftOnly": "Solo Regalos",
       "totalHistoric": "Total Histórico Ganado",
       "lastEarning": "Última Ganancia",
       "none": "Ninguna",
@@ -1171,5 +1702,10 @@
    "keepSufficientCoins": "Mantén monedas suficientes",
    "beRespectful": "Sé respetuoso siempre",
    "eachConnectionUnique": "Cada conexión es única"
+ },
+ "profileLink": {
+   "copyLink": "Copiar link de mi perfil",
+   "copied": "¡Link copiado!",
+   "description": "Comparte este link para que los usuarios puedan chatear contigo directamente"
  }
 }

@@ -15,6 +15,7 @@ use App\Models\UserOnlineStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Sanctum\PersonalAccessToken;
 
 
 
@@ -117,21 +118,40 @@ class AuthController extends Controller
         // ✅ CREDENCIALES CORRECTAS - Login permitido
         // PERO si no está verificado, no podrá usar otras funciones (se valida en cada endpoint)
 
-        // 🔥 INVALIDAR TOKEN ANTERIOR si existe
-        if ($user->current_access_token_id) {
-            Log::info("🔄 Usuario {$user->email} ya tiene sesión activa (Token ID: {$user->current_access_token_id}). Invalidando token anterior.");
-            
-            // Eliminar el token anterior específicamente
-            $user->tokens()->where('id', $user->current_access_token_id)->delete();
+        // 🔥 SUSPENDER SESIÓN ANTERIOR en lugar de eliminarla
+        $tokenAnteriorId = $user->current_access_token_id;
+        
+        if ($tokenAnteriorId) {
+            $previousToken = \Laravel\Sanctum\PersonalAccessToken::find($tokenAnteriorId);
+            if ($previousToken) {
+                Log::info("⏸️ Suspendiéndo sesión anterior para {$user->email}", [
+                    'token_anterior_id' => $tokenAnteriorId,
+                    'ip' => $request->ip()
+                ]);
+                
+                // Marcar token anterior como suspendido en lugar de eliminarlo
+                $previousToken->update(['status' => 'suspended']);
+            }
         }
 
-        // ✅ Generar nuevo token
+        // ✅ Generar nuevo token con status 'active'
         $token = $user->createToken('ligand-token')->plainTextToken;
         $tokenId = explode('|', $token)[0];
+        
+        // Asegurar que el nuevo token tenga status 'active'
+        $newToken = \Laravel\Sanctum\PersonalAccessToken::find($tokenId);
+        if ($newToken) {
+            $newToken->update(['status' => 'active']);
+        }
 
         // ✅ Actualizar con el nuevo token
         $user->current_access_token_id = $tokenId;
         $user->save();
+        
+        Log::info("✅ Nuevo token creado para {$user->email}", [
+            'nuevo_token_id' => $tokenId,
+            'token_anterior_suspendido' => $tokenAnteriorId ? 'sí' : 'no'
+        ]);
 
         // Marcar como online
         $user->markAsOnline(
@@ -416,6 +436,29 @@ class AuthController extends Controller
                 ], 401);
             }
 
+            // 🔥 VERIFICAR ESTADO DEL TOKEN (NUEVO) - Detectar sesión suspendida
+            $currentToken = $request->bearerToken();
+            if ($currentToken && str_contains($currentToken, '|')) {
+                $tokenId = explode('|', $currentToken)[0];
+                $tokenModel = PersonalAccessToken::find($tokenId);
+                
+                if ($tokenModel && $tokenModel->status === 'suspended') {
+                    Log::info("⏸️ Heartbeat detectó sesión suspendida para {$user->email}", [
+                        'token_id' => $tokenId,
+                        'ip' => $request->ip(),
+                        'user_agent' => substr($request->userAgent(), 0, 100)
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Tu sesión ha sido suspendida',
+                        'code' => 'SESSION_SUSPENDED',
+                        'reason' => 'Se abrió una nueva sesión en otro dispositivo',
+                        'action' => 'show_modal' // 🔥 Flag para mostrar modal (no cerrar inmediatamente)
+                    ], 403);
+                }
+            }
+
             // Obtener parámetros
             $activityType = $request->input('activity_type', 'browsing');
             $room = $request->input('room');
@@ -439,31 +482,64 @@ class AuthController extends Controller
                 'timestamp' => now()->toISOString()
             ]);
 
-            // 🔥 USAR MÉTODO MEJORADO
-            $userStatus = UserOnlineStatus::firstOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'is_online' => true,
-                    'last_seen' => now(),
-                    'connected_at' => now(),
-                    'activity_type' => $finalActivityType,
-                    'current_room' => $room
-                ]
-            );
+            // 🔥 USAR MÉTODO MEJORADO - CON MANEJO DE ERRORES ROBUSTO
+            try {
+                $userStatus = UserOnlineStatus::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'is_online' => true,
+                        'last_seen' => now(),
+                        'connected_at' => now(),
+                        'activity_type' => $finalActivityType,
+                        'current_room' => $room ?: null
+                    ]
+                );
 
-            // Actualizar heartbeat de forma segura
-            $updated = $userStatus->updateHeartbeatSafe($room, $finalActivityType);
-
-            if (!$updated) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Error actualizando heartbeat'
-                ], 500);
+                // Actualizar heartbeat de forma segura
+                if ($userStatus && method_exists($userStatus, 'updateHeartbeatSafe')) {
+                    $updated = $userStatus->updateHeartbeatSafe($room ?: null, $finalActivityType);
+                    
+                    if (!$updated) {
+                        Log::warning('⚠️ updateHeartbeatSafe retornó false, pero continuando', [
+                            'user_id' => $user->id
+                        ]);
+                        // No fallar, solo continuar
+                    }
+                } else {
+                    // Fallback si el método no existe
+                    $userStatus->update([
+                        'last_seen' => now(),
+                        'activity_type' => $finalActivityType,
+                        'current_room' => $room ?: null,
+                        'is_online' => true
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $dbError) {
+                Log::error('❌ Error de base de datos creando/actualizando UserOnlineStatus', [
+                    'user_id' => $user->id,
+                    'error' => $dbError->getMessage(),
+                    'sql' => $dbError->getSql() ?? 'N/A'
+                ]);
+                // Continuar sin lanzar excepción
+            } catch (\Exception $updateError) {
+                Log::error('❌ Error creando/actualizando UserOnlineStatus', [
+                    'user_id' => $user->id,
+                    'error' => $updateError->getMessage()
+                ]);
+                // No fallar, solo continuar
             }
 
             // 🔥 EJECUTAR LIMPIEZA PERIÓDICA (cada 10 heartbeats aproximadamente)
             if (rand(1, 10) === 1) {
-                UserOnlineStatus::cleanupZombieUsers(5);
+                try {
+                    UserOnlineStatus::cleanupZombieUsers(5);
+                } catch (\Exception $cleanupError) {
+                    // No fallar el heartbeat por errores en cleanup
+                    Log::warning('⚠️ Error en cleanup de usuarios zombie', [
+                        'error' => $cleanupError->getMessage(),
+                        'user_id' => $user->id
+                    ]);
+                }
             }
 
             return response()->json([
@@ -475,6 +551,20 @@ class AuthController extends Controller
                 'timestamp' => now()->toISOString()
             ]);
 
+        } catch (\Illuminate\Database\QueryException $dbError) {
+            Log::error('❌ Error de base de datos en heartbeat', [
+                'user_id' => auth()->id() ?? 'null',
+                'error' => $dbError->getMessage(),
+                'sql' => $dbError->getSql() ?? 'N/A'
+            ]);
+
+            // 🔥 IMPORTANTE: Devolver 200 con success=false para errores de BD
+            return response()->json([
+                'success' => false,
+                'error' => 'Error de base de datos',
+                'message' => 'El heartbeat no pudo ser procesado, pero la sesión sigue activa'
+            ], 200);
+            
         } catch (\Exception $e) {
             Log::error('❌ Error en heartbeat', [
                 'user_id' => auth()->id() ?? 'null',
@@ -482,10 +572,13 @@ class AuthController extends Controller
                 'stack_trace' => $e->getTraceAsString()
             ]);
 
+            // 🔥 IMPORTANTE: No devolver 500 para errores de heartbeat
+            // Devolver 200 con success=false para que no dispare modales de sesión cerrada
             return response()->json([
                 'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
+                'error' => 'Error procesando heartbeat',
+                'message' => 'El heartbeat no pudo ser procesado, pero la sesión sigue activa'
+            ], 200); // 🔥 CAMBIAR A 200 en lugar de 500
         }
     }
 
@@ -774,19 +867,41 @@ class AuthController extends Controller
                 throw new \Exception("Usuario es null después del proceso de creación/actualización");
             }
 
-            // 🔥 INVALIDAR TOKEN ANTERIOR si existe
-            if ($user->current_access_token_id) {
-                Log::info("🔄 Invalidando token anterior para {$user->email}");
-                $user->tokens()->where('id', $user->current_access_token_id)->delete();
+            // 🔥 SUSPENDER SESIÓN ANTERIOR en lugar de eliminarla (Google OAuth)
+            $tokenAnteriorId = $user->current_access_token_id;
+            
+            if ($tokenAnteriorId) {
+                $previousToken = \Laravel\Sanctum\PersonalAccessToken::find($tokenAnteriorId);
+                if ($previousToken) {
+                    Log::info("⏸️ Suspendiéndo sesión anterior para {$user->email} (Google OAuth)", [
+                        'token_anterior_id' => $tokenAnteriorId,
+                        'ip' => $request->ip()
+                    ]);
+                    
+                    // Marcar token anterior como suspendido en lugar de eliminarlo
+                    $previousToken->update(['status' => 'suspended']);
+                }
             }
 
-            // ✅ Generar nuevo token
+            // ✅ Generar nuevo token con status 'active'
             $token = $user->createToken('ligand-token')->plainTextToken;
             $tokenId = explode('|', $token)[0];
+            
+            // Asegurar que el nuevo token tenga status 'active'
+            $newToken = \Laravel\Sanctum\PersonalAccessToken::find($tokenId);
+            if ($newToken) {
+                $newToken->update(['status' => 'active']);
+            }
 
             // ✅ Actualizar con el nuevo token
             $user->current_access_token_id = $tokenId;
             $user->save();
+            
+            Log::info("✅ Nuevo token creado para {$user->email} (Google OAuth)", [
+                'nuevo_token_id' => $tokenId,
+                'token_anterior_suspendido' => $tokenAnteriorId ? 'sí' : 'no',
+                'es_usuario_nuevo' => $user->wasRecentlyCreated
+            ]);
 
             // Marcar como online
             $user->markAsOnline(

@@ -22,6 +22,14 @@ use App\Http\Controllers\VideoChatCoinController;
 use App\Http\Controllers\SessionEarningsController;
 use App\Http\Controllers\ClientBalanceController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProfileLinkController;
+use App\Http\Controllers\GiftCoinsController;
+use App\Http\Controllers\GiftSystemController;
+use App\Http\Controllers\VideoChatGiftController;
+use App\Http\Controllers\HeartbeatController;
+use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\ProfileSettingsController;
+use App\Http\Controllers\CoinbaseCommerceController;
 
 
 Route::get('/stories', [StoryController::class, 'getActiveStories']);
@@ -98,6 +106,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::class, 'blockUser']);
     Route::post('/blocks/unblock-user', [App\Http\Controllers\UserBlockController::class, 'unblockUser']);
     Route::get('/blocks/list', [App\Http\Controllers\UserBlockController::class, 'getBlockedUsers']);
+    Route::get('/blocks/block-status', [App\Http\Controllers\UserBlockController::class, 'getBlockStatus']);
     Route::post('check-if-blocked-by', [UserBlockController::class, 'checkIfBlockedBy']);
     Route::get('who-blocked-me', [UserBlockController::class, 'getWhoBlockedMe']);
     Route::get('block-status', [UserBlockController::class, 'getBlockStatus']);
@@ -125,6 +134,7 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     Route::get('/earnings/weekly', [SessionEarningsController::class, 'getWeeklyEarnings']);
     Route::post('/earnings/process-weekly-payment', [SessionEarningsController::class, 'processWeeklyPayment']);
     Route::get('/balance', [SessionEarningsController::class, 'getUserBalance']);
+    Route::get('/earnings/videochat-balance', [SessionEarningsController::class, 'getModelVideoChatBalance']);
     // En routes/api.php
     Route::post('/earnings/process-session', [LiveKitController::class, 'processSessionEarnings']);
 
@@ -216,11 +226,24 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         Route::post('/get', [ClientBalanceController::class, 'getClientBalance'])
             ->name('get');
     });
+
+    // Historial de transacciones del cliente
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/transactions/history', [ClientBalanceController::class, 'getTransactionHistory']);
+    });
         Route::middleware('auth:sanctum')->group(function () {
         Route::post('/payment-method', [PaymentController::class, 'updatePaymentMethod']);
         Route::post('/send-verification', [PaymentController::class, 'sendVerificationCode']);
         Route::post('/verify-code', [PaymentController::class, 'verifyCode']);
         Route::get('/payment-methods', [PaymentController::class, 'getPaymentMethods']);
+        
+        // Rutas para gestión de métodos de pago guardados
+        Route::get('/payment-methods/saved', [PaymentController::class, 'getSavedPaymentMethods']);
+        Route::post('/payment-methods', [PaymentController::class, 'addPaymentMethod']);
+        Route::put('/payment-methods/{id}', [PaymentController::class, 'updateSavedPaymentMethod']);
+        Route::delete('/payment-methods/{id}', [PaymentController::class, 'deletePaymentMethod']);
+        Route::get('/payment-methods/from-history', [PaymentController::class, 'getPaymentMethodsFromHistory']);
+        
         Route::post('/minimum-payout', [PaymentController::class, 'updateMinimumPayout']);
         Route::get('/minimum-payout', [PaymentController::class, 'getMinimumPayout']);
     });
@@ -252,10 +275,17 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     
     // Información completa del perfil
     Route::get('/profile/info', [ProfileSettingsController::class, 'getProfileInfo']);
+    
+    // 🔗 Link de perfil para modelos verificadas
+    Route::get('/profile/link', [ProfileLinkController::class, 'getProfileLink']);
+    
+    // Obtener modelo por slug (para clientes)
+    Route::get('/model/by-slug/{slug}', [ProfileLinkController::class, 'getModelBySlug']);
     });
     Route::middleware('auth:sanctum')->group(function () {
     
         // 🔐 CAMBIO DE CONTRASEÑA
+        Route::post('/security/request-password-setup-token', [SecurityController::class, 'requestPasswordSetupToken']);
         Route::post('/security/request-password-change-code', [SecurityController::class, 'requestPasswordChangeCode']);
         Route::post('/security/change-password-with-code', [SecurityController::class, 'changePasswordWithCode']);
         
@@ -290,7 +320,7 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         // 🎁 REGALOS DISPONIBLES
         Route::get('/gifts/available', [GiftSystemController::class, 'getAvailableGifts']);
 
-        Route::post('/gifts/send-direct', [VideoChatGiftController::class, 'sendDirectGift']);
+        Route::post('/gifts/send-direct', [GiftSystemController::class, 'sendDirectGift']);
         
         // 🙏 MODELO PIDE REGALO (Step 1)
         Route::post('/gifts/request', [GiftSystemController::class, 'requestGift']);
@@ -429,8 +459,8 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     });
 Route::middleware('auth:sanctum')->group(function () {
     
-    // Heartbeat básico (ya existe pero mejorar)
-    Route::post('/heartbeat', [HeartbeatController::class, 'updateHeartbeat']);
+    // ❌ RUTA DUPLICADA ELIMINADA - Ya existe en línea 70 (AuthController::heartbeat)
+    // Route::post('/heartbeat', [HeartbeatController::class, 'updateHeartbeat']);
     
     // 🔥 NUEVAS RUTAS PARA CONSISTENCIA
     Route::get('/heartbeat/check-user-status', [HeartbeatController::class, 'checkUserGlobalStatus']);
@@ -470,6 +500,16 @@ Route::post('/livekit/token', [LiveKitController::class, 'generateTokenOriginal'
 */
 
 // 🔥 NUEVO WEBHOOK PARA MONEDAS
+
+/*
+||--------------------------------------------------------------------------
+|| 🔔 WEBHOOK DE LIVEKIT - SIN AUTENTICACIÓN
+||--------------------------------------------------------------------------
+|| Webhook para procesar eventos de LiveKit (desconexiones, fin de sala, etc.)
+|| Sin auth:sanctum porque LiveKit lo llama directamente
+||--------------------------------------------------------------------------
+*/
+Route::post('/livekit/webhook', [LiveKitController::class, 'handleWebhook']);
 
 Route::get('/stories/public', [StoryController::class, 'indexPublicas']);
 Route::get('/stories/my-story', [StoryController::class, 'myStory']); // ✅ ESPECÍFICA PRIMERO
@@ -513,6 +553,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/calls/status', [CallController::class, 'getCallStatus']);
     Route::get('/calls/check-incoming', [CallController::class, 'checkIncomingCalls']);
     Route::post('/calls/cleanup', [CallController::class, 'cleanupExpiredCalls']);
+    Route::get('/calls/history', [CallController::class, 'getCallHistory']);
     Route::prefix('videochat/coins')->group(function () {
         Route::get('/balance', [App\Http\Controllers\VideoChatCoinController::class, 'getBalance']);
         Route::get('/detailed-balance', [App\Http\Controllers\VideoChatCoinController::class, 'getDetailedBalance']);

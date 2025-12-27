@@ -9,12 +9,17 @@ const SecuritySettings = ({ t }) => {
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
   
+  // Estado para detectar si es usuario Google
+  const [isGoogleUser, setIsGoogleUser] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  
   // Estados para cambio de contraseña
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordCode, setPasswordCode] = useState('');
   const [passwordStep, setPasswordStep] = useState(1); // 1: form, 2: código, 3: éxito
+  const [emailSent, setEmailSent] = useState(false); // Para usuarios Google
   
   // Estados para logout all
   const [logoutCode, setLogoutCode] = useState('');
@@ -25,6 +30,32 @@ const SecuritySettings = ({ t }) => {
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteStep, setDeleteStep] = useState(1); // 1: form, 2: código, 3: éxito
+
+  // Cargar información del usuario al montar
+  useEffect(() => {
+    cargarInfoUsuario();
+  }, []);
+
+  // Cargar información del usuario
+  const cargarInfoUsuario = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await fetch(`${API_BASE_URL}/api/profile`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          setIsGoogleUser(data.user.is_google_user || !!data.user.google_id);
+          setUserEmail(data.user.email || '');
+        }
+      }
+    } catch (error) {
+    }
+  };
 
   // Auto-focus en inputs de código cuando cambian los pasos
   useEffect(() => {
@@ -42,7 +73,6 @@ const SecuritySettings = ({ t }) => {
   // Función para obtener headers con autenticación
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
-    console.log('🔑 Token encontrado:', token ? 'Sí (' + token.substring(0, 20) + '...)' : 'No');
     
     return {
       'Content-Type': 'application/json',
@@ -82,6 +112,7 @@ const SecuritySettings = ({ t }) => {
       setConfirmPassword('');
       setPasswordCode('');
       setPasswordStep(1);
+      setEmailSent(false);
     } else if (tipo === 'logoutAll') {
       setLogoutCode('');
       setLogoutStep(1);
@@ -102,6 +133,7 @@ const SecuritySettings = ({ t }) => {
     setConfirmPassword('');
     setPasswordCode('');
     setPasswordStep(1);
+    setEmailSent(false);
     setLogoutCode('');
     setLogoutStep(1);
     setDeletePassword('');
@@ -118,6 +150,42 @@ const SecuritySettings = ({ t }) => {
   };
 
   // 🔐 FUNCIONES PARA CAMBIO DE CONTRASEÑA
+
+  // Función para usuarios Google: solicitar token por email
+  const solicitarTokenPasswordGoogle = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/security/request-password-setup-token`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (manejarErrorAuth(response)) return;
+
+      // Verificar si la respuesta es JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        mostrarMensaje('error', 'Error del servidor. Por favor, contacta al soporte.');
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEmailSent(true);
+        mostrarMensaje('success', t?.('settings.googlePasswordSetup.emailSent') || 'Se ha enviado un enlace a tu correo electrónico. Revisa tu bandeja de entrada.');
+      } else {
+        // Mostrar el mensaje de error del servidor
+        const errorMessage = data.error || data.message || 'Error enviando enlace';
+        mostrarMensaje('error', errorMessage);
+      }
+    } catch (error) {
+      mostrarMensaje('error', error.message || 'Error de conexión. Por favor, intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const solicitarCodigoPassword = async () => {
     if (!currentPassword) {
@@ -299,11 +367,6 @@ const SecuritySettings = ({ t }) => {
 
     setLoading(true);
     try {
-      console.log('🗑️ Intentando eliminar cuenta...', {
-        code: deleteCode,
-        confirmation: deleteConfirmText
-      });
-
       const response = await fetch(`${API_BASE_URL}/api/security/delete-account-with-code`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -312,8 +375,6 @@ const SecuritySettings = ({ t }) => {
           confirmation_text: deleteConfirmText
         })
       });
-
-      console.log('📡 Respuesta del servidor:', response.status, response.statusText);
 
       // Si es 401, mostrar error específico
       if (response.status === 401) {
@@ -326,7 +387,6 @@ const SecuritySettings = ({ t }) => {
       }
 
       const data = await response.json();
-      console.log('📋 Datos recibidos:', data);
 
       if (data.success) {
         setDeleteStep(3);
@@ -342,7 +402,6 @@ const SecuritySettings = ({ t }) => {
         mostrarMensaje('error', data.error || 'Error eliminando cuenta');
       }
     } catch (error) {
-      console.error('❌ Error de red:', error);
       mostrarMensaje('error', 'Error de conexión');
     } finally {
       setLoading(false);
@@ -408,7 +467,7 @@ const SecuritySettings = ({ t }) => {
     const inputRef = React.useRef(null);
     
     // Auto-focus cuando el componente se monta
-    React.useEffect(() => {
+    useEffect(() => {
       if (inputRef.current) {
         inputRef.current.focus();
       }
@@ -461,7 +520,7 @@ const SecuritySettings = ({ t }) => {
       <h4 className="text-lg font-bold text-white">{titulo}</h4>
       <p className="text-green-400 text-sm">{mensaje}</p>
       <div className="text-white/60 text-xs">
-        Este modal se cerrará automáticamente...
+        {t?.('settings.changePasswordModal.autoClose') || 'Este modal se cerrará automáticamente...'}
       </div>
     </div>
   );
@@ -494,7 +553,7 @@ const SecuritySettings = ({ t }) => {
           <div className="bg-[#0a0d10] border border-[#ff007a]/30 rounded-xl shadow-2xl w-full max-w-md">
             {/* Header */}
             <div className="p-6 border-b border-[#ff007a]/20 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-white">🔐 Cambiar Contraseña</h3>
+              <h3 className="text-lg font-bold text-white">🔐 {t?.('settings.changePasswordModal.title') || 'Cambiar Contraseña'}</h3>
               {passwordStep !== 3 && (
                 <button onClick={cerrarModal} className="text-white/60 hover:text-white">
                   <X size={20} />
@@ -506,10 +565,40 @@ const SecuritySettings = ({ t }) => {
             <div className="p-6">
               <MensajeEstado />
 
-              {passwordStep === 1 ? (
+              {isGoogleUser ? (
+                // UI para usuarios Google
+                emailSent ? (
+                  <div className="space-y-4 text-center">
+                    <Mail className="mx-auto mb-3 text-[#ff007a]" size={48} />
+                    <h4 className="font-medium text-white mb-2 text-lg">
+                      {t?.('settings.googlePasswordSetup.emailSent') || 'Enlace enviado'}
+                    </h4>
+                    <p className="text-white/70 text-sm">
+                      {t?.('settings.googlePasswordSetup.emailSentDescription', { email: userEmail }) || `Se ha enviado un enlace a ${userEmail}. Haz clic en el enlace del correo para establecer tu contraseña.`}
+                    </p>
+                    <div className="bg-[#ff007a]/10 border border-[#ff007a]/30 rounded-lg p-3 mt-4">
+                      <p className="text-[#ff007a]/90 text-xs">
+                        {t?.('settings.googlePasswordSetup.emailSentTip') || 'El enlace expirará en 24 horas. Si no recibes el correo, verifica tu carpeta de spam.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-white/70 text-sm">
+                      {t?.('settings.googlePasswordSetup.description') || 'Como te registraste con Google, no tienes una contraseña establecida. Te enviaremos un enlace por correo para que puedas establecer una contraseña.'}
+                    </p>
+                    <div className="bg-[#ff007a]/10 border border-[#ff007a]/30 rounded-lg p-3">
+                      <p className="text-[#ff007a]/90 text-xs">
+                        {t?.('settings.googlePasswordSetup.info') || 'Después de establecer tu contraseña, podrás iniciar sesión tanto con Google como con tu email y contraseña.'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : passwordStep === 1 ? (
+                // UI para usuarios con email/password
                 <div className="space-y-4">
                   <p className="text-white/70 text-sm">
-                    Para cambiar tu contraseña, necesitamos verificar tu identidad.
+                    {t?.('settings.changePasswordModal.verifyIdentity') || 'Para cambiar tu contraseña, necesitamos verificar tu identidad.'}
                   </p>
                   
                   <input
@@ -517,7 +606,7 @@ const SecuritySettings = ({ t }) => {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-[#131418] text-white placeholder-white/60 rounded-lg outline-none focus:ring-2 focus:ring-[#ff007a]/50 border border-white/10"
-                    placeholder="Contraseña actual"
+                    placeholder={t?.('settings.changePasswordModal.currentPassword') || 'Contraseña actual'}
                   />
                   
                   <input
@@ -525,7 +614,7 @@ const SecuritySettings = ({ t }) => {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-[#131418] text-white placeholder-white/60 rounded-lg outline-none focus:ring-2 focus:ring-[#ff007a]/50 border border-white/10"
-                    placeholder="Nueva contraseña (mín. 8 caracteres)"
+                    placeholder={t?.('settings.changePasswordModal.newPassword') || 'Nueva contraseña (mín. 8 caracteres)'}
                   />
                   
                   <input
@@ -533,16 +622,16 @@ const SecuritySettings = ({ t }) => {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-[#131418] text-white placeholder-white/60 rounded-lg outline-none focus:ring-2 focus:ring-[#ff007a]/50 border border-white/10"
-                    placeholder="Confirmar nueva contraseña"
+                    placeholder={t?.('settings.changePasswordModal.confirmPassword') || 'Confirmar nueva contraseña'}
                   />
                 </div>
               ) : passwordStep === 2 ? (
                 <div className="space-y-4">
                   <div className="text-center">
                     <Mail className="mx-auto mb-3 text-[#ff007a]" size={32} />
-                    <h4 className="font-medium text-white mb-2">Código enviado</h4>
+                    <h4 className="font-medium text-white mb-2">{t?.('settings.changePasswordModal.codeSent') || 'Código enviado'}</h4>
                     <p className="text-white/70 text-sm">
-                      Te hemos enviado un código de 6 dígitos a tu correo electrónico.
+                      {t?.('settings.changePasswordModal.codeSentDescription') || 'Te hemos enviado un código de 6 dígitos a tu correo electrónico.'}
                     </p>
                   </div>
                   
@@ -556,13 +645,13 @@ const SecuritySettings = ({ t }) => {
                     disabled={loading}
                     className="w-full text-center text-[#ff007a] text-sm hover:underline disabled:opacity-50"
                   >
-                    ¿No recibiste el código? Reenviar
+                    {t?.('settings.changePasswordModal.resendCode') || '¿No recibiste el código? Reenviar'}
                   </button>
                 </div>
               ) : (
                 <PantallaExito 
-                  titulo="¡Contraseña cambiada!"
-                  mensaje="Tu contraseña ha sido actualizada exitosamente."
+                  titulo={t?.('settings.changePasswordModal.successTitle') || '¡Contraseña cambiada!'}
+                  mensaje={t?.('settings.changePasswordModal.successMessage') || 'Tu contraseña ha sido actualizada exitosamente.'}
                   icono="🎉"
                 />
               )}
@@ -576,15 +665,25 @@ const SecuritySettings = ({ t }) => {
                   disabled={loading}
                   className="flex-1 bg-[#131418] hover:bg-[#1c1f25] text-white px-4 py-2 rounded-lg transition-colors border border-white/10"
                 >
-                  Cancelar
+                  {t?.('favorites.actions.cancel') || 'Cancelar'}
                 </button>
-                <button
-                  onClick={passwordStep === 1 ? solicitarCodigoPassword : cambiarPassword}
-                  disabled={loading}
-                  className="flex-1 bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Procesando...' : passwordStep === 1 ? 'Enviar código' : 'Cambiar contraseña'}
-                </button>
+                {isGoogleUser ? (
+                  <button
+                    onClick={solicitarTokenPasswordGoogle}
+                    disabled={loading || emailSent}
+                    className="flex-1 bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {loading ? (t?.('settings.googlePasswordSetup.sending') || 'Enviando...') : emailSent ? (t?.('settings.googlePasswordSetup.emailSent') || 'Enviado') : (t?.('settings.googlePasswordSetup.sendEmailButton') || 'Enviar enlace por email')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={passwordStep === 1 ? solicitarCodigoPassword : cambiarPassword}
+                    disabled={loading}
+                    className="flex-1 bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {loading ? (t?.('settings.changePasswordModal.processing') || 'Procesando...') : passwordStep === 1 ? (t?.('settings.changePasswordModal.sendCode') || 'Enviar código') : (t?.('settings.changePasswordModal.changePassword') || 'Cambiar contraseña')}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -597,7 +696,7 @@ const SecuritySettings = ({ t }) => {
           <div className="bg-[#0a0d10] border border-[#ff007a]/30 rounded-xl shadow-2xl w-full max-w-md">
             {/* Header */}
             <div className="p-6 border-b border-[#ff007a]/20 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-white">🚪 Cerrar Todas las Sesiones</h3>
+              <h3 className="text-lg font-bold text-white">🚪 {t?.('settings.logoutAllModal.title') || 'Cerrar Todas las Sesiones'}</h3>
               {logoutStep !== 3 && (
                 <button onClick={cerrarModal} className="text-white/60 hover:text-white">
                   <X size={20} />
@@ -612,25 +711,25 @@ const SecuritySettings = ({ t }) => {
               {logoutStep === 1 ? (
                 <div className="space-y-4">
                   <div className="bg-[#ff007a]/10 border border-[#ff007a]/30 rounded-lg p-3">
-                    <h4 className="text-[#ff007a] font-medium text-sm mb-2">¿Qué va a pasar?</h4>
+                    <h4 className="text-[#ff007a] font-medium text-sm mb-2">{t?.('settings.logoutAllModal.whatWillHappen') || '¿Qué va a pasar?'}</h4>
                     <ul className="text-[#ff007a]/90 text-xs space-y-1">
-                      <li>• Se cerrarán todas tus sesiones activas</li>
-                      <li>• Tendrás que volver a iniciar sesión en otros dispositivos</li>
-                      <li>• Tu sesión actual se mantendrá activa</li>
+                      <li>• {t?.('settings.logoutAllModal.willCloseAll') || 'Se cerrarán todas tus sesiones activas'}</li>
+                      <li>• {t?.('settings.logoutAllModal.willNeedLogin') || 'Tendrás que volver a iniciar sesión en otros dispositivos'}</li>
+                      <li>• {t?.('settings.logoutAllModal.currentStays') || 'Tu sesión actual se mantendrá activa'}</li>
                     </ul>
                   </div>
                   
                   <p className="text-white/70 text-sm">
-                    Para continuar, te enviaremos un código de verificación a tu correo electrónico.
+                    {t?.('settings.logoutAllModal.sendCodeDescription') || 'Para continuar, te enviaremos un código de verificación a tu correo electrónico.'}
                   </p>
                 </div>
               ) : logoutStep === 2 ? (
                 <div className="space-y-4">
                   <div className="text-center">
                     <Mail className="mx-auto mb-3 text-[#ff007a]" size={32} />
-                    <h4 className="font-medium text-white mb-2">Código enviado</h4>
+                    <h4 className="font-medium text-white mb-2">{t?.('settings.logoutAllModal.codeSent') || 'Código enviado'}</h4>
                     <p className="text-white/70 text-sm">
-                      Te hemos enviado un código de verificación a tu correo electrónico.
+                      {t?.('settings.logoutAllModal.codeSentDescription') || 'Te hemos enviado un código de verificación a tu correo electrónico.'}
                     </p>
                   </div>
                   
@@ -644,13 +743,13 @@ const SecuritySettings = ({ t }) => {
                     disabled={loading}
                     className="w-full text-center text-[#ff007a] text-sm hover:underline disabled:opacity-50"
                   >
-                    ¿No recibiste el código? Reenviar
+                    {t?.('settings.logoutAllModal.resendCode') || '¿No recibiste el código? Reenviar'}
                   </button>
                 </div>
               ) : (
                 <PantallaExito 
-                  titulo="¡Sesiones cerradas!"
-                  mensaje="Todas tus sesiones han sido cerradas exitosamente."
+                  titulo={t?.('settings.logoutAllModal.successTitle') || '¡Sesiones cerradas!'}
+                  mensaje={t?.('settings.logoutAllModal.successMessage') || 'Todas tus sesiones han sido cerradas exitosamente.'}
                   icono="🚪"
                 />
               )}
@@ -664,14 +763,14 @@ const SecuritySettings = ({ t }) => {
                   disabled={loading}
                   className="flex-1 bg-[#131418] hover:bg-[#1c1f25] text-white px-4 py-2 rounded-lg transition-colors border border-white/10"
                 >
-                  Cancelar
+                  {t?.('settings.logoutAllModal.cancel') || 'Cancelar'}
                 </button>
                 <button
                   onClick={logoutStep === 1 ? solicitarCodigoLogout : logoutAll}
                   disabled={loading}
                   className="flex-1 bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {loading ? 'Procesando...' : logoutStep === 1 ? 'Enviar código' : 'Cerrar sesiones'}
+                  {loading ? (t?.('settings.logoutAllModal.processing') || 'Procesando...') : logoutStep === 1 ? (t?.('settings.logoutAllModal.sendCode') || 'Enviar código') : (t?.('settings.logoutAllModal.closeSessions') || 'Cerrar sesiones')}
                 </button>
               </div>
             )}
@@ -685,7 +784,7 @@ const SecuritySettings = ({ t }) => {
           <div className="bg-[#0a0d10] border border-red-500/30 rounded-xl shadow-2xl w-full max-w-md">
             {/* Header */}
             <div className="p-6 border-b border-red-500/20 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-white">🗑️ Eliminar Cuenta</h3>
+              <h3 className="text-lg font-bold text-white">🗑️ {t?.('settings.deleteAccountModal.title') || 'Eliminar Cuenta'}</h3>
               {deleteStep !== 3 && (
                 <button onClick={cerrarModal} className="text-white/60 hover:text-white">
                   <X size={20} />
@@ -700,17 +799,17 @@ const SecuritySettings = ({ t }) => {
               {deleteStep === 1 ? (
                 <div className="space-y-4">
                   <div className="bg-red-600/20 border border-red-500/30 rounded-lg p-3">
-                    <h4 className="text-red-400 font-medium text-sm mb-2">⚠️ ADVERTENCIA</h4>
+                    <h4 className="text-red-400 font-medium text-sm mb-2">⚠️ {t?.('settings.deleteAccountModal.warning') || 'ADVERTENCIA'}</h4>
                     <ul className="text-red-400/90 text-xs space-y-1">
-                      <li>• Esta acción es PERMANENTE e IRREVERSIBLE</li>
-                      <li>• Se eliminarán todos tus datos y conversaciones</li>
-                      <li>• No podrás recuperar tu cuenta</li>
-                      <li>• Perderás acceso a todas las funciones</li>
+                      <li>• {t?.('settings.deleteAccountModal.warningPermanent') || 'Esta acción es PERMANENTE e IRREVERSIBLE'}</li>
+                      <li>• {t?.('settings.deleteAccountModal.warningDeleteData') || 'Se eliminarán todos tus datos y conversaciones'}</li>
+                      <li>• {t?.('settings.deleteAccountModal.warningNoRecovery') || 'No podrás recuperar tu cuenta'}</li>
+                      <li>• {t?.('settings.deleteAccountModal.warningLoseAccess') || 'Perderás acceso a todas las funciones'}</li>
                     </ul>
                   </div>
                   
                   <p className="text-white/70 text-sm">
-                    Para continuar, confirma tu contraseña:
+                    {t?.('settings.deleteAccountModal.confirmPassword') || 'Para continuar, confirma tu contraseña:'}
                   </p>
                   
                   <input
@@ -718,16 +817,16 @@ const SecuritySettings = ({ t }) => {
                     value={deletePassword}
                     onChange={(e) => setDeletePassword(e.target.value)}
                     className="w-full px-4 py-3 bg-[#131418] text-white placeholder-white/60 rounded-lg outline-none focus:ring-2 focus:ring-red-500/50 border border-red-500/30"
-                    placeholder="Tu contraseña actual"
+                    placeholder={t?.('settings.deleteAccountModal.currentPassword') || 'Tu contraseña actual'}
                   />
                 </div>
               ) : deleteStep === 2 ? (
                 <div className="space-y-4">
                   <div className="text-center">
                     <Mail className="mx-auto mb-3 text-red-400" size={32} />
-                    <h4 className="font-medium text-white mb-2">Verificación final</h4>
+                    <h4 className="font-medium text-white mb-2">{t?.('settings.deleteAccountModal.finalVerification') || 'Verificación final'}</h4>
                     <p className="text-white/70 text-sm">
-                      Te hemos enviado un código de verificación. Esta es tu última oportunidad para cancelar.
+                      {t?.('settings.deleteAccountModal.finalVerificationDescription') || 'Te hemos enviado un código de verificación. Esta es tu última oportunidad para cancelar.'}
                     </p>
                   </div>
                   
@@ -738,14 +837,14 @@ const SecuritySettings = ({ t }) => {
                   
                   <div>
                     <label className="block text-white text-sm font-medium mb-2">
-                      Para confirmar, escribe "ELIMINAR":
+                      {t?.('settings.deleteAccountModal.confirmText') || 'Para confirmar, escribe "ELIMINAR":'}
                     </label>
                     <input
                       type="text"
                       value={deleteConfirmText}
                       onChange={(e) => setDeleteConfirmText(e.target.value)}
                       className="w-full px-4 py-3 bg-[#131418] text-white placeholder-white/60 rounded-lg outline-none focus:ring-2 focus:ring-red-500/50 border border-red-500/30"
-                      placeholder="ELIMINAR"
+                      placeholder={t?.('settings.deleteAccountModal.confirmPlaceholder') || 'ELIMINAR'}
                     />
                   </div>
                   
@@ -754,16 +853,16 @@ const SecuritySettings = ({ t }) => {
                     disabled={loading}
                     className="w-full text-center text-red-400 text-sm hover:underline disabled:opacity-50"
                   >
-                    ¿No recibiste el código? Reenviar
+                    {t?.('settings.deleteAccountModal.resendCode') || '¿No recibiste el código? Reenviar'}
                   </button>
                 </div>
               ) : (
                 <div className="text-center space-y-4">
                   <div className="text-6xl mb-4">🗑️</div>
-                  <h4 className="text-lg font-bold text-white">Cuenta eliminada</h4>
-                  <p className="text-red-400 text-sm">Tu cuenta ha sido eliminada permanentemente.</p>
+                  <h4 className="text-lg font-bold text-white">{t?.('settings.deleteAccountModal.successTitle') || 'Cuenta eliminada'}</h4>
+                  <p className="text-red-400 text-sm">{t?.('settings.deleteAccountModal.successMessage') || 'Tu cuenta ha sido eliminada permanentemente.'}</p>
                   <div className="text-white/60 text-xs">
-                    Redirigiendo al inicio...
+                    {t?.('settings.deleteAccountModal.redirecting') || 'Redirigiendo al inicio...'}
                   </div>
                 </div>
               )}
@@ -777,14 +876,14 @@ const SecuritySettings = ({ t }) => {
                   disabled={loading}
                   className="flex-1 bg-[#131418] hover:bg-[#1c1f25] text-white px-4 py-2 rounded-lg transition-colors border border-white/10"
                 >
-                  Cancelar
+                  {t?.('settings.deleteAccountModal.cancel') || 'Cancelar'}
                 </button>
                 <button
                   onClick={deleteStep === 1 ? solicitarCodigoDelete : eliminarCuenta}
                   disabled={loading}
                   className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {loading ? 'Procesando...' : deleteStep === 1 ? 'Enviar código' : 'ELIMINAR CUENTA'}
+                  {loading ? (t?.('settings.deleteAccountModal.processing') || 'Procesando...') : deleteStep === 1 ? (t?.('settings.deleteAccountModal.sendCode') || 'Enviar código') : (t?.('settings.deleteAccountModal.deleteAccount') || 'ELIMINAR CUENTA')}
                 </button>
               </div>
             )}

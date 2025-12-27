@@ -1,0 +1,71 @@
+═══════════════════════════════════════════════════════════════════
+           UBICACIÓN DE LOS BACKUPS - PROYECTO LIGANDO
+═══════════════════════════════════════════════════════════════════
+
+📁 RUTA PRINCIPAL DE BACKUPS:
+   /root/ligando/backups/
+
+📦 ARCHIVOS DE BACKUP:
+   Todos los backups se guardan como archivos .tar.gz en la carpeta:
+   /root/ligando/backups/
+   
+   Formato del nombre: ligando_backup_YYYYMMDD_HHMMSS.tar.gz
+   Ejemplo: ligando_backup_20251224_230656.tar.gz
+
+═══════════════════════════════════════════════════════════════════
+           COMANDOS ÚTILES
+═══════════════════════════════════════════════════════════════════
+
+1. VER BACKUPS DISPONIBLES:
+   ls -lh /root/ligando/backups/
+
+2. VER CONTENIDO DE UN BACKUP:
+   tar -tzf /root/ligando/backups/ligando_backup_YYYYMMDD_HHMMSS.tar.gz
+
+3. VER SOLO ESTRUCTURA DE DIRECTORIOS:
+   tar -tzf /root/ligando/backups/ligando_backup_YYYYMMDD_HHMMSS.tar.gz | grep '/$'
+
+4. CONTAR ARCHIVOS EN EL BACKUP:
+   tar -tzf /root/ligando/backups/ligando_backup_YYYYMMDD_HHMMSS.tar.gz | wc -l
+
+5. EXTRAER BACKUP A UNA CARPETA:
+   tar -xzf /root/ligando/backups/ligando_backup_YYYYMMDD_HHMMSS.tar.gz -C /ruta/destino
+
+6. VER TAMAÑO DEL BACKUP:
+   du -h /root/ligando/backups/ligando_backup_YYYYMMDD_HHMMSS.tar.gz
+
+═══════════════════════════════════════════════════════════════════
+           SCRIPTS DISPONIBLES
+═══════════════════════════════════════════════════════════════════
+
+./backup.sh          - Crear un nuevo backup
+./restore_backup.sh  - Restaurar un backup
+./ver_backups.sh     - Ver información de backups
+
+═══════════════════════════════════════════════════════════════════
+           QUÉ CONTIENE EL BACKUP
+═══════════════════════════════════════════════════════════════════
+
+✓ Todo el código fuente (frontend, backend)
+✓ Archivos de configuración
+✓ Documentación (docs, README, etc.)
+✓ Estructura completa del proyecto
+
+✗ NO incluye:
+  - node_modules (dependencias de Node.js)
+  - vendor (dependencias de Composer)
+  - dist (archivos compilados)
+  - .git (repositorio git)
+  - Logs
+  - Archivos .env (por seguridad)
+
+═══════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+

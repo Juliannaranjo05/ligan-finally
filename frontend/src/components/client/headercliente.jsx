@@ -20,6 +20,7 @@ import { getUser } from "../../utils/auth";
 import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
 import StoriesModal from './StoriesModal';
 import { useAppNotifications } from '../../contexts/NotificationContext';
+import { useCurrentUser } from '../hooks/useCurrentUser.js';
 
 export default function HeaderCliente() {
   const navigate = useNavigate();
@@ -32,10 +33,13 @@ export default function HeaderCliente() {
   
   // ESTADOS PARA MODALES
   const [showStoriesModal, setShowStoriesModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  
+  // 🔥 USAR HOOK DE USUARIO ACTUAL (fuente única desde BD)
+  const { user: currentUser } = useCurrentUser();
   
   // 🚫 ESTADO PARA CONTROLAR EL BLOQUEO
   const [isBlocked, setIsBlocked] = useState(false);
+  const [showHoverBanner, setShowHoverBanner] = useState(false);
   
   const menuRef = useRef(null);
   const comprasRef = useRef(null);
@@ -59,21 +63,11 @@ export default function HeaderCliente() {
         notifications.error('No puedes navegar mientras estás en una videollamada activa');
   };
 
-  // CARGAR USUARIO AL INICIALIZAR Y VERIFICAR BLOQUEO
+  // VERIFICAR BLOQUEO AL INICIALIZAR
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const userData = await getUser();
-        setCurrentUser(userData);
-              } catch (error) {
-              }
-    };
-
     // Verificar estado de bloqueo inicial
     const blocked = checkRoomNameInStorage();
     setIsBlocked(blocked);
-    
-    loadUser();
   }, []);
 
   // 👁️ LISTENER PARA CAMBIOS EN LOCALSTORAGE
@@ -206,6 +200,8 @@ export default function HeaderCliente() {
             className={`hover:scale-110 transition p-2 ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             title={t('viewStories')}
             disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Play size={24} className="text-[#ff007a]" />
           </button>
@@ -216,6 +212,8 @@ export default function HeaderCliente() {
             onClick={() => handleNavigateWithBlock("/homecliente", "Home")}
             title={t('home')}
             disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Home className="text-[#ff007a]" size={24} />
           </button>
@@ -225,6 +223,8 @@ export default function HeaderCliente() {
             onClick={handleMessagesDesktop}
             title={t('messages')}
             disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <MessageSquare className="text-[#ff007a]" size={24} />
           </button>
@@ -234,6 +234,8 @@ export default function HeaderCliente() {
             onClick={() => handleNavigateWithBlock("/favoritesboy", "Favoritos")}
             title={t('favoritesHome')}
             disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Star className="text-[#ff007a]" size={24} />
           </button>
@@ -242,10 +244,25 @@ export default function HeaderCliente() {
           <div className="relative" ref={menuRef}>
             <button
               onClick={toggleMenu}
-              className={`w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center ${isBlocked ? 'opacity-50' : ''}`}
+              className={`w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a] ${isBlocked ? 'opacity-50' : ''}`}
               title={t('accountMenu')}
+              onMouseEnter={() => isBlocked && !menuAbierto && setShowHoverBanner(true)}
+              onMouseLeave={() => setShowHoverBanner(false)}
             >
-              C
+              {currentUser?.avatar_url ? (
+                <img 
+                  src={currentUser.avatar_url} 
+                  alt={currentUser.name || 'Usuario'} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextElementSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <span className={currentUser?.avatar_url ? 'hidden' : ''}>
+                {(currentUser?.name || 'C').charAt(0).toUpperCase()}
+              </span>
             </button>
 
             {/* Menú desplegable desktop */}
@@ -258,7 +275,7 @@ export default function HeaderCliente() {
                       setMenuAbierto(false);
                       return;
                     }
-                    navigate("/configuracion");
+                    navigate("/settings");
                     setMenuAbierto(false);
                   }}
                   className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -443,9 +460,9 @@ export default function HeaderCliente() {
         </div>
       )}
 
-      {/* 🚨 NOTIFICACIÓN FLOTANTE DE VIDEOLLAMADA ACTIVA */}
-      {isBlocked && (
-        <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium z-40 shadow-lg border border-red-400">
+      {/* 🚨 NOTIFICACIÓN FLOTANTE DE VIDEOLLAMADA ACTIVA - SOLO EN HOVER */}
+      {isBlocked && showHoverBanner && (
+        <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium z-40 shadow-lg border border-red-400 transition-opacity">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
             <span>📹 Videollamada activa - Navegación limitada</span>

@@ -3,6 +3,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useTranslation, translateText, TRANSLATION_CONFIG } from '../utils/translationSystem';
+import i18n from '../i18n';
 
 const GlobalTranslationContext = createContext();
 
@@ -19,18 +20,36 @@ export const GlobalTranslationProvider = ({ children }) => {
   const [globalSettings, setGlobalSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return saved ? JSON.parse(saved) : {
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Verificar también si hay un idioma guardado en otras claves
+        const userLang = localStorage.getItem('userPreferredLanguage') || 
+                        localStorage.getItem('selectedLanguage') || 
+                        localStorage.getItem('lang');
+        if (userLang && parsed.targetLanguage !== userLang) {
+          parsed.targetLanguage = userLang;
+        }
+        return parsed;
+      }
+      // Si no hay configuración guardada, verificar otras claves
+      const userLang = localStorage.getItem('userPreferredLanguage') || 
+                      localStorage.getItem('selectedLanguage') || 
+                      localStorage.getItem('lang') || 'es';
+      return {
         enabled: true,
-        targetLanguage: 'es',
+        targetLanguage: userLang,
         showOriginal: false,
         showOnlyTranslation: true,
         translateOutgoing: false,
         autoDetect: true
       };
     } catch {
+      const userLang = localStorage.getItem('userPreferredLanguage') || 
+                      localStorage.getItem('selectedLanguage') || 
+                      localStorage.getItem('lang') || 'es';
       return {
         enabled: true,
-        targetLanguage: 'es',
+        targetLanguage: userLang,
         showOriginal: false,
         showOnlyTranslation: true,
         translateOutgoing: false,
@@ -49,10 +68,68 @@ export const GlobalTranslationProvider = ({ children }) => {
     }
   });
 
+  // 🔄 SINCRONIZAR CON i18n Y LOCALSTORAGE AL CARGAR Y CUANDO CAMBIA EL IDIOMA
+  useEffect(() => {
+    // Obtener el idioma actual de i18n (tiene prioridad)
+    const i18nLang = i18n.language?.split('-')[0] || i18n.language;
+    
+    // También verificar localStorage como respaldo
+    const userLang = localStorage.getItem('userPreferredLanguage') || 
+                    localStorage.getItem('selectedLanguage') || 
+                    localStorage.getItem('lang');
+    
+    // Usar el idioma de i18n si está disponible, sino usar localStorage
+    const finalLang = i18nLang || userLang || 'es';
+    
+    // Actualizar si es diferente al actual
+    setGlobalSettings(prev => {
+      if (finalLang && finalLang !== prev.targetLanguage) {
+        return {
+          ...prev,
+          targetLanguage: finalLang
+        };
+      }
+      return prev;
+    });
+    
+    // Listener para cambios en i18n
+    const handleI18nLanguageChange = (lng) => {
+      const langCode = lng?.split('-')[0] || lng;
+      if (langCode) {
+        setGlobalSettings(prev => {
+          // Solo actualizar si realmente cambió
+          if (prev.targetLanguage !== langCode) {
+            // Limpiar cache cuando cambia el idioma de la plataforma
+            setGlobalTranslations({});
+            localStorage.removeItem(STORAGE_KEYS.TRANSLATIONS);
+            
+            return {
+              ...prev,
+              targetLanguage: langCode
+            };
+          }
+          return prev;
+        });
+      }
+    };
+    
+    // Registrar el listener
+    i18n.on('languageChanged', handleI18nLanguageChange);
+    
+    // Cleanup
+    return () => {
+      i18n.off('languageChanged', handleI18nLanguageChange);
+    };
+  }, []); // Solo al montar el componente
+
   // 💾 GUARDAR CONFIGURACIÓN AUTOMÁTICAMENTE
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(globalSettings));
     localStorage.setItem(STORAGE_KEYS.USER_LANGUAGE, globalSettings.targetLanguage);
+    // También guardar en otras claves para compatibilidad
+    localStorage.setItem('userPreferredLanguage', globalSettings.targetLanguage);
+    localStorage.setItem('selectedLanguage', globalSettings.targetLanguage);
+    localStorage.setItem('lang', globalSettings.targetLanguage);
   }, [globalSettings]);
 
   // 💾 GUARDAR TRADUCCIONES AUTOMÁTICAMENTE
@@ -185,7 +262,21 @@ export const GlobalTranslationProvider = ({ children }) => {
 export const useGlobalTranslation = () => {
   const context = useContext(GlobalTranslationContext);
   if (!context) {
-    throw new Error('useGlobalTranslation debe usarse dentro de GlobalTranslationProvider');
+    // En lugar de lanzar error, retornar valores por defecto para compatibilidad
+    console.warn('useGlobalTranslation se está usando fuera de GlobalTranslationProvider');
+    return {
+      globalSettings: { targetLanguage: 'es', enabled: true },
+      setGlobalSettings: () => {},
+      translateGlobalText: async (text) => text,
+      changeGlobalLanguage: () => {},
+      getExistingTranslation: () => null,
+      globalTranslations: {},
+      clearGlobalCache: () => {},
+      getGlobalStats: () => ({ totalTranslations: 0, currentLanguage: 'es', isEnabled: false, cacheSize: 0 }),
+      languages: {},
+      isEnabled: false,
+      currentLanguage: 'es'
+    };
   }
   return context;
 };

@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use App\Models\StoryLike;
+use App\Models\StoryView;
+use App\Services\PlatformSettingsService;
 
 class Story extends Model
 {
@@ -20,6 +23,7 @@ class Story extends Model
         'approved_by',
         'rejection_reason',
         'views_count',
+        'likes_count',
         'expires_at',
     ];
 
@@ -46,6 +50,11 @@ class Story extends Model
     public function views()
     {
         return $this->hasMany(StoryView::class);
+    }
+
+    public function likes()
+    {
+        return $this->hasMany(StoryLike::class);
     }
 
     // Accessors
@@ -88,11 +97,12 @@ class Story extends Model
     // Métodos de negocio
     public function approve($adminId = null)
     {
+        $storyDurationHours = PlatformSettingsService::getInteger('story_duration_hours', 24);
         $this->update([
             'status' => 'approved',
             'approved_at' => now(),
             'approved_by' => $adminId,
-            'expires_at' => now()->addHours(24), // Aquí empieza el countdown de 24h
+            'expires_at' => now()->addHours($storyDurationHours),
         ]);
 
         return $this;
@@ -132,6 +142,111 @@ class Story extends Model
             // Ya existe una vista de este usuario/IP, no hacer nada
             return false;
         }
+    }
+
+    public function addLike($userId)
+    {
+        \Log::info('🔍 [STORY MODEL] addLike llamado', [
+            'story_id' => $this->id,
+            'user_id' => $userId,
+            'status' => $this->status
+        ]);
+
+        // Solo permitir likes en historias aprobadas
+        if ($this->status !== 'approved') {
+            \Log::warning('⚠️ [STORY MODEL] Historia no aprobada, no se puede dar like', [
+                'story_id' => $this->id,
+                'status' => $this->status
+            ]);
+            return false;
+        }
+
+        try {
+            // Verificar si ya existe el like antes de crear
+            $existingLike = StoryLike::where('story_id', $this->id)
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($existingLike) {
+                \Log::info('ℹ️ [STORY MODEL] Like ya existe', [
+                    'story_id' => $this->id,
+                    'user_id' => $userId
+                ]);
+                return false;
+            }
+
+            \Log::info('💾 [STORY MODEL] Creando like en base de datos');
+            StoryLike::create([
+                'story_id' => $this->id,
+                'user_id' => $userId,
+                'liked_at' => now(),
+            ]);
+
+            \Log::info('📈 [STORY MODEL] Incrementando contador de likes');
+            // Incrementar contador
+            $this->increment('likes_count');
+            
+            \Log::info('✅ [STORY MODEL] Like agregado exitosamente', [
+                'new_likes_count' => $this->fresh()->likes_count
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Log::error('💥 [STORY MODEL] Error en addLike', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Ya existe un like de este usuario o error de BD
+            return false;
+        }
+    }
+
+    public function removeLike($userId)
+    {
+        \Log::info('🔍 [STORY MODEL] removeLike llamado', [
+            'story_id' => $this->id,
+            'user_id' => $userId
+        ]);
+
+        try {
+            $deleted = StoryLike::where('story_id', $this->id)
+                ->where('user_id', $userId)
+                ->delete();
+
+            \Log::info('🗑️ [STORY MODEL] Resultado de delete', [
+                'deleted' => $deleted
+            ]);
+
+            if ($deleted) {
+                \Log::info('📉 [STORY MODEL] Decrementando contador de likes');
+                // Decrementar contador
+                $this->decrement('likes_count');
+                
+                \Log::info('✅ [STORY MODEL] Like removido exitosamente', [
+                    'new_likes_count' => $this->fresh()->likes_count
+                ]);
+                
+                return true;
+            }
+            
+            \Log::warning('⚠️ [STORY MODEL] No se encontró like para remover');
+            return false;
+        } catch (\Exception $e) {
+            \Log::error('💥 [STORY MODEL] Error en removeLike', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
+    }
+
+    public function hasUserLiked($userId)
+    {
+        return $this->likes()->where('user_id', $userId)->exists();
     }
 
     public function isExpired()

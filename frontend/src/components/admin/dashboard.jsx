@@ -1,26 +1,39 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { 
-  Users, 
-  Shield, 
-  Coins, 
-  MessageCircle, 
-  Video, 
-  BookOpen, 
-  CreditCard, 
+import {
+  Users,
+  Shield,
+  Coins,
+  MessageCircle,
+  Video,
+  BookOpen,
+  CreditCard,
   BarChart3,
   Settings,
   LogOut,
-  Heart
+  Heart,
+  RefreshCw,
+  AlertCircle
 } from "lucide-react";
 
-// Importar el módulo de usuarios
+// Importar módulos
 import UsersModule from "../admin/modulos/UsersModule";
+import CoinsModule from "../admin/modulos/CoinsModule";
+import VerificacionesModule from "../admin/modulos/VerificacionesModule";
+import PaymentsModule from "../admin/modulos/PaymentsModule";
+import StoriesModule from "../admin/modulos/StoriesModule";
+import SessionsModule from "../admin/modulos/SessionsModule";
+import SettingsModule from "../admin/modulos/SettingsModule";
+import ChatModule from "../admin/modulos/ChatModule";
+import { dashboardAdminApi, adminUtils } from "../../services/adminApiService";
 
 const AdminDashboardLayout = () => {
   const navigate = useNavigate();
   const { section } = useParams();
   const [activeSection, setActiveSection] = useState(section || "dashboard");
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState(null);
 
   // Efecto para sincronizar la URL con el estado
   useEffect(() => {
@@ -28,6 +41,29 @@ const AdminDashboardLayout = () => {
       setActiveSection(section);
     }
   }, [section]);
+
+  // Cargar estadísticas del dashboard
+  useEffect(() => {
+    if (activeSection === "dashboard") {
+      cargarEstadisticas();
+    }
+  }, [activeSection]);
+
+  const cargarEstadisticas = async () => {
+    setLoadingStats(true);
+    setStatsError(null);
+    
+    try {
+      const response = await dashboardAdminApi.getStats();
+      if (response.success) {
+        setDashboardStats(response.data);
+      }
+    } catch (error) {
+      setStatsError(adminUtils.manejarError(error));
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   // Función para cambiar sección y actualizar URL
   const handleSectionChange = (sectionId) => {
@@ -52,13 +88,46 @@ const AdminDashboardLayout = () => {
       case "dashboard":
         return (
           <div className="space-y-6">
+            {loadingStats ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
+                <span className="ml-3 text-gray-400">Cargando estadísticas...</span>
+              </div>
+            ) : statsError ? (
+              <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-lg flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                <span>{statsError}</span>
+                <button 
+                  onClick={cargarEstadisticas}
+                  className="ml-auto text-red-300 hover:text-red-200"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-pink-300">Resumen General</h2>
+                  <button 
+                    onClick={cargarEstadisticas}
+                    className="text-gray-400 hover:text-pink-300 p-2 rounded-lg hover:bg-pink-500/10"
+                    title="Actualizar estadísticas"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-pink-500/20 hover:border-pink-400/40 transition-all duration-300">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-400 text-sm">Usuarios Activos</p>
-                    <p className="text-2xl font-bold text-pink-300">1,234</p>
-                    <p className="text-green-400 text-xs mt-1">+12% vs ayer</p>
+                        <p className="text-gray-400 text-sm">Usuarios Activos (24h)</p>
+                        <p className="text-2xl font-bold text-pink-300">
+                          {dashboardStats?.users?.active_24h?.toLocaleString() || '0'}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">
+                          {dashboardStats?.users?.total?.toLocaleString() || '0'} total
+                        </p>
                   </div>
                   <div className="p-3 bg-pink-500/20 rounded-lg">
                     <Users className="w-8 h-8 text-pink-400" />
@@ -69,8 +138,12 @@ const AdminDashboardLayout = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">Sesiones Hoy</p>
-                    <p className="text-2xl font-bold text-purple-300">89</p>
-                    <p className="text-green-400 text-xs mt-1">+5% vs ayer</p>
+                        <p className="text-2xl font-bold text-purple-300">
+                          {dashboardStats?.sessions?.today?.toLocaleString() || '0'}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">
+                          {dashboardStats?.sessions?.active || '0'} activas
+                        </p>
                   </div>
                   <div className="p-3 bg-purple-500/20 rounded-lg">
                     <Video className="w-8 h-8 text-purple-400" />
@@ -80,9 +153,13 @@ const AdminDashboardLayout = () => {
               <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-yellow-500/20 hover:border-yellow-400/40 transition-all duration-300">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-400 text-sm">Ingresos</p>
-                    <p className="text-2xl font-bold text-yellow-300">$2,456</p>
-                    <p className="text-green-400 text-xs mt-1">+18% vs ayer</p>
+                        <p className="text-gray-400 text-sm">Ingresos Hoy</p>
+                        <p className="text-2xl font-bold text-yellow-300">
+                          ${dashboardStats?.revenue?.today?.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0.00'}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">
+                          ${dashboardStats?.revenue?.this_month?.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0.00'} este mes
+                        </p>
                   </div>
                   <div className="p-3 bg-yellow-500/20 rounded-lg">
                     <Coins className="w-8 h-8 text-yellow-400" />
@@ -93,8 +170,10 @@ const AdminDashboardLayout = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">Chats Activos</p>
-                    <p className="text-2xl font-bold text-blue-300">156</p>
-                    <p className="text-green-400 text-xs mt-1">+8% vs ayer</p>
+                        <p className="text-2xl font-bold text-blue-300">
+                          {dashboardStats?.chats?.active?.toLocaleString() || '0'}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">En tiempo real</p>
                   </div>
                   <div className="p-3 bg-blue-500/20 rounded-lg">
                     <MessageCircle className="w-8 h-8 text-blue-400" />
@@ -105,50 +184,105 @@ const AdminDashboardLayout = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-pink-500/20">
-                <h3 className="text-lg font-semibold text-pink-300 mb-4">Actividad Reciente</h3>
+                    <h3 className="text-lg font-semibold text-pink-300 mb-4 flex items-center justify-between">
+                      Actividad Reciente
+                      <span className="text-xs text-gray-400 font-normal">Últimas 24 horas</span>
+                    </h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
-                    <span className="text-gray-300">Nueva usuaria registrada</span>
-                    <span className="text-green-400 text-sm">Hace 5 min</span>
+                        <span className="text-gray-300">Nuevos usuarios</span>
+                        <span className="text-green-400 text-sm font-medium">
+                          {dashboardStats?.recent_activity?.new_users || 0}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
+                        <span className="text-gray-300">Nuevas sesiones</span>
+                        <span className="text-blue-400 text-sm font-medium">
+                          {dashboardStats?.recent_activity?.new_sessions || 0}
+                        </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-gray-700/50">
-                    <span className="text-gray-300">Sesión de video iniciada</span>
-                    <span className="text-blue-400 text-sm">Hace 12 min</span>
+                        <span className="text-gray-300">Pagos procesados</span>
+                        <span className="text-yellow-400 text-sm font-medium">
+                          {dashboardStats?.recent_activity?.new_payments || 0}
+                        </span>
                   </div>
                   <div className="flex items-center justify-between py-2">
-                    <span className="text-gray-300">Pago procesado</span>
-                    <span className="text-yellow-400 text-sm">Hace 18 min</span>
+                        <span className="text-gray-300">Nuevas verificaciones</span>
+                        <span className="text-purple-400 text-sm font-medium">
+                          {dashboardStats?.recent_activity?.new_verifications || 0}
+                        </span>
                   </div>
                 </div>
               </div>
 
               <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-purple-500/20">
-                <h3 className="text-lg font-semibold text-purple-300 mb-4">Estado del Sistema</h3>
+                    <h3 className="text-lg font-semibold text-purple-300 mb-4">Pendientes</h3>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Servidor Principal</span>
-                    <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">Online</span>
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-yellow-400" />
+                          <span className="text-gray-300">Verificaciones</span>
+                        </div>
+                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm font-medium">
+                          {dashboardStats?.pending?.verificaciones || 0}
+                        </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Base de Datos</span>
-                    <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">Online</span>
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-blue-400" />
+                          <span className="text-gray-300">Historias</span>
+                        </div>
+                        <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
+                          {dashboardStats?.pending?.stories || 0}
+                        </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Servidor de Video</span>
-                    <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">Online</span>
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="w-4 h-4 text-green-400" />
+                          <span className="text-gray-300">Pagos</span>
+                        </div>
+                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
+                          {dashboardStats?.pending?.payments?.count || 0} (${dashboardStats?.pending?.payments?.amount?.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0.00'})
+                        </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Sistema de Pagos</span>
-                    <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm">Lento</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-700/50">
+                        <span className="text-gray-300 font-medium">Total pendiente</span>
+                        <span className="text-yellow-300 font-semibold">
+                          ${((dashboardStats?.pending?.payments?.amount || 0)).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                        </span>
                   </div>
                 </div>
               </div>
             </div>
+              </>
+            )}
           </div>
         );
 
       case "users":
         return <UsersModule />;
+
+      case "verificaciones":
+        return <VerificacionesModule />;
+
+      case "coins":
+        return <CoinsModule />;
+
+      case "pagos":
+        return <PaymentsModule />;
+
+      case "historias":
+        return <StoriesModule />;
+
+      case "sesiones":
+        return <SessionsModule />;
+
+      case "chat":
+        return <ChatModule />;
+
+      case "settings":
+        return <SettingsModule />;
 
       default:
         return (
@@ -200,7 +334,16 @@ const AdminDashboardLayout = () => {
         </nav>
 
         <div className="p-4 border-t border-pink-400/20">
-          <button className="flex items-center space-x-3 px-4 py-3 rounded-lg text-pink-200/90 hover:bg-black/20 hover:text-pink-200 transition-all duration-300 w-full hover:border hover:border-pink-400/20">
+          <button 
+            onClick={() => {
+              // Limpiar datos de admin del localStorage
+              localStorage.removeItem('ligand_admin_id');
+              localStorage.removeItem('admin_token');
+              // Redirigir a la página de inicio
+              navigate('/home');
+            }}
+            className="flex items-center space-x-3 px-4 py-3 rounded-lg text-pink-200/90 hover:bg-black/20 hover:text-pink-200 transition-all duration-300 w-full hover:border hover:border-pink-400/20"
+          >
             <LogOut className="w-5 h-5" />
             <span>Cerrar Sesión</span>
           </button>

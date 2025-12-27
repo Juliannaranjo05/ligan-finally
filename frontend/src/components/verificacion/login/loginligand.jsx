@@ -1,9 +1,83 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginWithoutRedirect } from "../../../utils/auth";
+import { loginWithoutRedirect, getUser } from "../../../utils/auth";
 import { useTranslation } from 'react-i18next';
 import GoogleLoginButton from '../../auth/GoogleLoginButton';
 import ForgotPasswordModal from './ForgotPasswordModal'; // 👈 NUEVO IMPORT
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// 🔄 Verificar balance y ejecutar acción pendiente (para login normal)
+const verificarBalanceYEjecutarAccionLogin = async (actionData) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.success && data.can_start_call) {
+        // ✅ Tiene saldo - iniciar llamada directa
+        await iniciarLlamadaDirectaLogin(actionData.userId);
+      } else {
+        // ❌ No tiene saldo - redirigir a compra
+        window.location.href = '/homecliente?action=buy-coins';
+      }
+    } else {
+      window.location.href = '/homecliente?action=buy-coins';
+    }
+  } catch (error) {
+    window.location.href = '/homecliente?action=buy-coins';
+  }
+};
+
+// 📞 Iniciar llamada directa (para login normal)
+const iniciarLlamadaDirectaLogin = async (modeloUserId) => {
+  try {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        receiver_id: modeloUserId,
+        call_type: 'video'
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.success && data.room_name) {
+        // Guardar datos de la sala
+        localStorage.setItem('roomName', data.room_name);
+        localStorage.setItem('userName', data.receiver?.name || 'Cliente');
+        localStorage.setItem('currentRoom', data.room_name);
+        localStorage.setItem('inCall', 'true');
+        localStorage.setItem('videochatActive', 'true');
+        
+        // Redirigir al videochat
+        window.location.href = '/videochatclient';
+      } else {
+        window.location.href = '/esperandocallcliente';
+      }
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      window.location.href = '/esperandocallcliente';
+    }
+  } catch (error) {
+    window.location.href = '/esperandocallcliente';
+  }
+};
 
 export default function LoginLigand({ onClose, onShowRegister }) {
   const navigate = useNavigate();
@@ -21,16 +95,68 @@ export default function LoginLigand({ onClose, onShowRegister }) {
     setLoading(true);
 
     try {
-      console.log("🔑 Iniciando login...");
       await loginWithoutRedirect(email, password);
       
-      console.log("✅ Login exitoso, redirigiendo al dashboard");
-      navigate("/dashboard", { replace: true });
+      // 🔄 Verificar si hay una acción pendiente de historias
+      const pendingAction = localStorage.getItem('pendingStoryAction');
+      if (pendingAction) {
+        try {
+          const actionData = JSON.parse(pendingAction);
+          
+          // Limpiar la acción pendiente
+          localStorage.removeItem('pendingStoryAction');
+          
+          // Ejecutar la acción pendiente
+          if (actionData.action === 'chat') {
+            // Obtener el usuario actual para generar el room_name
+            const userData = await getUser();
+            const currentUserId = userData?.id || userData?.user?.id;
+            const otherUserId = actionData.userId;
+            
+            if (!currentUserId || !otherUserId) {
+              navigate("/dashboard", { replace: true });
+              return;
+            }
+            
+            // Generar room_name (mismo formato que usa el backend)
+            const roomName = [currentUserId, otherUserId].sort().join('_');
+            
+            const chatData = {
+              other_user_id: otherUserId,
+              other_user_name: actionData.userName || 'Usuario',
+              other_user_display_name: actionData.userName || 'Usuario',
+              other_user_role: 'modelo',
+              room_name: roomName,
+              createdLocally: true,
+              needsSync: true
+            };
+            
+            // Redirigir al chat con la chica usando navigate con estado
+            navigate({
+              pathname: '/message',
+              search: `?user=${encodeURIComponent(actionData.userName || 'Usuario')}`,
+              state: {
+                openChatWith: chatData
+              }
+            }, { replace: true });
+            return;
+          } else if (actionData.action === 'videocall') {
+            // Verificar balance y luego iniciar llamada o redirigir a compra
+            verificarBalanceYEjecutarAccionLogin(actionData);
+            return;
+          }
+        } catch (error) {
+          localStorage.removeItem('pendingStoryAction');
+          navigate("/dashboard", { replace: true });
+        }
+      } else {
+        // No hay acción pendiente, redirigir normalmente
+        navigate("/dashboard", { replace: true });
+      }
 
     } catch (err) {
       const backendMessage = err?.message || "Correo o contraseña incorrectos.";
       setError(backendMessage);
-      console.error("🛑 Error en login:", backendMessage);
       setLoading(false);
     }
   };
@@ -115,7 +241,7 @@ export default function LoginLigand({ onClose, onShowRegister }) {
                 className="text-[#ff007a] hover:text-[#e6006e] text-sm underline transition"
                 disabled={loading || googleLoading}
               >
-                ¿Olvidaste tu contraseña?
+                {t('login.olvidaste_contrasena')}
               </button>
             </div>
 

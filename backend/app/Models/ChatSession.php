@@ -13,6 +13,7 @@ class ChatSession extends Model
     protected $fillable = [
         'cliente_id',
         'modelo_id',
+        'caller_id',
         'room_name',
         'session_type',
         'call_type',
@@ -42,15 +43,26 @@ class ChatSession extends Model
         return $this->belongsTo(User::class, 'modelo_id');
     }
 
-    // Alias para compatibilidad con CallController
+    // Relación explícita para el caller
     public function caller()
     {
-        return $this->belongsTo(User::class, 'cliente_id');
+        return $this->belongsTo(User::class, 'caller_id');
     }
-
+    
+    // Método para obtener el receiver (el que no es el caller)
     public function receiver()
     {
-        return $this->belongsTo(User::class, 'modelo_id');
+        if (!$this->caller_id) {
+            // Fallback a la lógica antigua si caller_id no está definido
+            return $this->modelo;
+        }
+        
+        // El receiver es el que no es el caller
+        if ($this->cliente_id === $this->caller_id) {
+            return $this->modelo;
+        } else {
+            return $this->cliente;
+        }
     }
 
     // Scopes generales

@@ -12,13 +12,16 @@ use Illuminate\Support\Facades\DB;
 use App\Models\ChatMessage;
 use App\Models\RoomParticipant;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache; 
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema; 
 use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Redis; // 🔥 ESTA LÍNEA FALTABA!
 use App\Http\Controllers\VideoChatCoinController;
 use App\Models\VideoChatSession;
 use App\Models\SessionEarning;
 use App\Http\Controllers\SessionEarningsController;
+use App\Services\PlatformSettingsService;
+use App\Helpers\VideoChatLogger;
 
 class LiveKitController extends Controller
 {
@@ -43,23 +46,74 @@ class LiveKitController extends Controller
     }
      public function generateToken(Request $request)
     {
+        VideoChatLogger::start('GENERATE_TOKEN', 'Generando token LiveKit para modelo');
+        VideoChatLogger::request('GENERATE_TOKEN', $request);
+        
         try {
             // Validar los datos de entrada
             $request->validate([
-                'room' => 'required|string',
-                'identity' => 'required|string'
+                'room' => 'required|string'
             ]);
 
-            $roomName = $request->input('room');
-            $participantName = $request->input('identity');
+            // 🔥 NORMALIZAR roomName: trim y eliminar espacios extra (igual que frontend)
+            $roomNameOriginal = $request->input('room');
+            $roomName = preg_replace('/\s+/', '', trim($roomNameOriginal));
+            
+            VideoChatLogger::log('GENERATE_TOKEN', 'RoomName normalizado', [
+                'room_original' => $roomNameOriginal,
+                'room_normalized' => $roomName,
+                'room_length' => strlen($roomName),
+                'room_hex' => bin2hex($roomName),
+            ]);
+            
+            $user = auth()->user();
+            if (!$user) {
+                VideoChatLogger::error('GENERATE_TOKEN', 'Usuario no autenticado');
+                return response()->json(['error' => 'Usuario no autenticado'], 401);
+            }
+
+            // 🔥 GENERAR IDENTIDAD ÚNICA basada en user_id + role para evitar DuplicateIdentity
+            $participantName = "user_{$user->id}_{$user->rol}";
+
+            VideoChatLogger::log('GENERATE_TOKEN', 'Usuario autenticado', [
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'user_name' => $user->name,
+                'participant_name' => $participantName,
+                'participant_name_length' => strlen($participantName),
+                'is_modelo' => $user->rol === 'modelo',
+            ]);
+
+            // 🔥 LOG CRÍTICO: Verificar roomName con detalles
+            Log::info('🎫 [TOKEN] Generando token LiveKit', [
+                'room' => $roomName,
+                'room_length' => strlen($roomName),
+                'room_hex' => bin2hex($roomName), // Para detectar caracteres especiales
+                'identity' => $participantName,
+                'identity_length' => strlen($participantName),
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'timestamp' => now()->toIso8601String()
+            ]);
 
             // Obtener credenciales
             $apiKey = config('livekit.api_key');
             $apiSecret = config('livekit.api_secret');
             $serverUrl = config('livekit.ws_url');
 
+            VideoChatLogger::log('GENERATE_TOKEN', 'Credenciales LiveKit obtenidas', [
+                'has_api_key' => !empty($apiKey),
+                'has_api_secret' => !empty($apiSecret),
+                'has_server_url' => !empty($serverUrl),
+                'server_url' => $serverUrl,
+            ]);
 
             if (!$apiKey || !$apiSecret || !$serverUrl) {
+                VideoChatLogger::error('GENERATE_TOKEN', 'Faltan credenciales de LiveKit', [
+                    'has_api_key' => !empty($apiKey),
+                    'has_api_secret' => !empty($apiSecret),
+                    'has_server_url' => !empty($serverUrl),
+                ]);
                 throw new \Exception('Faltan credenciales de LiveKit en .env');
             }
 
@@ -78,40 +132,94 @@ class LiveKitController extends Controller
                     'canPublishData' => true
                 ]
             ];
-            $user = auth()->user();
+            
+            VideoChatLogger::log('GENERATE_TOKEN', 'Payload JWT creado', [
+                'payload' => $payload,
+                'expires_in' => 3600,
+            ]);
 
             // 🔥 VERIFICAR SALDO ANTES DE GENERAR TOKEN (SOLO CLIENTES)
             if ($user && $user->rol === 'cliente') {
+                VideoChatLogger::log('GENERATE_TOKEN', 'Verificando saldo de cliente', [
+                    'user_id' => $user->id,
+                    'user_role' => $user->rol,
+                ]);
+                
                 $balanceCheck = $this->coinController->canStartVideoChat($user->id);
                 
+                VideoChatLogger::log('GENERATE_TOKEN', 'Resultado de verificación de saldo', [
+                    'can_start' => $balanceCheck['can_start'] ?? false,
+                    'total_balance' => $balanceCheck['total_balance'] ?? 0,
+                    'balance_check' => $balanceCheck,
+                ]);
+                
                 if (!$balanceCheck['can_start']) {
+                    VideoChatLogger::warning('GENERATE_TOKEN', 'Cliente sin saldo intentó obtener token', [
+                        'user_id' => $user->id,
+                        'balance' => $balanceCheck['total_balance'] ?? 0
+                    ]);
+                    
                     Log::warning('🚫 Cliente sin saldo intentó obtener token', [
                         'user_id' => $user->id,
                         'balance' => $balanceCheck['total_balance'] ?? 0
                     ]);
                     
-                    return response()->json([
+                    $response = response()->json([
                         'error' => 'Saldo insuficiente para iniciar videochat',
                         'balance_info' => $balanceCheck,
                         'action' => 'redirect_to_coins'
                     ], 402);
+                    
+                    VideoChatLogger::response('GENERATE_TOKEN', $response);
+                    return $response;
                 }
+            } else {
+                VideoChatLogger::log('GENERATE_TOKEN', 'Usuario es modelo, no se verifica saldo', [
+                    'user_role' => $user->rol,
+                ]);
             }
 
             // Generar token JWT
+            VideoChatLogger::log('GENERATE_TOKEN', 'Generando token JWT');
+            
             $token = JWT::encode($payload, $apiSecret, 'HS256');
-
-            return response()->json([
-                'token' => $token,
-                'serverUrl' => $serverUrl
+            
+            VideoChatLogger::log('GENERATE_TOKEN', 'Token JWT generado', [
+                'token_length' => strlen($token),
+                'token_preview' => substr($token, 0, 50) . '...',
             ]);
 
+            $responseData = [
+                'token' => $token,
+                'serverUrl' => $serverUrl
+            ];
+            
+            VideoChatLogger::end('GENERATE_TOKEN', 'Token generado exitosamente', [
+                'room_name' => $roomName,
+                'participant_name' => $participantName,
+                'server_url' => $serverUrl,
+            ]);
+
+            $response = response()->json($responseData);
+            VideoChatLogger::response('GENERATE_TOKEN', $response);
+            
+            return $response;
+
         } catch (\Exception $e) {
+            VideoChatLogger::error('GENERATE_TOKEN', 'Error generando token LiveKit', [
+                'room' => $request->input('room') ?? null,
+                'user_id' => auth()->id(),
+            ], $e);
+            
             \Log::error('Error generating LiveKit token: ' . $e->getMessage());
 
-            return response()->json([
+            $errorResponse = response()->json([
                 'error' => 'Error generating token: ' . $e->getMessage()
             ], 500);
+            
+            VideoChatLogger::response('GENERATE_TOKEN', $errorResponse);
+            
+            return $errorResponse;
         }
     }
 
@@ -207,294 +315,151 @@ class LiveKitController extends Controller
         }
     }
 
-    // ✅ RULETA OMEGLE - VERSIÓN MEJORADA CON MEJOR MANEJO DE RESPUESTAS
+    // ✅ RULETA SIMPLIFICADA - LÓGICA BÁSICA
     public function iniciarRuleta(Request $request)
     {
         try {
             $user = auth()->user();
             
-            // 🔥 VERIFICAR SALDO ANTES DE INICIAR - SOLO PARA CLIENTES
-            if ($user->rol === 'cliente') {
-                $coinController = new VideoChatCoinController();
-                $balanceCheck = $coinController->canStartVideoChat($user->id);
-                
-                if (!$balanceCheck['can_start']) {
-                    Log::warning('🚫 Cliente sin saldo suficiente intentó iniciar videochat', [
-                        'user_id' => $user->id,
-                        'balance' => $balanceCheck['total_balance'] ?? 0,
-                        'deficit' => $balanceCheck['deficit'] ?? 0
-                    ]);
-                    
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'insufficient_balance',
-                        'message' => 'Saldo insuficiente para iniciar videochat',
-                        'balance_info' => $balanceCheck,
-                        'redirect_to' => '/buy-coins'
-                    ], 400);
-                }
-                
-                Log::info('✅ Cliente con saldo suficiente inicia videochat', [
-                    'user_id' => $user->id,
-                    'balance' => $balanceCheck['total_balance'],
-                    'minutes_available' => $balanceCheck['minutes_available']
-                ]);
-            } else {
-                Log::info('✅ Modelo inicia videochat (sin verificación de saldo)', [
-                    'user_id' => $user->id,
-                    'user_role' => $user->rol
-                ]);
+            // Logging detallado para debugging
+            Log::info('🎰 [RULETA] Iniciando ruleta', [
+                'user_id' => $user ? $user->id : null,
+                'user_authenticated' => auth()->check(),
+                'user_role' => $user ? $user->rol : null,
+                'request_data' => $request->all()
+            ]);
+            
+            if (!$user) {
+                Log::warning('❌ [RULETA] Usuario no autenticado');
+                return response()->json([
+                    'success' => false, 
+                    'error' => 'Usuario no autenticado',
+                    'debug' => ['authenticated' => auth()->check()]
+                ], 401);
             }
             
-            // Verificar que el usuario es cliente o modelo
             if (!in_array($user->rol, ['cliente', 'modelo'])) {
+                Log::warning('❌ [RULETA] Rol no válido', [
+                    'user_id' => $user->id,
+                    'rol' => $user->rol
+                ]);
                 return response()->json([
-                    'success' => false,
-                    'error' => 'Solo clientes y modelos pueden usar la ruleta'
+                    'success' => false, 
+                    'error' => 'Usuario no válido',
+                    'debug' => ['rol' => $user->rol, 'allowed_roles' => ['cliente', 'modelo']]
                 ], 403);
             }
 
-            // 🔥 PASO 1: VERIFICAR EXCLUSIONES PREVIAS
-            $excludedUserId = null;
-            $excludedUserName = null;
-            
-            // Verificar exclusión en Cache
-            $cacheExcludedUser = Cache::get("exclude_user_{$user->id}");
-            
-            if ($cacheExcludedUser) {
-                $excludedUserId = $cacheExcludedUser;
-                $excludedUser = User::find($excludedUserId);
-                $excludedUserName = $excludedUser ? ($excludedUser->alias ?? $excludedUser->name) : 'Usuario';
-                
-                Log::info("🚫 [INICIAR] Exclusión activa encontrada", [
-                    'user_id' => $user->id,
-                    'user_name' => $user->alias ?? $user->name,
-                    'excluded_user_id' => $excludedUserId,
-                    'excluded_user_name' => $excludedUserName,
-                    'source' => 'cache_storage'
-                ]);
+            // Verificar saldo para clientes
+            if ($user->rol === 'cliente') {
+                $coinController = new VideoChatCoinController();
+                $balanceCheck = $coinController->canStartVideoChat($user->id);
+                if (!$balanceCheck['can_start']) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'insufficient_balance',
+                        'message' => 'Saldo insuficiente',
+                        'balance_info' => $balanceCheck
+                    ], 400);
+                }
             }
-            
-            // 🧹 LIMPIEZA PREVIA CON TRANSACCIÓN
+
+            // PASO 1: Limpiar sesiones del usuario
             DB::beginTransaction();
             try {
-                // Finalizar TODAS las sesiones del usuario
-                $sessionsLimpiadas = ChatSession::where(function($query) use ($user) {
-                    $query->where('cliente_id', $user->id)
-                        ->orWhere('modelo_id', $user->id);
-                })
-                ->whereIn('status', ['waiting', 'active'])
-                ->update([
-                    'status' => 'ended',
-                    'ended_at' => now(),
-                    'end_reason' => 'new_session_cleanup'
-                ]);
+                ChatSession::where(function($q) use ($user) {
+                    $q->where('cliente_id', $user->id)->orWhere('modelo_id', $user->id);
+                })->whereIn('status', ['waiting', 'active', 'calling'])
+                ->update(['status' => 'ended', 'ended_at' => now(), 'end_reason' => 'cleanup']);
                 
-                // Limpiar sesiones viejas del sistema
                 ChatSession::where('status', 'waiting')
-                    ->where('created_at', '<', now()->subMinutes(3))
-                    ->update([
-                        'status' => 'ended',
-                        'ended_at' => now(),
-                        'end_reason' => 'timeout'
-                    ]);
+                    ->where('created_at', '<', now()->subMinutes(2))
+                    ->update(['status' => 'ended', 'ended_at' => now(), 'end_reason' => 'timeout']);
                 
                 DB::commit();
-                
-                Log::info('🧹 Limpieza previa completada', [
-                    'user_id' => $user->id,
-                    'user_role' => $user->rol,
-                    'sessions_cleaned' => $sessionsLimpiadas,
-                    'excluded_user_id' => $excludedUserId
-                ]);
-                
             } catch (\Exception $e) {
                 DB::rollback();
                 throw $e;
             }
-            
-            // 🎯 BUSCAR SESIÓN COMPATIBLE CON EXCLUSIÓN
+
+            // PASO 2: Buscar sesión waiting del rol opuesto
             $rolBuscado = $user->rol === 'cliente' ? 'modelo' : 'cliente';
+            $excludedUserId = Cache::get("exclude_user_{$user->id}");
             
-            Log::info("🔍 [INICIAR] Buscando sesión compatible", [
-                'user_id' => $user->id,
-                'user_role' => $user->rol,
-                'looking_for_role' => $rolBuscado,
-                'excluded_user_id' => $excludedUserId,
-                'excluded_user_name' => $excludedUserName
-            ]);
-            // 🔥 DEBUG ADICIONAL
-            $debugWaitingSessions = ChatSession::where('status', 'waiting')->get();
-            Log::info("🔍 [DEBUG] Estado completo de sesiones waiting", [
-                'total_waiting_sessions' => $debugWaitingSessions->count(),
-                'sessions_detail' => $debugWaitingSessions->map(function($s) {
-                    return [
-                        'id' => $s->id,
-                        'room' => $s->room_name,
-                        'cliente_id' => $s->cliente_id,
-                        'modelo_id' => $s->modelo_id,
-                        'created_minutes_ago' => $s->created_at->diffInMinutes(now())
-                    ];
-                })->toArray(),
-                'current_user_id' => $user->id,
-                'current_user_role' => $user->rol,
-                'looking_for_role' => $rolBuscado,
-                'excluded_user_id' => $excludedUserId
-            ]);
-            
-            $sessionEsperando = null;
+            $query = ChatSession::where('status', 'waiting')
+                ->where('created_at', '>=', now()->subMinutes(2));
             
             if ($user->rol === 'cliente') {
-                // Cliente busca sesiones creadas por modelos (modelo_id != null, cliente_id = null)
-                $query = ChatSession::where('status', 'waiting')
-                    ->whereNotNull('modelo_id')  // Creada por modelo
-                    ->whereNull('cliente_id')    // Sin cliente asignado
-                    ->where('modelo_id', '!=', $user->id); // No el mismo usuario
-                    
-                // 🔥 APLICAR EXCLUSIÓN SI EXISTE
-                if ($excludedUserId) {
-                    $query->where('modelo_id', '!=', $excludedUserId);
-                    Log::info("🚫 [INICIAR] Aplicando exclusión en búsqueda", [
-                        'excluded_user_id' => $excludedUserId,
-                        'excluded_user_name' => $excludedUserName
-                    ]);
-                }
-                    
-                $sessionEsperando = $query->orderBy('created_at', 'asc')
-                    ->lockForUpdate()
-                    ->first();
-                    
+                $query->whereNotNull('modelo_id')->whereNull('cliente_id')->where('modelo_id', '!=', $user->id);
+                if ($excludedUserId) $query->where('modelo_id', '!=', $excludedUserId);
             } else {
-                // Modelo busca sesiones creadas por clientes (cliente_id != null, modelo_id = null)
-                $query = ChatSession::where('status', 'waiting')
-                    ->whereNotNull('cliente_id') // Creada por cliente
-                    ->whereNull('modelo_id')     // Sin modelo asignado
-                    ->where('cliente_id', '!=', $user->id); // No el mismo usuario
-                    
-                // 🔥 APLICAR EXCLUSIÓN SI EXISTE
-                if ($excludedUserId) {
-                    $query->where('cliente_id', '!=', $excludedUserId);
-                    Log::info("🚫 [INICIAR] Aplicando exclusión en búsqueda", [
-                        'excluded_user_id' => $excludedUserId,
-                        'excluded_user_name' => $excludedUserName
-                    ]);
-                }
-                    
-                $sessionEsperando = $query->orderBy('created_at', 'asc')
-                    ->lockForUpdate()
-                    ->first();
+                $query->whereNotNull('cliente_id')->whereNull('modelo_id')->where('cliente_id', '!=', $user->id);
+                if ($excludedUserId) $query->where('cliente_id', '!=', $excludedUserId);
             }
             
-            if ($sessionEsperando) {
-                // 🎉 MATCH ENCONTRADO - VERIFICAR QUE NO SEA EL EXCLUIDO
-                $usuarioEsperando = null;
-                $matchedUserId = null;
+            $sessionWaiting = $query->lockForUpdate()->first();
+            
+            // PASO 3: Si hay match, conectar
+            if ($sessionWaiting) {
+                $matchedUserId = $user->rol === 'cliente' ? $sessionWaiting->modelo_id : $sessionWaiting->cliente_id;
+                $matchedUser = User::find($matchedUserId);
                 
-                if ($user->rol === 'cliente') {
-                    $matchedUserId = $sessionEsperando->modelo_id;
-                    $usuarioEsperando = User::find($matchedUserId);
+                if (!$matchedUser || $matchedUserId == $excludedUserId) {
+                    $sessionWaiting->update(['status' => 'ended', 'end_reason' => 'invalid_match']);
                 } else {
-                    $matchedUserId = $sessionEsperando->cliente_id;
-                    $usuarioEsperando = User::find($matchedUserId);
-                }
-                
-                // 🚨 DOBLE VERIFICACIÓN DE SEGURIDAD
-                if ($matchedUserId == $excludedUserId) {
-                    Log::error("❌ [INICIAR] Match con usuario excluido detectado", [
-                        'matched_user_id' => $matchedUserId,
-                        'excluded_user_id' => $excludedUserId,
-                        'session_id' => $sessionEsperando->id
-                    ]);
-                    
-                    // Marcar esta sesión como problemática y reintentar
-                    $sessionEsperando->update(['status' => 'ended', 'end_reason' => 'exclusion_failed']);
-                    
-                    // Reintentar la búsqueda
-                    return $this->iniciarRuleta($request);
-                }
-                
-                if (!$usuarioEsperando) {
-                    $sessionEsperando->update(['status' => 'ended', 'end_reason' => 'user_not_found']);
-                    return $this->iniciarRuleta($request);
-                }
-                
-                Log::info("✅ [INICIAR] Match válido encontrado", [
-                    'matched_user_id' => $matchedUserId,
-                    'matched_user_name' => $usuarioEsperando ? ($usuarioEsperando->alias ?? $usuarioEsperando->name) : 'Unknown',
-                    'is_different_from_excluded' => $matchedUserId != $excludedUserId ? 'YES - CORRECTO' : 'NO - ERROR',
-                    'session_room' => $sessionEsperando->room_name,
-                    'exclusion_working' => $excludedUserId ? true : false
-                ]);
-                
-                DB::beginTransaction();
-                try {
-                    if ($user->rol === 'cliente') {
-                        // Cliente se conecta a sala de modelo
-                        $sessionEsperando->update([
-                            'cliente_id' => $user->id,  // Asignar cliente
-                            'status' => 'active',
-                            'started_at' => now()
+                    DB::beginTransaction();
+                    try {
+                        if ($user->rol === 'cliente') {
+                            $sessionWaiting->update([
+                                'cliente_id' => $user->id,
+                                'status' => 'active',
+                                'session_type' => 'call',
+                                'call_type' => 'video',
+                                'started_at' => now()
+                            ]);
+                        } else {
+                            $sessionWaiting->update([
+                                'modelo_id' => $user->id,
+                                'status' => 'active',
+                                'session_type' => 'call',
+                                'call_type' => 'video',
+                                'started_at' => now()
+                            ]);
+                        }
+                        DB::commit();
+                        
+                        return response()->json([
+                            'success' => true,
+                            'type' => 'match_found',
+                            'roomName' => $sessionWaiting->room_name,
+                            'room_name' => $sessionWaiting->room_name,
+                            'userName' => $user->name ?? "{$user->rol}_{$user->id}",
+                            'user_name' => $user->name ?? "{$user->rol}_{$user->id}",
+                            'matched_with' => [
+                                'id' => $matchedUser->id,
+                                'name' => $matchedUser->name ?? "Usuario_{$matchedUser->id}",
+                                'role' => $matchedUser->rol
+                            ],
+                            'session_id' => $sessionWaiting->id,
+                            'status' => 'active'
                         ]);
-                    } else {
-                        // Modelo se conecta a sala de cliente
-                        $sessionEsperando->update([
-                            'modelo_id' => $user->id,   // Asignar modelo
-                            'status' => 'active',
-                            'started_at' => now()
-                        ]);
+                    } catch (\Exception $e) {
+                        DB::rollback();
+                        throw $e;
                     }
-                    
-                    DB::commit();
-                } catch (\Exception $e) {
-                    DB::rollback();
-                    throw $e;
                 }
-                
-                Log::info('🎉 Match encontrado en ruleta', [
-                    'user_id' => $user->id,
-                    'user_role' => $user->rol,
-                    'session_id' => $sessionEsperando->id,
-                    'room_name' => $sessionEsperando->room_name,
-                    'matched_with' => $usuarioEsperando->id,
-                    'matched_with_role' => $usuarioEsperando->rol,
-                    'excluded_user_id' => $excludedUserId,
-                    'exclusion_applied' => $excludedUserId ? true : false
-                ]);
-                
-                // 🔥 RESPUESTA CONSISTENTE
-                return response()->json([
-                    'success' => true,
-                    'type' => 'match_found',
-                    'roomName' => $sessionEsperando->room_name,
-                    'room_name' => $sessionEsperando->room_name,
-                    'userName' => $user->name ?? "{$user->rol}_{$user->id}",
-                    'user_name' => $user->name ?? "{$user->rol}_{$user->id}",
-                    'matched_with' => [
-                        'id' => $usuarioEsperando->id,
-                        'name' => $usuarioEsperando->name ?? "Usuario_{$usuarioEsperando->id}",
-                        'role' => $usuarioEsperando->rol
-                    ],
-                    'session_id' => $sessionEsperando->id,
-                    'status' => 'active',
-                    'exclusion_applied' => $excludedUserId ? true : false,
-                    'excluded_user_id' => $excludedUserId
-                ]);
             }
             
-            // 🕐 CREAR SALA DE ESPERA
-            Log::info("⏳ [INICIAR] No hay matches válidos, creando sala de espera", [
-                'excluded_user_id' => $excludedUserId,
-                'excluded_user_name' => $excludedUserName
-            ]);
-            
-            $roomName = "omegle_" . $user->rol . "_" . $user->id . "_" . time() . "_" . rand(1000, 9999);
+            // PASO 4: No hay match, crear sesión waiting
+            $roomName = "omegle_{$user->rol}_{$user->id}_" . time() . "_" . rand(1000, 9999);
             
             DB::beginTransaction();
             try {
-                // 🔥 FIX: ASIGNAR cliente_id Y modelo_id SEGÚN EL ROL REAL
                 $sessionData = [
                     'room_name' => $roomName,
                     'status' => 'waiting',
+                    'session_type' => 'call',
+                    'call_type' => 'video',
                     'modelo_data' => [
                         'id' => $user->id,
                         'nombre' => $user->name ?? "Usuario_{$user->id}",
@@ -503,30 +468,17 @@ class LiveKitController extends Controller
                     ]
                 ];
                 
-                // 🔥 ASIGNAR IDs SEGÚN ROL REAL DEL USUARIO
                 if ($user->rol === 'cliente') {
                     $sessionData['cliente_id'] = $user->id;
                     $sessionData['modelo_id'] = null;
-                } else { // modelo
-                    $sessionData['cliente_id'] = null;  // 🔥 FIX: NULL porque es modelo quien crea
-                    $sessionData['modelo_id'] = $user->id;  // 🔥 FIX: Modelo va en modelo_id
+                } else {
+                    $sessionData['cliente_id'] = null;
+                    $sessionData['modelo_id'] = $user->id;
                 }
                 
                 $session = ChatSession::create($sessionData);
-                
                 DB::commit();
                 
-                Log::info('⏳ Nueva sesión de espera creada', [
-                    'user_id' => $user->id,
-                    'user_role' => $user->rol,
-                    'session_id' => $session->id,
-                    'room_name' => $roomName,
-                    'cliente_id' => $session->cliente_id,
-                    'modelo_id' => $session->modelo_id,
-                    'will_exclude_on_match' => $excludedUserId
-                ]);
-                
-                // 🔥 RESPUESTA CONSISTENTE
                 return response()->json([
                     'success' => true,
                     'type' => 'waiting',
@@ -536,24 +488,15 @@ class LiveKitController extends Controller
                     'user_name' => $user->name ?? "{$user->rol}_{$user->id}",
                     'session_id' => $session->id,
                     'status' => 'waiting',
-                    'waiting_for' => $rolBuscado,
-                    'exclusion_info' => [
-                        'excluded_user_id' => $excludedUserId,
-                        'excluded_user_name' => $excludedUserName
-                    ]
+                    'waiting_for' => $rolBuscado
                 ]);
-                
             } catch (\Exception $e) {
                 DB::rollback();
                 throw $e;
             }
             
         } catch (\Exception $e) {
-            Log::error('❌ Error iniciando ruleta: ' . $e->getMessage(), [
-                'user_id' => auth()->id(),
-                'stack_trace' => $e->getTraceAsString()
-            ]);
-            
+            Log::error('❌ Error iniciando ruleta: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => 'Error iniciando ruleta: ' . $e->getMessage()
@@ -922,8 +865,8 @@ class LiveKitController extends Controller
             
             // 🔥 FILTRAR ADICIONALMENTE POR ESTADOS ESPECÍFICOS
             $filteredUsers = $availableUsers->filter(function($userStatus) {
-                // Solo usuarios con actividad reciente (últimos 30 segundos)
-                $isRecent = $userStatus->last_seen && $userStatus->last_seen->gt(now()->subSeconds(30));
+                // Solo usuarios con actividad reciente (últimos 2 minutos)
+                $isRecent = $userStatus->last_seen && $userStatus->last_seen->gt(now()->subMinutes(2));
                 
                 // Solo estados disponibles para emparejamiento
                 $availableStates = ['browsing', 'searching', 'idle'];
@@ -1744,8 +1687,21 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
                 }
             }
 
-            // 🛑 FINALIZAR TODAS LAS SESIONES RELACIONADAS
+            // 🛑 FINALIZAR TODAS LAS SESIONES RELACIONADAS (MEJORADO)
+            // 🛑 FINALIZAR TODAS LAS SESIONES RELACIONADAS (MEJORADO - LIMPIEZA AGRESIVA)
+            // Esta función ya limpia todas las sesiones de ambos usuarios
             $this->terminateAllRoomSessions($roomName, $clienteId, $modeloId, $endReason);
+            
+            // 🔥 LIMPIEZA ADICIONAL DEL USUARIO ACTUAL (por si acaso)
+            // Esto asegura que no queden residuos del usuario que está colgando
+            $this->terminateAllUserSessions($user->id, 'user_ended_call_cleanup', $roomName);
+            
+            Log::info('🧹 Limpieza completa de sesiones al colgar', [
+                'user_id' => $user->id,
+                'room_name' => $roomName,
+                'cliente_id' => $clienteId,
+                'modelo_id' => $modeloId
+            ]);
 
             // 🔔 ENVIAR NOTIFICACIONES A AMBOS USUARIOS
             $this->notifyRoomClosure($clienteId, $modeloId, $roomName, $endReason);
@@ -1855,51 +1811,178 @@ private function terminateAllRoomSessions($roomName, $clienteId, $modeloId, $end
     $now = now();
 
     try {
-        // 1. FINALIZAR CHAT SESSIONS
-        $chatSessions = ChatSession::where('room_name', $roomName)
-            ->whereIn('status', ['waiting', 'active'])
-            ->get();
-
-        foreach ($chatSessions as $session) {
-            $session->update([
+        DB::beginTransaction();
+        
+        // 1. FINALIZAR TODAS LAS CHAT SESSIONS DE ESTA SALA (FORZADO - SIN EXCEPCIONES)
+        $chatSessionsFinalizadas = ChatSession::where('room_name', $roomName)
+            ->whereIn('status', ['waiting', 'active', 'calling']) // Incluir todos los estados activos
+            ->update([
                 'status' => 'ended',
                 'ended_at' => $now,
-                'end_reason' => $endReason
+                'end_reason' => $endReason,
+                'updated_at' => $now
             ]);
 
-            \Log::info('✅ Chat session finalizada', [
-                'chat_session_id' => $session->id,
-                'room_name' => $roomName,
-                'reason' => $endReason
-            ]);
-        }
+        \Log::info('✅ Chat sessions finalizadas (forzado)', [
+            'room_name' => $roomName,
+            'sessions_finalizadas' => $chatSessionsFinalizadas,
+            'reason' => $endReason
+        ]);
 
-        // 2. FINALIZAR VIDEO CHAT SESSIONS
-        $videoSessions = VideoChatSession::where('room_name', $roomName)
-            ->where('status', 'active')
-            ->get();
-
-        foreach ($videoSessions as $session) {
-            $session->update([
+        // 2. FINALIZAR TODAS LAS VIDEO CHAT SESSIONS DE ESTA SALA (FORZADO)
+        $videoSessionsFinalizadas = VideoChatSession::where('room_name', $roomName)
+            ->whereIn('status', ['active', 'waiting']) // Incluir todos los estados activos
+            ->update([
                 'status' => 'ended',
                 'ended_at' => $now,
                 'is_consuming' => false,
-                'end_reason' => $endReason
+                'end_reason' => $endReason,
+                'updated_at' => $now
             ]);
 
-            \Log::info('✅ Video chat session finalizada', [
-                'video_session_id' => $session->id,
-                'room_name' => $roomName,
-                'total_consumed' => $session->total_consumed,
-                'reason' => $endReason
+        \Log::info('✅ Video chat sessions finalizadas (forzado)', [
+            'room_name' => $roomName,
+            'sessions_finalizadas' => $videoSessionsFinalizadas,
+            'reason' => $endReason
+        ]);
+        
+        // 3. 🔥 LIMPIEZA AGRESIVA: Finalizar TODAS las sesiones de ambos usuarios (no solo de esta sala)
+        // Esto previene reconexiones a salas antiguas
+        if ($clienteId) {
+            $clienteSessionsCleaned = ChatSession::where(function($query) use ($clienteId) {
+                $query->where('cliente_id', $clienteId)
+                      ->orWhere('modelo_id', $clienteId);
+            })
+            ->whereIn('status', ['waiting', 'active', 'calling'])
+            ->where('room_name', '!=', $roomName) // Excluir la sala actual
+            ->update([
+                'status' => 'ended',
+                'ended_at' => $now,
+                'end_reason' => $endReason . '_user_cleanup_all',
+                'updated_at' => $now
+            ]);
+            
+            VideoChatSession::where('user_id', $clienteId)
+                ->whereIn('status', ['active', 'waiting'])
+                ->where('room_name', '!=', $roomName)
+                ->update([
+                    'status' => 'ended',
+                    'ended_at' => $now,
+                    'is_consuming' => false,
+                    'end_reason' => $endReason . '_user_cleanup_all',
+                    'updated_at' => $now
+                ]);
+            
+            \Log::info('🧹 Sesiones del cliente limpiadas completamente', [
+                'cliente_id' => $clienteId,
+                'sessions_cleaned' => $clienteSessionsCleaned
             ]);
         }
+        
+        if ($modeloId) {
+            $modeloSessionsCleaned = ChatSession::where(function($query) use ($modeloId) {
+                $query->where('cliente_id', $modeloId)
+                      ->orWhere('modelo_id', $modeloId);
+            })
+            ->whereIn('status', ['waiting', 'active', 'calling'])
+            ->where('room_name', '!=', $roomName) // Excluir la sala actual
+            ->update([
+                'status' => 'ended',
+                'ended_at' => $now,
+                'end_reason' => $endReason . '_user_cleanup_all',
+                'updated_at' => $now
+            ]);
+            
+            VideoChatSession::where('user_id', $modeloId)
+                ->whereIn('status', ['active', 'waiting'])
+                ->where('room_name', '!=', $roomName)
+                ->update([
+                    'status' => 'ended',
+                    'ended_at' => $now,
+                    'is_consuming' => false,
+                    'end_reason' => $endReason . '_user_cleanup_all',
+                    'updated_at' => $now
+                ]);
+            
+            \Log::info('🧹 Sesiones del modelo limpiadas completamente', [
+                'modelo_id' => $modeloId,
+                'sessions_cleaned' => $modeloSessionsCleaned
+            ]);
+        }
+        
+        DB::commit();
 
     } catch (\Exception $e) {
+        DB::rollBack();
         \Log::error('❌ Error terminando sesiones de la sala', [
             'room_name' => $roomName,
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
+        throw $e;
+    }
+}
+
+/**
+ * 🧹 Terminar todas las sesiones activas o en espera de un usuario específico.
+ * @param int $userId
+ * @param string $endReason
+ * @param string|null $excludeRoomName Opcional: una sala a excluir de la limpieza
+ */
+private function terminateAllUserSessions(int $userId, string $endReason, ?string $excludeRoomName = null)
+{
+    $now = now();
+    try {
+        // Finalizar ChatSessions del usuario
+        $queryChat = ChatSession::where(function($query) use ($userId) {
+            $query->where('cliente_id', $userId)
+                ->orWhere('modelo_id', $userId);
+        })
+        ->whereIn('status', ['waiting', 'active', 'calling']);
+
+        if ($excludeRoomName) {
+            $queryChat->where('room_name', '!=', $excludeRoomName);
+        }
+
+        $cleanedChatCount = $queryChat->update([
+            'status' => 'ended',
+            'ended_at' => $now,
+            'end_reason' => $endReason,
+            'updated_at' => $now
+        ]);
+
+        // Finalizar VideoChatSessions del usuario
+        $queryVideoChat = VideoChatSession::where('user_id', $userId)
+            ->whereIn('status', ['active', 'waiting']);
+
+        if ($excludeRoomName) {
+            $queryVideoChat->where('room_name', '!=', $excludeRoomName);
+        }
+
+        $cleanedVideoChatCount = $queryVideoChat->update([
+            'status' => 'ended',
+            'ended_at' => $now,
+            'is_consuming' => false,
+            'end_reason' => $endReason,
+            'updated_at' => $now
+        ]);
+
+        Log::info('🧹 Sesiones de usuario limpiadas', [
+            'user_id' => $userId,
+            'reason' => $endReason,
+            'chat_sessions_cleaned' => $cleanedChatCount,
+            'video_chat_sessions_cleaned' => $cleanedVideoChatCount,
+            'excluded_room' => $excludeRoomName
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en terminateAllUserSessions', [
+            'user_id' => $userId,
+            'reason' => $endReason,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        throw $e;
     }
 }
 
@@ -2345,7 +2428,21 @@ private function getNotificationMessage($endReason)
                     Log::info('⚠️ Sesión actual terminada', [
                         'user_id' => $user->id,
                         'current_room' => $currentRoom,
-                        'session_id' => $currentSession->id
+                        'session_id' => $currentSession->id,
+                        'end_reason' => $currentSession->end_reason
+                    ]);
+                    
+                    // 🔥 DEVOLVER INFORMACIÓN DE LA SESIÓN TERMINADA (INCLUYENDO end_reason)
+                    return response()->json([
+                        'shouldRedirect' => true,
+                        'session' => [
+                            'id' => $currentSession->id,
+                            'room_name' => $currentSession->room_name,
+                            'status' => $currentSession->status,
+                            'end_reason' => $currentSession->end_reason, // 🔥 CRÍTICO: Incluir razón de finalización
+                            'ended_at' => $currentSession->ended_at ? $currentSession->ended_at->toISOString() : null
+                        ],
+                        'message' => 'Sesión terminada'
                     ]);
                     
                     // Buscar la sesión activa más reciente (si existe)
@@ -2372,15 +2469,103 @@ private function getNotificationMessage($endReason)
                     }
                 }
                 
+                // 🔥 PASO 4: VERIFICACIÓN SIMPLE Y DIRECTA - USAR ENDPOINT EXISTENTE getParticipants
+                // Este endpoint ya verifica participantes y devuelve total_count
+                $participantCount = null;
+                $partnerStatus = null;
+                
+                try {
+                    // Usar el método getParticipants que ya existe y es más confiable
+                    $participantsResponse = $this->getParticipants($currentRoom);
+                    
+                    if ($participantsResponse instanceof \Illuminate\Http\JsonResponse) {
+                        $participantsData = $participantsResponse->getData(true);
+                        $participantCount = $participantsData['total_count'] ?? 0;
+                        
+                        Log::info('👥 [CHECK-ROOM] Participantes en LiveKit', [
+                            'room_name' => $currentRoom,
+                            'participant_count' => $participantCount,
+                            'user_id' => $user->id,
+                            'participants_data' => $participantsData
+                        ]);
+                        
+                        // 🔥 LÓGICA CONSERVADORA: NO terminar sesión automáticamente por menos de 2 participantes
+                        // El frontend debe verificar múltiples veces antes de considerar desconexión
+                        // Solo reportar el estado, no terminar la sesión automáticamente
+                        if ($participantCount < 2 && $currentSession->status === 'active') {
+                            Log::info('⚠️ Menos de 2 participantes detectados (solo hay ' . $participantCount . ' participantes) - Reportando estado pero NO terminando sesión', [
+                                'user_id' => $user->id,
+                                'room_name' => $currentRoom,
+                                'session_id' => $currentSession->id,
+                                'participant_count' => $participantCount,
+                                'note' => 'El frontend debe verificar múltiples veces antes de considerar desconexión'
+                            ]);
+                            
+                            // 🔥 NO TERMINAR LA SESIÓN AUTOMÁTICAMENTE - Solo reportar el estado
+                            // El frontend debe hacer múltiples verificaciones antes de considerar desconexión
+                            $partnerStatus = [
+                                'participant_count' => $participantCount,
+                                'is_active' => false,
+                                'warning' => 'Menos de 2 participantes detectados - Verificar múltiples veces antes de desconectar'
+                            ];
+                        } else {
+                            $partnerStatus = [
+                                'participant_count' => $participantCount,
+                                'is_active' => $participantCount >= 2
+                            ];
+                        }
+                        
+                        $partnerStatus = [
+                            'participant_count' => $participantCount,
+                            'is_active' => $participantCount >= 2
+                        ];
+                    } else {
+                        Log::warning('⚠️ Respuesta inesperada de getParticipants', [
+                            'room_name' => $currentRoom,
+                            'response_type' => gettype($participantsResponse)
+                        ]);
+                        $partnerStatus = [
+                            'participant_count' => null,
+                            'is_active' => null,
+                            'error' => 'unexpected_response'
+                        ];
+                    }
+                    
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error verificando participantes de LiveKit', [
+                        'error' => $e->getMessage(),
+                        'room_name' => $currentRoom,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    // Si falla, no terminar sesión (continuar normalmente)
+                    $partnerStatus = [
+                        'participant_count' => null,
+                        'is_active' => null,
+                        'error' => 'verification_failed'
+                    ];
+                }
+                
                 Log::info('✅ Usuario permanece en sala actual', [
                     'user_id' => $user->id,
                     'room' => $currentRoom,
                     'session_status' => $currentSession->status,
-                    'session_id' => $currentSession->id
+                    'session_id' => $currentSession->id,
+                    'participant_count' => $participantCount,
+                    'partner_status' => $partnerStatus
                 ]);
                 
                 return response()->json([
                     'shouldRedirect' => false,
+                    'session' => [
+                        'id' => $currentSession->id,
+                        'room_name' => $currentSession->room_name,
+                        'status' => $currentSession->status,
+                        'end_reason' => $currentSession->end_reason,
+                        'created_at' => $currentSession->created_at->toISOString()
+                    ],
+                    'partner_status' => $partnerStatus,
+                    'participant_count' => $participantCount, // 🔥 AGREGAR DIRECTAMENTE PARA FACILITAR ACCESO
+                    'partner_id' => $partnerId,
                     'message' => 'Sin cambios'
                 ]);
                 
@@ -2509,7 +2694,7 @@ private function getNotificationMessage($endReason)
 
                 if ($session->cliente_id) {
                     $cliente = User::find($session->cliente_id);
-                    if ($cliente && $this->verifyUserIsSearchingOrActive($session->cliente_id, $roomName)) { 
+                    if ($cliente && $this->verifyUserIsSearchingOrActive($session->cliente_id, $roomName)) {
                         $participants[] = [
                             'id' => $cliente->id,
                             'name' => $cliente->name,
@@ -2532,7 +2717,7 @@ private function getNotificationMessage($endReason)
 
                 if ($session->modelo_id) {
                     $modelo = User::find($session->modelo_id);
-                    if ($modelo && $this->verifyUserIsSearchingOrActive($session->modelo_id, $roomName)) { // ✅ CAMBIAR: usar función más permisiva
+                    if ($modelo && $this->verifyUserIsSearchingOrActive($session->modelo_id, $roomName)) {
                         $participants[] = [
                             'id' => $modelo->id,
                             'name' => $modelo->name,
@@ -2768,8 +2953,8 @@ private function getNotificationMessage($endReason)
                     
                 $cleanedSessions = 0;
                 foreach ($activeSessions as $session) {
-                    $clienteActive = $session->cliente_id ? $this->verifyUserIsReallyActive($session->cliente_id, $session->room_name) : true;
-                    $modeloActive = $session->modelo_id ? $this->verifyUserIsReallyActive($session->modelo_id, $session->room_name) : true;
+                    $clienteActive = $session->cliente_id ? $this->verifyUserIsSearchingOrActive($session->cliente_id, $session->room_name) : true;
+                    $modeloActive = $session->modelo_id ? $this->verifyUserIsSearchingOrActive($session->modelo_id, $session->room_name) : true;
                     
                     if (!$clienteActive || !$modeloActive) {
                         $session->update([
@@ -3112,6 +3297,14 @@ private function getNotificationMessage($endReason)
         try {
             $user = auth()->user();
             
+            // Verificar si la tabla notifications existe
+            if (!Schema::hasTable('notifications')) {
+                return response()->json([
+                    'success' => true,
+                    'has_notifications' => false
+                ]);
+            }
+            
             // Buscar notificaciones no leídas y no expiradas
             $notifications = DB::table('notifications')
                 ->where('user_id', $user->id)
@@ -3156,13 +3349,15 @@ private function getNotificationMessage($endReason)
         } catch (\Exception $e) {
             Log::error('❌ [POLLING] Error verificando notificaciones', [
                 'user_id' => auth()->id(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             
+            // Retornar éxito sin notificaciones en caso de error para no interrumpir el flujo
             return response()->json([
-                'success' => false,
-                'error' => 'Error verificando notificaciones'
-            ], 500);
+                'success' => true,
+                'has_notifications' => false
+            ]);
         }
     }
     private function userHasAccessToRoom($userId, $roomName)
@@ -3210,20 +3405,198 @@ private function getNotificationMessage($endReason)
             $user = auth()->user();
             $roomName = $request->input('roomName');
             
+            Log::info('🔍 [DEBUG] endCoinSession INICIADO', [
+                'user_id' => $user->id,
+                'room_name' => $roomName,
+                'timestamp' => now()->toDateTimeString()
+            ]);
+            
             $session = VideoChatSession::where('user_id', $user->id)
                 ->where('room_name', $roomName)
                 ->where('status', 'active')
                 ->first();
+            
+            Log::info('🔍 [DEBUG] Sesión encontrada', [
+                'session_exists' => $session !== null,
+                'session_id' => $session->id ?? null,
+                'is_consuming' => $session->is_consuming ?? false,
+                'status' => $session->status ?? null,
+                'started_at' => $session->started_at ?? null,
+                'last_consumption_at' => $session->last_consumption_at ?? null
+            ]);
+            
+            // 🔥 Si no existe la sesión, buscar la última sesión activa o crear una nueva basada en consumos
+            if (!$session) {
+                Log::warning('⚠️ [DEBUG] No se encontró VideoChatSession activa, buscando en consumos recientes', [
+                    'user_id' => $user->id,
+                    'room_name' => $roomName,
+                    'timestamp' => now()->toDateTimeString()
+                ]);
+                
+                // Buscar el último consumo para esta sala para obtener información
+                $lastConsumption = \App\Models\CoinConsumption::where('user_id', $user->id)
+                    ->where('room_name', $roomName)
+                    ->orderBy('consumed_at', 'desc')
+                    ->first();
+                
+                if ($lastConsumption) {
+                    $secondsSinceLastConsumption = now()->diffInSeconds($lastConsumption->consumed_at);
+                    
+                    Log::info('🔍 [DEBUG] Último consumo encontrado', [
+                        'consumption_id' => $lastConsumption->id,
+                        'consumed_at' => $lastConsumption->consumed_at->toDateTimeString(),
+                        'now' => now()->toDateTimeString(),
+                        'coins_consumed' => $lastConsumption->coins_consumed,
+                        'minutes_consumed' => $lastConsumption->minutes_consumed,
+                        'seconds_since_last_consumption' => $secondsSinceLastConsumption,
+                        'will_skip' => $secondsSinceLastConsumption < 60
+                    ]);
+                    
+                    // Si hay consumos recientes (menos de 60 segundos), NO procesar consumo final adicional
+                    // porque significa que ya se cobró el descuento periódico
+                    if ($secondsSinceLastConsumption < 60) {
+                        Log::info('⏭️ [DEBUG] ⛔ SALTANDO consumo final - consumo reciente encontrado', [
+                            'user_id' => $user->id,
+                            'room_name' => $roomName,
+                            'seconds_since_last_consumption' => $secondsSinceLastConsumption,
+                            'last_consumption_at' => $lastConsumption->consumed_at->toDateTimeString(),
+                            'last_consumption_coins' => $lastConsumption->coins_consumed,
+                            'reason' => 'Ya se cobró descuento periódico hace menos de 60 segundos, NO se cobra consumo final adicional',
+                            'action' => 'RETURNING_SUCCESS_WITHOUT_CHARGE'
+                        ]);
+                        
+                        return response()->json(['success' => true]);
+                    } else {
+                        Log::warning('⚠️ [DEBUG] Último consumo fue hace más de 60 segundos, pero no hay VideoChatSession', [
+                            'user_id' => $user->id,
+                            'room_name' => $roomName,
+                            'seconds_since_last_consumption' => $secondsSinceLastConsumption,
+                            'note' => 'Esto es inusual, no se procesará consumo final sin sesión'
+                        ]);
+                        
+                        return response()->json(['success' => true]);
+                    }
+                } else {
+                    Log::info('⏭️ [DEBUG] No se encontraron consumos para esta sala', [
+                        'user_id' => $user->id,
+                        'room_name' => $roomName,
+                        'reason' => 'No hay consumos registrados, no se procesa consumo final'
+                    ]);
+                    
+                    return response()->json(['success' => true]);
+                }
+            }
                 
             if ($session && $session->is_consuming) {
-                // Consumo final antes de cerrar
-                $duration = now()->diffInSeconds($session->last_consumption_at ?? $session->started_at);
+                // 🔥 Consumo final antes de cerrar
+                // Calcular tiempo total de la sesión y tiempo desde último consumo
+                $sessionStartTime = $session->started_at;
+                $lastConsumptionTime = $session->last_consumption_at ?? $session->started_at;
+                $totalSeconds = now()->diffInSeconds($sessionStartTime);
+                $secondsSinceLastConsumption = now()->diffInSeconds($lastConsumptionTime);
                 
-                $this->coinController->processPeriodicConsumption(new Request([
+                Log::info('🔍 [DEBUG] Cálculos de tiempo', [
+                    'session_start_time' => $sessionStartTime->toDateTimeString(),
+                    'last_consumption_time' => $lastConsumptionTime->toDateTimeString(),
+                    'now' => now()->toDateTimeString(),
+                    'total_seconds' => $totalSeconds,
+                    'total_minutes' => round($totalSeconds / 60, 3),
+                    'seconds_since_last_consumption' => $secondsSinceLastConsumption,
+                    'minutes_since_last_consumption' => round($secondsSinceLastConsumption / 60, 3)
+                ]);
+                
+                // 🔥 LÓGICA DE REDONDEO: Solo cobrar minuto adicional si:
+                // 1. Pasaron al menos 60 segundos (1 minuto completo) desde el último consumo
+                //    Esto evita cobrar por segundos residuales cuando se cuelga justo después de un descuento periódico
+                // 2. Y el tiempo total es 1:30 o más (90 segundos), entonces se redondea hacia arriba
+                Log::info('🔍 [DEBUG] ⏱️ VERIFICANDO si se debe cobrar consumo final', [
+                    'seconds_since_last_consumption' => $secondsSinceLastConsumption,
+                    'threshold' => 60,
+                    'will_process' => $secondsSinceLastConsumption >= 60,
+                    'total_seconds' => $totalSeconds,
+                    'total_minutes' => round($totalSeconds / 60, 3)
+                ]);
+                
+                if ($secondsSinceLastConsumption >= 60) {
+                    $totalMinutes = $totalSeconds / 60;
+                    
+                    // Si el tiempo total es 1.5 minutos o más, redondear hacia arriba
+                    // Si es menos de 1.5 minutos, redondear hacia abajo
+                    if ($totalMinutes >= 1.5) {
+                        $minutesToCharge = ceil($totalMinutes);
+                    } else {
+                        $minutesToCharge = floor($totalMinutes);
+                    }
+                    
+                    // Calcular cuántos minutos ya se cobraron basándose en last_consumption_at
+                    // Si last_consumption_at está a los 60 segundos, ya se cobró 1 minuto
+                    // Si está a los 120 segundos, ya se cobraron 2 minutos, etc.
+                    $secondsFromStartToLastConsumption = $lastConsumptionTime->diffInSeconds($sessionStartTime);
+                    $minutesAlreadyCharged = floor($secondsFromStartToLastConsumption / 60);
+                    $additionalMinutes = max(0, $minutesToCharge - $minutesAlreadyCharged);
+                    
+                    Log::info('🔍 [DEBUG] 💰 Cálculo de minutos ya cobrados', [
+                        'session_start_time' => $sessionStartTime->toDateTimeString(),
+                        'last_consumption_time' => $lastConsumptionTime->toDateTimeString(),
+                        'seconds_from_start_to_last_consumption' => $secondsFromStartToLastConsumption,
+                        'minutes_already_charged' => $minutesAlreadyCharged,
+                        'total_seconds' => $totalSeconds,
+                        'total_minutes' => round($totalMinutes, 3),
+                        'total_minutes_to_charge' => $minutesToCharge,
+                        'additional_minutes' => $additionalMinutes,
+                        'additional_coins' => $additionalMinutes * 10
+                    ]);
+                    
+                    if ($additionalMinutes > 0) {
+                        Log::info('💰 [DEBUG] Procesando consumo final al cerrar sesión', [
+                            'user_id' => $user->id,
+                            'room_name' => $roomName,
+                            'total_seconds' => $totalSeconds,
+                            'total_minutes' => round($totalMinutes, 3),
+                            'minutes_to_charge' => $minutesToCharge,
+                            'minutes_already_charged' => $minutesAlreadyCharged,
+                            'additional_minutes' => $additionalMinutes,
+                            'additional_seconds' => $additionalMinutes * 60,
+                            'seconds_since_last' => $secondsSinceLastConsumption,
+                            'note' => 'Redondeo después de 1:30 - se cobra minuto adicional si aplica',
+                            'will_charge_coins' => $additionalMinutes * 10
+                        ]);
+                        
+                        $this->coinController->processPeriodicConsumption(new Request([
+                            'room_name' => $roomName,
+                            'session_duration_seconds' => $additionalMinutes * 60
+                        ]));
+                    } else {
+                        Log::info('⏭️ Saltando consumo final - no hay minutos adicionales', [
+                            'user_id' => $user->id,
+                            'room_name' => $roomName,
+                            'total_minutes' => round($totalMinutes, 3),
+                            'minutes_already_charged' => $minutesAlreadyCharged,
+                            'reason' => 'Ya se cobraron todos los minutos correspondientes'
+                        ]);
+                    }
+                } else {
+                    Log::info('⏭️ [DEBUG] Saltando consumo final - tiempo insuficiente', [
+                        'user_id' => $user->id,
+                        'room_name' => $roomName,
+                        'seconds_since_last' => $secondsSinceLastConsumption,
+                        'total_seconds' => $totalSeconds,
+                        'total_minutes' => round($totalSeconds / 60, 3),
+                        'reason' => 'Menos de 60 segundos desde último consumo - no se cobra minuto adicional'
+                    ]);
+                }
+            } else {
+                Log::info('⏭️ [DEBUG] No se procesa consumo final', [
+                    'user_id' => $user->id,
                     'room_name' => $roomName,
-                    'session_duration_seconds' => $duration
-                ]));
-                
+                    'session_exists' => $session !== null,
+                    'is_consuming' => $session->is_consuming ?? false,
+                    'reason' => 'Sesión no existe o no está consumiendo'
+                ]);
+            }
+            
+            // Actualizar sesión si existe
+            if ($session) {
                 $session->update([
                     'status' => 'ended',
                     'ended_at' => now()
@@ -3348,9 +3721,9 @@ private function getNotificationMessage($endReason)
             $payableMinutes = floor($durationMinutes);
             $qualifyingSession = $payableMinutes >= 1;
             
-            // Constantes
-            $MODEL_EARNINGS_PER_MINUTE = 0.24;
-            $COINS_PER_MINUTE = 10;
+            // Obtener valores dinámicos desde PlatformSettingsService
+            $MODEL_EARNINGS_PER_MINUTE = PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+            $COINS_PER_MINUTE = PlatformSettingsService::getInteger('coins_per_minute', 10);
             
             $modelEarnings = $qualifyingSession ? round($payableMinutes * $MODEL_EARNINGS_PER_MINUTE, 2) : 0;
             $theoreticalCoinsConsumed = ceil($payableMinutes * $COINS_PER_MINUTE);
@@ -3430,8 +3803,9 @@ private function getNotificationMessage($endReason)
             $newPayableMinutes = floor($newDurationMinutes);
             $newQualifying = $newPayableMinutes >= 1;
             
-            $MODEL_EARNINGS_PER_MINUTE = 0.24;
-            $COINS_PER_MINUTE = 10;
+            // Obtener configuraciones dinámicas desde la base de datos
+            $MODEL_EARNINGS_PER_MINUTE = \App\Services\PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+            $COINS_PER_MINUTE = \App\Services\PlatformSettingsService::getInteger('coins_per_minute', 10);
             
             $newModelEarnings = $newQualifying ? round($newPayableMinutes * $MODEL_EARNINGS_PER_MINUTE, 2) : 0;
             $newTheoreticalCoins = ceil($newPayableMinutes * $COINS_PER_MINUTE);
@@ -3546,12 +3920,12 @@ private function getNotificationMessage($endReason)
                 $bothUsersActive = true;
                 $inactiveUsers = [];
 
-                if ($session->cliente_id && !$this->verifyUserIsReallyActive($session->cliente_id, $roomName)) {
+                if ($session->cliente_id && !$this->verifyUserIsSearchingOrActive($session->cliente_id, $roomName)) {
                     $bothUsersActive = false;
                     $inactiveUsers[] = 'cliente';
                 }
 
-                if ($session->modelo_id && !$this->verifyUserIsReallyActive($session->modelo_id, $roomName)) {
+                if ($session->modelo_id && !$this->verifyUserIsSearchingOrActive($session->modelo_id, $roomName)) {
                     $bothUsersActive = false;
                     $inactiveUsers[] = 'modelo';
                 }
@@ -3822,56 +4196,139 @@ private function getNotificationMessage($endReason)
     {
         try {
             $request->validate([
-                'room' => 'required|string',
-                'identity' => 'required|string'
+                'room' => 'required|string'
             ]);
 
-            $roomName = $request->input('room');
-            $participantName = $request->input('identity');
+            VideoChatLogger::start('GENERATE_TOKEN_SECURE', 'Generando token seguro LiveKit para modelo');
+            VideoChatLogger::request('GENERATE_TOKEN_SECURE', $request);
+            
+            // 🔥 NORMALIZAR roomName: trim y eliminar espacios extra (igual que frontend)
+            $roomNameOriginal = $request->input('room');
+            $roomName = preg_replace('/\s+/', '', trim($roomNameOriginal));
+            
+            VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'RoomName normalizado', [
+                'room_original' => $roomNameOriginal,
+                'room_normalized' => $roomName,
+                'room_length' => strlen($roomName),
+                'room_hex' => bin2hex($roomName),
+            ]);
+            
             $user = auth()->user();
 
             if (!$user) {
+                VideoChatLogger::error('GENERATE_TOKEN_SECURE', 'Usuario no autenticado');
                 return response()->json(['error' => 'Usuario no autenticado'], 401);
             }
 
+            // 🔥 GENERAR IDENTIDAD ÚNICA basada en user_id + role para evitar DuplicateIdentity
+            $participantName = "user_{$user->id}_{$user->rol}";
+            
+            VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Usuario autenticado', [
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'user_name' => $user->name,
+                'participant_name' => $participantName,
+                'is_modelo' => $user->rol === 'modelo',
+            ]);
+
+            // 🔥 LOG CRÍTICO: Verificar roomName con detalles
+            Log::info('🎫 [TOKEN-SECURE] Generando token LiveKit', [
+                'room' => $roomName,
+                'room_length' => strlen($roomName),
+                'room_hex' => bin2hex($roomName), // Para detectar caracteres especiales
+                'identity' => $participantName,
+                'identity_length' => strlen($participantName),
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'timestamp' => now()->toIso8601String()
+            ]);
+
             // 🔥 SOLO VERIFICAR SALDO PARA CLIENTES (NO DESCONTAR)
             if ($user->rol === 'cliente') {
+                VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Usuario es cliente, verificando saldo', [
+                    'user_id' => $user->id,
+                ]);
+                
                 if (!$this->coinController) {
+                    VideoChatLogger::error('GENERATE_TOKEN_SECURE', 'coinController no inicializado');
                     return response()->json(['error' => 'Error interno del sistema'], 500);
                 }
 
                 $balanceCheck = $this->coinController->canStartVideoChat($user->id);
                 
+                VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Resultado verificación saldo cliente', [
+                    'can_start' => $balanceCheck['can_start'] ?? false,
+                    'total_balance' => $balanceCheck['total_balance'] ?? 0,
+                    'balance_check' => $balanceCheck,
+                ]);
+                
                 if (!$balanceCheck['can_start']) {
+                    VideoChatLogger::warning('GENERATE_TOKEN_SECURE', 'Cliente sin saldo suficiente', [
+                        'user_id' => $user->id,
+                        'balance' => $balanceCheck['total_balance'] ?? 0
+                    ]);
+                    
                     Log::warning('🚫 Cliente sin saldo suficiente', [
                         'user_id' => $user->id,
                         'balance' => $balanceCheck['total_balance'] ?? 0
                     ]);
                     
-                    return response()->json([
+                    $errorResponse = response()->json([
                         'error' => 'Saldo insuficiente para iniciar videochat',
                         'balance_info' => $balanceCheck,
                         'action' => 'redirect_to_coins',
                         'required_coins' => 30,
                         'current_coins' => $balanceCheck['total_balance'] ?? 0
                     ], 402);
+                    
+                    VideoChatLogger::response('GENERATE_TOKEN_SECURE', $errorResponse);
+                    return $errorResponse;
                 }
 
+                VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Cliente con saldo suficiente', [
+                    'user_id' => $user->id,
+                    'balance' => $balanceCheck['total_balance']
+                ]);
+                
                 Log::info('✅ Cliente con saldo suficiente - NO descontando', [
                     'user_id' => $user->id,
                     'balance' => $balanceCheck['total_balance']
                 ]);
+            } else {
+                VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Usuario es modelo, no se verifica saldo', [
+                    'user_role' => $user->rol,
+                ]);
             }
 
             // 🔥 GENERAR TOKEN SIN DESCUENTOS
-            return $this->generateToken($request);
+            VideoChatLogger::log('GENERATE_TOKEN_SECURE', 'Llamando a generateToken', [
+                'room_name' => $roomName,
+            ]);
+            
+            $response = $this->generateToken($request);
+            
+            VideoChatLogger::end('GENERATE_TOKEN_SECURE', 'Token seguro generado exitosamente', [
+                'room_name' => $roomName,
+                'user_role' => $user->rol,
+            ]);
+            
+            return $response;
 
         } catch (\Exception $e) {
+            VideoChatLogger::error('GENERATE_TOKEN_SECURE', 'Error generando token seguro', [
+                'room' => $request->input('room') ?? null,
+                'user_id' => auth()->id(),
+            ], $e);
+            
             Log::error('❌ Error generando token seguro: ' . $e->getMessage());
             
-            return response()->json([
+            $errorResponse = response()->json([
                 'error' => 'Error generando token seguro: ' . $e->getMessage()
             ], 500);
+            
+            VideoChatLogger::response('GENERATE_TOKEN_SECURE', $errorResponse);
+            
+            return $errorResponse;
         }
     }
 
@@ -3890,7 +4347,21 @@ private function getNotificationMessage($endReason)
             $durationSeconds = $request->session_duration_seconds;
             $manualCoinsAmount = $request->manual_coins_amount; // 🔥 NUEVA VARIABLE
 
+            Log::info('🔍 [DEBUG] processPeriodicDeduction INICIADO', [
+                'user_id' => $user->id ?? null,
+                'user_rol' => $user->rol ?? null,
+                'room_name' => $roomName,
+                'duration_seconds' => $durationSeconds,
+                'manual_coins_amount' => $manualCoinsAmount,
+                'reason' => $request->input('reason'),
+                'timestamp' => now()->toDateTimeString()
+            ]);
+
             if (!$user || $user->rol !== 'cliente') {
+                Log::warning('⚠️ [DEBUG] Usuario no autorizado para processPeriodicDeduction', [
+                    'user_id' => $user->id ?? null,
+                    'user_rol' => $user->rol ?? null
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Solo clientes pueden usar este endpoint'
@@ -3902,15 +4373,23 @@ private function getNotificationMessage($endReason)
                 $coinsToDeduct = $manualCoinsAmount;
                 $minutesConsumed = $coinsToDeduct / VideoChatCoinController::COST_PER_MINUTE;
                 
-                Log::info('💰 Usando cantidad manual de coins', [
+                Log::info('💰 [DEBUG] Usando cantidad manual de coins', [
                     'user_id' => $user->id,
                     'manual_coins' => $manualCoinsAmount,
-                    'calculated_minutes' => $minutesConsumed
+                    'calculated_minutes' => round($minutesConsumed, 3),
+                    'source' => 'frontend_deduction_system'
                 ]);
             } else {
                 // Lógica automática original
                 $minutesConsumed = $durationSeconds / 60;
                 $coinsToDeduct = ceil($minutesConsumed * VideoChatCoinController::COST_PER_MINUTE);
+                
+                Log::info('💰 [DEBUG] Usando cálculo automático', [
+                    'user_id' => $user->id,
+                    'duration_seconds' => $durationSeconds,
+                    'minutes_consumed' => round($minutesConsumed, 3),
+                    'coins_to_deduct' => $coinsToDeduct
+                ]);
             }
 
             if (!$this->coinController) {
@@ -3921,6 +4400,14 @@ private function getNotificationMessage($endReason)
             }
 
             // 🔥 PROCESAR DESCUENTO
+            Log::info('🔍 [DEBUG] Llamando a processConsumption', [
+                'user_id' => $user->id,
+                'room_name' => $roomName,
+                'minutes_consumed' => round($minutesConsumed, 3),
+                'coins_to_deduct' => $coinsToDeduct,
+                'session_id' => 'periodic_' . time()
+            ]);
+            
             $result = $this->coinController->processConsumption(
                 $user->id,
                 $roomName,
@@ -3930,10 +4417,11 @@ private function getNotificationMessage($endReason)
             );
 
             if (!$result['success']) {
-                Log::warning('⚠️ Saldo insuficiente', [
+                Log::warning('⚠️ [DEBUG] Saldo insuficiente en processPeriodicDeduction', [
                     'user_id' => $user->id,
                     'required' => $coinsToDeduct,
-                    'remaining_balance' => $result['remaining_balance'] ?? 0
+                    'remaining_balance' => $result['remaining_balance'] ?? 0,
+                    'error' => $result['error'] ?? 'unknown'
                 ]);
 
                 return response()->json([
@@ -3945,10 +4433,13 @@ private function getNotificationMessage($endReason)
                 ], 402);
             }
 
-            Log::info('✅ Descuento exitoso', [
+            Log::info('✅ [DEBUG] Descuento exitoso en processPeriodicDeduction', [
                 'user_id' => $user->id,
+                'room_name' => $roomName,
                 'coins_deducted' => $coinsToDeduct,
-                'remaining_balance' => $result['remaining_balance']
+                'minutes_consumed' => round($minutesConsumed, 3),
+                'remaining_balance' => $result['remaining_balance'],
+                'reason' => $request->input('reason')
             ]);
 
             return response()->json([
@@ -3977,8 +4468,8 @@ private function getNotificationMessage($endReason)
     {
         try {
             $request->validate([
-                'room' => 'required|string',
-                'identity' => 'required|string'
+                'room' => 'required|string'
+                // identity ya no se requiere - se genera automáticamente en generateToken
             ]);
 
             $user = auth()->user();
@@ -3990,6 +4481,7 @@ private function getNotificationMessage($endReason)
             ]);
 
             // Para modelos, usar el método original sin descuentos
+            // generateToken ahora genera automáticamente una identidad única
             return $this->generateToken($request);
             
         } catch (\Exception $e) {
@@ -4000,7 +4492,320 @@ private function getNotificationMessage($endReason)
         }
     }
 
+    /**
+     * 🔔 WEBHOOK HANDLER - Procesar eventos de LiveKit
+     * 
+     * Este método procesa webhooks de LiveKit para detectar desconexiones
+     * en tiempo real. LiveKit envía eventos cuando:
+     * - Un participante se desconecta (participant_left)
+     * - Una sala se cierra (room_finished)
+     * - Un participante se conecta (participant_joined)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function handleWebhook(Request $request)
+    {
+        try {
+            // Validar firma del webhook (si está configurado)
+            $this->validateWebhookSignature($request);
 
+            $payload = json_decode($request->getContent(), true);
+            
+            if (!$payload || !isset($payload['event'])) {
+                Log::warning('❌ [LiveKit Webhook] Payload inválido', [
+                    'payload_keys' => $payload ? array_keys($payload) : null
+                ]);
+                return response('Invalid payload', 400);
+            }
+
+            $event = $payload['event'];
+            $eventType = $event['type'] ?? 'unknown';
+            $roomName = $event['room']['name'] ?? null;
+
+            Log::info('📨 [LiveKit Webhook] Evento recibido', [
+                'event_type' => $eventType,
+                'room_name' => $roomName,
+                'timestamp' => $event['timestamp'] ?? null
+            ]);
+
+            // Procesar según tipo de evento
+            switch ($eventType) {
+                case 'participant_left':
+                    return $this->handleParticipantLeft($event, $roomName);
+                    
+                case 'room_finished':
+                    return $this->handleRoomFinished($event, $roomName);
+                    
+                case 'participant_joined':
+                    // Solo loggear, no requiere acción inmediata
+                    Log::info('✅ [LiveKit Webhook] Participante se unió', [
+                        'room_name' => $roomName,
+                        'participant_identity' => $event['participant']['identity'] ?? null
+                    ]);
+                    return response('OK', 200);
+                    
+                default:
+                    Log::info('ℹ️ [LiveKit Webhook] Evento no procesado', [
+                        'event_type' => $eventType,
+                        'room_name' => $roomName
+                    ]);
+                    return response('Event not processed', 200);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('❌ [LiveKit Webhook] Error procesando webhook', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response('Error processing webhook', 500);
+        }
+    }
+
+    /**
+     * 🚪 Manejar evento cuando un participante abandona la sala
+     */
+    private function handleParticipantLeft($event, $roomName)
+    {
+        try {
+            $participant = $event['participant'] ?? null;
+            $participantIdentity = $participant['identity'] ?? null;
+
+            if (!$participantIdentity || !$roomName) {
+                Log::warning('⚠️ [LiveKit Webhook] participant_left sin datos suficientes', [
+                    'room_name' => $roomName,
+                    'has_participant' => !is_null($participant),
+                    'has_identity' => !is_null($participantIdentity)
+                ]);
+                return response('OK', 200);
+            }
+
+            // Extraer user_id y role de la identity (formato: user_{id}_{role})
+            if (preg_match('/^user_(\d+)_(cliente|modelo)$/', $participantIdentity, $matches)) {
+                $userId = (int)$matches[1];
+                $userRole = $matches[2];
+            } else {
+                Log::warning('⚠️ [LiveKit Webhook] Identity con formato no reconocido', [
+                    'identity' => $participantIdentity
+                ]);
+                return response('OK', 200);
+            }
+
+            Log::info('🚪 [LiveKit Webhook] Participante abandonó sala', [
+                'room_name' => $roomName,
+                'user_id' => $userId,
+                'user_role' => $userRole,
+                'participant_identity' => $participantIdentity
+            ]);
+
+            // Buscar la sesión activa
+            $chatSession = ChatSession::where('room_name', $roomName)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$chatSession) {
+                Log::info('ℹ️ [LiveKit Webhook] No se encontró sesión activa para la sala', [
+                    'room_name' => $roomName
+                ]);
+                
+                // Aun así, limpiar VideoChatSession si existe
+                $this->cleanupVideoChatSession($userId, $roomName, 'participant_left');
+                return response('OK', 200);
+            }
+
+            // Determinar quién es el partner
+            $partnerId = null;
+            $partnerRole = null;
+            
+            if ($userRole === 'cliente' && $chatSession->cliente_id === $userId) {
+                $partnerId = $chatSession->modelo_id;
+                $partnerRole = 'modelo';
+            } elseif ($userRole === 'modelo' && $chatSession->modelo_id === $userId) {
+                $partnerId = $chatSession->cliente_id;
+                $partnerRole = 'cliente';
+            }
+
+            if (!$partnerId) {
+                Log::warning('⚠️ [LiveKit Webhook] No se pudo identificar el partner', [
+                    'room_name' => $roomName,
+                    'user_id' => $userId,
+                    'user_role' => $userRole,
+                    'chat_session_id' => $chatSession->id
+                ]);
+                
+                // Limpiar sesión de todos modos
+                $this->cleanupVideoChatSession($userId, $roomName, 'participant_left');
+                return response('OK', 200);
+            }
+
+            // Finalizar ChatSession
+            $chatSession->update([
+                'status' => 'ended',
+                'ended_at' => now(),
+                'end_reason' => 'participant_disconnected'
+            ]);
+
+            // Limpiar VideoChatSession del usuario que se desconectó
+            $this->cleanupVideoChatSession($userId, $roomName, 'participant_left');
+
+            // Notificar al partner
+            $notificationData = [
+                'room_name' => $roomName,
+                'partner_id' => $userId,
+                'partner_role' => $userRole,
+                'disconnection_type' => 'participant_left',
+                'timestamp' => now()->toISOString()
+            ];
+
+            // Enviar notificación según el tipo
+            // Cuando se desconecta CUALQUIERA, el partner siempre recibe 'partner_left_session'
+            // El frontend decidirá qué acción tomar según su rol:
+            // - Si es MODELO → buscar nuevo cliente (find_new_client)
+            // - Si es CLIENTE → buscar nueva modelo (siguiente)
+            NotificationController::sendNotification($partnerId, 'partner_left_session', $notificationData);
+
+            Log::info('✅ [LiveKit Webhook] Desconexión procesada exitosamente', [
+                'room_name' => $roomName,
+                'disconnected_user_id' => $userId,
+                'disconnected_user_role' => $userRole,
+                'notified_partner_id' => $partnerId,
+                'notified_partner_role' => $partnerRole
+            ]);
+
+            return response('OK', 200);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [LiveKit Webhook] Error en handleParticipantLeft', [
+                'error' => $e->getMessage(),
+                'room_name' => $roomName,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response('Error processing participant_left', 500);
+        }
+    }
+
+    /**
+     * 🏁 Manejar evento cuando una sala se cierra completamente
+     */
+    private function handleRoomFinished($event, $roomName)
+    {
+        try {
+            Log::info('🏁 [LiveKit Webhook] Sala finalizada', [
+                'room_name' => $roomName
+            ]);
+
+            // Buscar todas las sesiones activas de esta sala
+            $chatSession = ChatSession::where('room_name', $roomName)
+                ->where('status', 'active')
+                ->first();
+
+            if ($chatSession) {
+                // Finalizar ChatSession
+                $chatSession->update([
+                    'status' => 'ended',
+                    'ended_at' => now(),
+                    'end_reason' => 'room_closed'
+                ]);
+
+                // Notificar a ambos participantes si existen
+                if ($chatSession->cliente_id) {
+                    NotificationController::sendNotification($chatSession->cliente_id, 'room_closed', [
+                        'room_name' => $roomName,
+                        'reason' => 'room_closed'
+                    ]);
+                }
+
+                if ($chatSession->modelo_id) {
+                    NotificationController::sendNotification($chatSession->modelo_id, 'room_closed', [
+                        'room_name' => $roomName,
+                        'reason' => 'room_closed'
+                    ]);
+                }
+
+                // Limpiar todas las VideoChatSessions de esta sala
+                VideoChatSession::where('room_name', $roomName)
+                    ->where('status', 'active')
+                    ->update([
+                        'status' => 'ended',
+                        'ended_at' => now(),
+                        'end_reason' => 'room_closed',
+                        'is_consuming' => false
+                    ]);
+            }
+
+            // Limpiar datos relacionados
+            $this->limpiarDatosRelacionados($roomName);
+
+            Log::info('✅ [LiveKit Webhook] Sala finalizada procesada', [
+                'room_name' => $roomName
+            ]);
+
+            return response('OK', 200);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [LiveKit Webhook] Error en handleRoomFinished', [
+                'error' => $e->getMessage(),
+                'room_name' => $roomName,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response('Error processing room_finished', 500);
+        }
+    }
+
+    /**
+     * 🧹 Limpiar VideoChatSession de un usuario
+     */
+    private function cleanupVideoChatSession($userId, $roomName, $endReason)
+    {
+        try {
+            VideoChatSession::where('user_id', $userId)
+                ->where('room_name', $roomName)
+                ->where('status', 'active')
+                ->update([
+                    'status' => 'ended',
+                    'ended_at' => now(),
+                    'end_reason' => $endReason,
+                    'is_consuming' => false
+                ]);
+
+            Log::info('🧹 [LiveKit Webhook] VideoChatSession limpiada', [
+                'user_id' => $userId,
+                'room_name' => $roomName,
+                'end_reason' => $endReason
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [LiveKit Webhook] Error limpiando VideoChatSession', [
+                'error' => $e->getMessage(),
+                'user_id' => $userId,
+                'room_name' => $roomName
+            ]);
+        }
+    }
+
+    /**
+     * 🔐 Validar firma del webhook de LiveKit (opcional pero recomendado)
+     */
+    private function validateWebhookSignature(Request $request)
+{
+    $authHeader = $request->header('Authorization');
+
+    if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
+        throw new \Exception('Missing webhook authorization header');
+    }
+
+    $token = str_replace('Bearer ', '', $authHeader);
+    $secret = config('services.livekit.webhook_secret');
+
+    try {
+        JWT::decode($token, new Key($secret, 'HS256'));
+    } catch (\Exception $e) {
+        Log::error('❌ [LiveKit Webhook] Invalid signature', [
+            'error' => $e->getMessage()
+        ]);
+        throw new \Exception('Invalid webhook signature');
+    }
+}
     
 }
     

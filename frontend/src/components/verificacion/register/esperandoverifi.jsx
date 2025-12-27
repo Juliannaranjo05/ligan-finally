@@ -29,14 +29,12 @@ export default function EsperandoVerificacion() {
       const response = await api.get(`${API_BASE_URL}/api/verificacion/estado`);
       const { estado, mensaje: mensajeApi } = response.data;
       
-      console.log("Estado recibido:", estado);
       
       setEstadoVerificacion(estado);
       setMensaje(mensajeApi || "");
       setRateLimited(false);
 
       if (estado === "aprobada") {
-        console.log("Verificación aprobada, iniciando redirección...");
         setRedirigiendo(true);
         
         if (intervalRef.current) {
@@ -45,12 +43,10 @@ export default function EsperandoVerificacion() {
         }
         
         setTimeout(() => {
-          console.log("Redirigiendo al dashboard...");
           navigate("/dashboard");
         }, 2000);
         
       } else if (estado === "rechazada") {
-        console.log("Verificación rechazada, iniciando redirección...");
         setRedirigiendo(true);
         
         if (intervalRef.current) {
@@ -59,23 +55,19 @@ export default function EsperandoVerificacion() {
         }
         
         setTimeout(() => {
-          console.log("Redirigiendo a verificación...");
           navigate("/verificacion-identidad");
         }, 3000);
       }
       
     } catch (error) {
-      console.error("Error al verificar estado:", error);
       
       if (error.response?.status === 429) {
-        console.log("Rate limit alcanzado, pausando verificaciones por 2 minutos...");
         setRateLimited(true);
         
         setTimeout(() => {
           setRateLimited(false);
         }, 120000);
       } else {
-        console.error("Error de verificación:", error.message);
         setMensaje(t('anteveri.common.error_message'));
       }
     } finally {
@@ -89,7 +81,6 @@ export default function EsperandoVerificacion() {
     const inicializar = async () => {
       if (!mounted) return;
       
-      console.log("Inicializando verificación...");
       
       setTimeout(() => {
         if (mounted && !redirigiendo) {
@@ -99,7 +90,6 @@ export default function EsperandoVerificacion() {
 
       intervalRef.current = setInterval(() => {
         if (mounted && !redirigiendo && !rateLimited) {
-          console.log("Verificando estado automáticamente...");
           verificarEstado();
         }
       }, 10000);
@@ -108,7 +98,6 @@ export default function EsperandoVerificacion() {
     inicializar();
 
     return () => {
-      console.log("Limpiando componente...");
       mounted = false;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -119,7 +108,6 @@ export default function EsperandoVerificacion() {
 
   useEffect(() => {
     if (redirigiendo && intervalRef.current) {
-      console.log("Limpiando interval por redirección...");
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
@@ -194,7 +182,6 @@ export default function EsperandoVerificacion() {
 
   const handleBotonClick = () => {
     if (estadoVerificacion === "rechazada" && !redirigiendo) {
-      console.log("Redirección manual iniciada...");
       setRedirigiendo(true);
       
       if (intervalRef.current) {
@@ -207,13 +194,13 @@ export default function EsperandoVerificacion() {
   };
 
   window.debugVerificacion = () => {
-    console.log({
+    return {
       estadoVerificacion,
       redirigiendo,
       rateLimited,
       intervalActive: !!intervalRef.current,
       isChecking: isCheckingRef.current
-    });
+    };
   };
 
   return (

@@ -22,6 +22,7 @@ class Kernel extends HttpKernel
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
         \App\Http\Middleware\HandleFrontendErrors::class,
+        \App\Http\Middleware\SecurityHeaders::class,
 
     ];
 
@@ -64,6 +65,7 @@ class Kernel extends HttpKernel
         'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
+        'admin.auth' => \App\Http\Middleware\AdminAuthMiddleware::class,
         'verificacion.estado' => \App\Http\Middleware\VerificacionEstado::class,
         'email.verified' => \App\Http\Middleware\EnsureEmailVerified::class,
         'only.current.token' => \App\Http\Middleware\EnsureTokenIsCurrent::class,

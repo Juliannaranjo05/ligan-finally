@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ver Logs de VideoChat</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        button {
+            background: #ff007a;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #cc0062;
+        }
+        .log-entry {
+            background: #2a2a2a;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #ff007a;
+        }
+        .log-timestamp {
+            color: #888;
+            font-size: 0.9em;
+        }
+        .log-category {
+            color: #ff007a;
+            font-weight: bold;
+        }
+        .log-message {
+            color: #fff;
+            margin: 5px 0;
+        }
+        .log-data {
+            background: #1a1a1a;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .stats {
+            background: #2a2a2a;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Logs de Depuración de VideoChat</h1>
+        
+        <div class="stats" id="stats"></div>
+        
+        <div>
+            <button onclick="loadLogs()">🔄 Cargar Logs</button>
+            <button onclick="exportLogs()">💾 Exportar Logs</button>
+            <button onclick="clearLogs()">🗑️ Limpiar Logs</button>
+        </div>
+        
+        <div id="logs-container"></div>
+    </div>
+
+    <script>
+        function loadLogs() {
+            try {
+                const logs = JSON.parse(localStorage.getItem('videochat_debug_logs') || '[]');
+                
+                // Mostrar estadísticas
+                const stats = document.getElementById('stats');
+                const categories = {};
+                logs.forEach(log => {
+                    categories[log.category] = (categories[log.category] || 0) + 1;
+                });
+                
+                stats.innerHTML = `
+                    <strong>Total de logs:</strong> ${logs.length}<br>
+                    <strong>Por categoría:</strong> ${Object.entries(categories).map(([cat, count]) => `${cat}: ${count}`).join(', ')}
+                `;
+                
+                // Mostrar logs
+                const container = document.getElementById('logs-container');
+                if (logs.length === 0) {
+                    container.innerHTML = '<p>No hay logs disponibles. Los logs se generan cuando usas el componente VideoChat.</p>';
+                    return;
+                }
+                
+                container.innerHTML = logs.map(log => `
+                    <div class="log-entry">
+                        <div class="log-timestamp">${log.timestamp}</div>
+                        <div class="log-category">[${log.category}]</div>
+                        <div class="log-message">${log.message}</div>
+                        <div class="log-data">
+                            <pre>${JSON.stringify(log.data, null, 2)}</pre>
+                        </div>
+                    </div>
+                `).reverse().join('');
+                
+            } catch (e) {
+                alert('Error cargando logs: ' + e.message);
+                console.error(e);
+            }
+        }
+        
+        function exportLogs() {
+            try {
+                const logs = JSON.parse(localStorage.getItem('videochat_debug_logs') || '[]');
+                const logText = JSON.stringify(logs, null, 2);
+                const blob = new Blob([logText], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `videochat_debug_${new Date().toISOString().replace(/:/g, '-')}.log`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                alert(`✅ ${logs.length} logs exportados`);
+            } catch (e) {
+                alert('Error exportando logs: ' + e.message);
+                console.error(e);
+            }
+        }
+        
+        function clearLogs() {
+            if (confirm('¿Estás seguro de que quieres limpiar todos los logs?')) {
+                localStorage.removeItem('videochat_debug_logs');
+                document.getElementById('logs-container').innerHTML = '<p>Logs limpiados.</p>';
+                document.getElementById('stats').innerHTML = '';
+                alert('✅ Logs limpiados');
+            }
+        }
+        
+        // Cargar logs al iniciar
+        loadLogs();
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+

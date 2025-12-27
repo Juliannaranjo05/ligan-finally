@@ -40,6 +40,7 @@
   "addedToFavorites": "Adicionada aos favoritos",
   "searchUsers": "Buscar usuários",
   "viewStories": "Ver histórias",
+  "storiesComingSoon": "As histórias estarão disponíveis em breve",
   "buyCoins": "Comprar moedas",
   "coinPackages": "Pacotes de moedas",
   "videoMinutes10": "≈ 10 minutos de videochat",
@@ -169,7 +170,17 @@
     "callRejected": "A garota rejeitou a chamada",
     "callExpired": "A chamada expirou sem resposta",
     "timeoutExpired": "Tempo de espera expirado",
-    "errorStartingCall": "Erro ao iniciar chamada"
+    "errorStartingCall": "Erro ao iniciar chamada",
+    "lastPayment": "Último Pagamento:",
+    "loadingLastPurchase": "Carregando último pagamento...",
+    "claimCoins": "Reivindicar Moedas",
+    "claiming": "Reivindicando...",
+    "coinsClaimedSuccess": "Moedas reivindicadas com sucesso!",
+    "claimed": "Reivindicado",
+    "coins": "Moedas",
+    "minutes": "Minutos",
+    "paymentProblemTitle": "Problema com seu pagamento?",
+    "paymentProblemMessage": "Se o pagamento não foi efetuado ou as moedas não foram adicionadas, vá em \"Comprar Moedas\" e revise suas transações. Processe o pagamento pendente ou entre em contato com o suporte se precisar de ajuda."
   },
   "storiesModal": {
     "loadingStories": "Carregando histórias...",
@@ -301,7 +312,12 @@
       "yesterday": "Ontem",
       "callEnded": "Chamada finalizada",
       "messageSent": "Mensagem enviada",
-      "addedToFavorites": "Te adicionou aos favoritos"
+      "addedToFavorites": "Te adicionou aos favoritos",
+      "callRejected": "Chamada rejeitada",
+      "callCancelled": "Chamada cancelada",
+      "noHistory": "Não há histórico de chamadas",
+      "sendMessage": "Enviar mensagem",
+      "callAgain": "Ligar novamente"
     },
     "restrictions": {
       "pendingApproval": "História Pendente de Aprovação",
@@ -348,11 +364,14 @@
     "title": "Seus Favoritos",
     "count": "favorito",
     "countPlural": "favoritos",
+    "singular": "favorito",
+    "plural": "favoritos",
     "loading": "Carregando favoritos...",
     "updating": "Atualizando...",
     "refresh": "Atualizar",
     "noFavorites": "Você ainda não tem favoritos",
     "noFavoritesDesc": "Quando você adicionar usuários como favoritos, eles aparecerão aqui",
+    "noFavoritesMessage": "Quando você adicionar usuários como favoritos, eles aparecerão aqui",
     "searchUsers": "Buscar usuários",
     "errorLoading": "Erro carregando favoritos",
     "retry": "Tentar novamente",
@@ -460,22 +479,462 @@
     "takePhoto": "Tirar foto",
     "deletePhoto": "Excluir foto de perfil",
     "editAlias": "Editar apelido ou nome visível",
+    "editAliasModal": {
+      "title": "Editar Apelido",
+      "customNickname": "Seu apelido personalizado",
+      "nicknamePlaceholder": "Digite seu apelido",
+      "characters": "caracteres",
+      "preview": "Visualização:",
+      "nicknameInfo": "Seu apelido é como outros usuários te verão. Seu nome real continuará sendo",
+      "useRealName": "Usar nome real",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "saving": "Salvando...",
+      "deleting": "Excluindo..."
+    },
     "language": "Idioma preferido",
+    "languageModal": {
+      "title": "Selecionar Idioma",
+      "description": "Selecione seu idioma preferido para traduções automáticas",
+      "current": "Atual",
+      "cancel": "Cancelar",
+      "saveLanguage": "Salvar idioma",
+      "saving": "Salvando..."
+    },
+    "managePhotoModal": {
+      "uploadFromFile": "Enviar do arquivo",
+      "selectFile": "Selecionar arquivo",
+      "fileFormats": "JPEG, PNG, WebP (máx. 5MB)",
+      "preview": "Visualização",
+      "confirmUpload": "Confirmar envio",
+      "uploading": "Enviando...",
+      "cancel": "Cancelar",
+      "or": "ou",
+      "takePhoto": "Tirar foto",
+      "activateCamera": "Ativar câmera",
+      "activating": "Ativando...",
+      "loadingCamera": "Carregando câmera...",
+      "capturePhoto": "Tirar foto",
+      "processing": "Processando...",
+      "deleteCurrentPhoto": "Excluir foto atual",
+      "deleting": "Excluindo...",
+      "deletePhoto": "Excluir foto"
+    },
     "payments": "Assinatura e Pagamentos",
     "managePaymentMethod": "Adicionar ou remover método de pagamento",
+    "configurePayoutAccount": "Configurar conta para consignações",
+    "transactionHistory": "Histórico de Transações",
+    "paymentMethods": {
+      "title": "Métodos de Pagamento",
+      "addMethod": "Adicionar Método",
+      "addCard": "Adicionar Cartão",
+      "deleteMethod": "Excluir",
+      "setDefault": "Definir como padrão",
+      "noMethods": "Você não tem cartões salvos",
+      "addFirst": "Adicione um cartão como referência",
+      "info": "Estes métodos são apenas para referência. Os pagamentos são processados diretamente através do Wompi.",
+      "cardInfo": "Esta informação é apenas para referência. Os pagamentos são processados diretamente através do Wompi.",
+      "card": "Cartão",
+      "pse": "PSE",
+      "nequi": "Nequi",
+      "bancolombia": "Bancolombia",
+      "lastUsed": "Último uso",
+      "default": "Padrão",
+      "suggestions": "Cartões usados anteriormente",
+      "add": "Adicionar",
+      "type": "Tipo de método",
+      "lastFourDigits": "Últimos 4 dígitos",
+      "lastFourDigitsHint": "Digite os últimos 4 dígitos do seu cartão como referência",
+      "bankName": "Banco",
+      "bankPlaceholder": "Nome do banco",
+      "accountType": "Tipo de conta",
+      "accountPlaceholder": "Ex: Poupança",
+      "setAsDefault": "Definir como padrão",
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "confirmDelete": "Confirmar exclusão",
+      "deleteMessage": "Tem certeza de que deseja excluir este método de pagamento?",
+      "delete": "Excluir",
+      "errors": {
+        "loadFailed": "Erro ao carregar métodos de pagamento",
+        "selectType": "Selecione um tipo de método",
+        "invalidDigits": "Digite os últimos 4 dígitos do seu cartão",
+        "addFailed": "Erro ao adicionar método",
+        "updateFailed": "Erro ao atualizar método",
+        "deleteFailed": "Erro ao excluir método"
+      }
+    },
     "country": "País de residência (fiscal)",
     "minimumPayout": "Definir pagamento mínimo",
+    "payoutAccountModal": {
+      "currentConfiguration": "Configuração Atual",
+      "country": "País",
+      "changeConfiguration": "Alterar configuração",
+      "selectCountry": "Selecione seu país",
+      "selectPaymentMethod": "Selecione o método de pagamento",
+      "localMethodsAvailable": "(Métodos locais disponíveis)",
+      "cryptoOnly": "(Apenas criptomoedas)",
+      "accountDetails": "Detalhes da conta",
+      "walletAddress": "Endereço da carteira TRC-20",
+      "accountHolderName": "Nome do titular",
+      "accountHolderPlaceholder": "Nome completo do titular da conta",
+      "verifyWalletWarning": "⚠️ Verifique se o endereço está correto. As transações são irreversíveis.",
+      "sendVerificationCode": "Enviar código de verificação",
+      "sendingCode": "Enviando código...",
+      "verified": "Verificado",
+      "pendingVerification": "Pendente de verificação",
+      "confirmPaymentMethod": "Confirme seu método de pagamento",
+      "enterVerificationCode": "Digite o código de 6 dígitos enviado ao seu email para confirmar a alteração do método de pagamento",
+      "codeValidFor": "Código válido por:",
+      "verificationCode": "Código de verificação",
+      "back": "Voltar",
+      "verifyCode": "Verificar código",
+      "verifying": "Verificando...",
+      "resendCode": "Reenviar código",
+      "paymentMethodUpdated": "Método de pagamento atualizado!",
+      "paymentMethodUpdatedDescription": "Seu método de pagamento foi verificado e atualizado com sucesso. Agora você pode receber pagamentos.",
+      "continue": "Continuar",
+      "close": "Fechar",
+      "success": {
+        "codeSent": "Código de verificação enviado ao seu email",
+        "verified": "Método de pagamento verificado com sucesso!"
+      },
+      "errors": {
+        "selectCountry": "Por favor, selecione seu país",
+        "selectPaymentMethod": "Por favor, selecione um método de pagamento",
+        "enterAccountDetails": "Por favor, preencha todos os campos",
+        "enterAccountHolderName": "Por favor, digite o nome do titular",
+        "enterVerificationCode": "Por favor, digite um código de 6 dígitos",
+        "invalidCode": "Código de verificação inválido",
+        "codeExpired": "O código expirou",
+        "codeExpiredMessage": "O código de verificação expirou",
+        "connectionError": "Erro de conexão"
+      }
+    },
+    "minimumPayoutModal": {
+      "title": "Configurar Pagamento Mínimo",
+      "description": "Defina o valor mínimo para receber seus pagamentos. Os ganhos se acumularão até atingir este valor.",
+      "currentConfiguration": "Configuração Atual",
+      "selectNewMinimum": "Selecione novo valor mínimo:",
+      "recommended": "Recomendado",
+      "customPayout": "Pagamento personalizado",
+      "newAmountSelected": "Novo valor selecionado",
+      "newAmountDescription": "Com",
+      "asMinimum": "como mínimo, você só receberá pagamentos quando seus ganhos acumulados atingirem este valor.",
+      "moreEarningsNeeded": "Isso significa que você precisará de mais ganhos antes de receber um pagamento.",
+      "moreFrequentPayments": "Isso significa que você receberá pagamentos com mais frequência.",
+      "cancel": "Cancelar",
+      "updateMinimum": "Atualizar Mínimo",
+      "updating": "Atualizando...",
+      "loadingConfiguration": "Carregando configuração...",
+      "payoutOptions": {
+        "basic": "Pagamento mínimo básico",
+        "recommended": "Pagamento mínimo recomendado",
+        "medium": "Pagamento mínimo médio",
+        "high": "Pagamento mínimo alto",
+        "maximum": "Pagamento mínimo máximo"
+      },
+      "payoutInfo": "Você só receberá pagamentos quando atingir este valor",
+      "errors": {
+        "loadingError": "Erro ao carregar configuração atual",
+        "selectDifferentAmount": "Selecione um valor diferente do atual",
+        "updateError": "Erro ao atualizar o pagamento mínimo",
+        "connectionError": "Erro de conexão"
+      },
+      "success": {
+        "updated": "Pagamento mínimo atualizado para"
+      }
+    },
     "others": "Outros",
     "support": "Suporte ou Ajuda",
     "terms": "Termos e Condições",
     "report": "Reportar um problema",
-    "modalInstruction": "Aqui você pode implementar o formulário ou conteúdo correspondente para {{item}}."
+    "modalInstruction": "Aqui você pode implementar o formulário ou conteúdo correspondente para {{item}}.",
+    "modals": {
+      "transactionHistory": {
+        "title": "Histórico de Transações",
+        "description": "Revise todas as suas compras, recargas de crédito e transações realizadas.",
+        "loading": "Carregando histórico...",
+        "retry": "Tentar novamente",
+        "searchPlaceholder": "Buscar por ID, descrição...",
+        "empty": "Nenhuma transação registrada",
+        "emptyDesc": "Suas transações aparecerão aqui",
+        "noResults": "Nenhum resultado encontrado",
+        "noResultsDesc": "Tente ajustar os filtros de busca",
+        "filters": {
+          "all": "Todas",
+          "purchase": "Compras",
+          "consumption": "Consumo",
+          "gift": "Presentes"
+        },
+        "types": {
+          "purchase": "Compra",
+          "coinPurchase": "Compra de Moedas",
+          "coinGift": "Presente de Moedas",
+          "consumption": "Consumo",
+          "giftSent": "Presente Enviado",
+          "giftReceived": "Presente Recebido"
+        },
+        "status": {
+          "completed": "Concluído",
+          "pending": "Pendente",
+          "failed": "Falhou",
+          "cancelled": "Cancelado"
+        },
+        "details": {
+          "title": "Detalhes da Transação",
+          "description": "Descrição",
+          "type": "Tipo",
+          "amount": "Valor",
+          "status": "Status",
+          "date": "Data"
+        },
+        "errors": {
+          "title": "Erro ao carregar histórico",
+          "loadFailed": "Erro ao obter histórico"
+        }
+      },
+      "notifications": {
+        "title": "Configurações de Notificações",
+        "description": "Personalize quais notificações você deseja receber",
+        "loading": "Carregando preferências...",
+        "saving": "Salvando...",
+        "save": "Salvar Preferências",
+        "success": "Preferências salvas com sucesso",
+        "options": {
+          "messages": {
+            "label": "Notificações de Mensagens",
+            "description": "Ser notificado quando receber novas mensagens"
+          },
+          "calls": {
+            "label": "Notificações de Chamadas",
+            "description": "Ser notificado quando receber chamadas ou solicitações de videochat"
+          },
+          "gifts": {
+            "label": "Notificações de Presentes",
+            "description": "Ser notificado quando receber presentes"
+          },
+          "favorites": {
+            "label": "Modelos Favoritos Online",
+            "description": "Ser notificado quando seus modelos favoritos estiverem online"
+          }
+        },
+        "errors": {
+          "saveFailed": "Erro ao salvar preferências"
+        }
+      },
+      "notificationsFull": {
+        "title": "Configurações de Notificações",
+        "description": "Personalize quais notificações você deseja receber: novas mensagens, modelos online, ofertas especiais, etc."
+      },
+      "privacy": {
+        "title": "Configurações de Privacidade",
+        "description": "Controle quem pode entrar em contato com você e gerencie seus bloqueios",
+        "loading": "Carregando informações de privacidade...",
+        "confirmUnblock": "Tem certeza de que deseja desbloquear este usuário?",
+        "blockedUsers": {
+          "title": "Usuários Bloqueados",
+          "empty": "Você não bloqueou nenhum usuário",
+          "emptyDesc": "Usuários que você bloquear não poderão enviar mensagens ou entrar em contato",
+          "blockedOn": "Bloqueado em",
+          "reason": "Motivo",
+          "unblock": "Desbloquear",
+          "unblocking": "Desbloqueando..."
+        },
+        "blockedByUsers": {
+          "title": "Usuários que te Bloquearam",
+          "empty": "Ninguém te bloqueou",
+          "blockedOn": "Bloqueou você em",
+          "cannotContact": "Você não pode entrar em contato com este usuário"
+        },
+        "info": {
+          "title": "Informações de Privacidade",
+          "point1": "Usuários bloqueados não podem enviar mensagens ou ligar para você",
+          "point2": "Você pode desbloquear usuários a qualquer momento",
+          "point3": "Se alguém te bloquear, você não poderá entrar em contato",
+          "point4": "Os bloqueios são privados e o outro usuário não será notificado"
+        },
+        "errors": {
+          "loadFailed": "Erro ao obter status de bloqueios",
+          "unblockFailed": "Erro ao desbloquear usuário"
+        }
+      },
+      "privacyFull": {
+        "title": "Configurações de Privacidade",
+        "description": "Controle quem pode ver você online, enviar mensagens privadas e ver seu perfil."
+      },
+      "favorites": {
+        "title": "Modelos Favoritos",
+        "description": "Gerencie sua lista de modelos favoritos"
+      },
+      "favoritesFull": {
+        "title": "Modelos Favoritos",
+        "description": "Gerencie sua lista de modelos favoritos e receba notificações quando estiverem online."
+      },
+      "paymentMethods": {
+        "title": "Adicionar ou remover método de pagamento",
+        "description": "Gerencie seus métodos de pagamento para fazer compras na plataforma."
+      },
+      "support": {
+        "title": "Suporte ou Ajuda",
+        "description": "Para dúvidas, problemas técnicos ou ajuda com sua conta, escreva para support@ligando.online e nossa equipe responderá o mais rápido possível.",
+        "contactButton": "Contatar suporte por e-mail"
+      },
+      "report": {
+        "title": "Reportar um problema",
+        "description": "Conte-nos qual problema você teve. Usaremos essas informações para melhorar a plataforma.",
+        "problemType": "Tipo de problema",
+        "problemTechnical": "Problema técnico",
+        "problemPayment": "Problema com pagamentos / moedas",
+        "problemInappropriate": "Comportamento inadequado",
+        "problemOther": "Outro",
+        "describeProblem": "Descreva o que aconteceu",
+        "describePlaceholder": "Inclua o máximo de detalhes possível: o que você estava fazendo, em qual tela, se viu alguma mensagem de erro, hora aproximada, etc.",
+        "sendReport": "Enviar relatório por e-mail"
+      },
+      "close": "Fechar"
+    },
+    "googlePasswordSetup": {
+      "title": "Definir senha",
+      "description": "Como você se registrou com o Google, não tem uma senha definida. Enviaremos um link por e-mail para que você possa definir uma senha.",
+      "info": "Depois de definir sua senha, você poderá fazer login tanto com o Google quanto com seu e-mail e senha.",
+      "sendEmailButton": "Enviar link por e-mail",
+      "emailSent": "Link enviado",
+      "emailSentDescription": "Um link foi enviado para {{email}}. Clique no link no e-mail para definir sua senha.",
+      "emailSentTip": "O link expirará em 24 horas. Se você não receber o e-mail, verifique sua pasta de spam.",
+      "sending": "Enviando..."
+    },
+    "changePasswordModal": {
+      "title": "Alterar Senha",
+      "verifyIdentity": "Para alterar sua senha, precisamos verificar sua identidade.",
+      "currentPassword": "Senha atual",
+      "newPassword": "Nova senha (mín. 8 caracteres)",
+      "confirmPassword": "Confirmar nova senha",
+      "codeSent": "Código enviado",
+      "codeSentDescription": "Enviamos um código de 6 dígitos para seu e-mail.",
+      "codePlaceholder": "Código de 6 dígitos",
+      "resendCode": "Não recebeu o código? Reenviar",
+      "successTitle": "Senha alterada!",
+      "successMessage": "Sua senha foi atualizada com sucesso.",
+      "autoClose": "Este modal será fechado automaticamente...",
+      "processing": "Processando...",
+      "sendCode": "Enviar código",
+      "changePassword": "Alterar senha",
+      "cancel": "Cancelar",
+      "errors": {
+        "enterCurrentPassword": "Digite sua senha atual",
+        "passwordMinLength": "A nova senha deve ter pelo menos 8 caracteres",
+        "passwordsDontMatch": "As novas senhas não coincidem",
+        "enterCode": "Digite o código de 6 dígitos",
+        "codeSent": "Código enviado para seu e-mail",
+        "errorRequestingCode": "Erro ao solicitar código",
+        "connectionError": "Erro de conexão",
+        "passwordChanged": "🎉 Senha alterada com sucesso!",
+        "errorChangingPassword": "Erro ao alterar senha"
+      }
+    },
+    "logoutAllModal": {
+      "title": "Fechar Todas as Sessões",
+      "whatWillHappen": "O que vai acontecer?",
+      "willCloseAll": "Todas as suas sessões ativas serão fechadas",
+      "willNeedLogin": "Você terá que fazer login novamente em outros dispositivos",
+      "currentStays": "Sua sessão atual permanecerá ativa",
+      "sendCodeDescription": "Para continuar, enviaremos um código de verificação para seu e-mail.",
+      "codeSent": "Código enviado",
+      "codeSentDescription": "Enviamos um código de verificação para seu e-mail.",
+      "codePlaceholder": "Código de 6 dígitos",
+      "resendCode": "Não recebeu o código? Reenviar",
+      "successTitle": "Sessões fechadas!",
+      "successMessage": "Todas as suas sessões foram fechadas com sucesso.",
+      "autoClose": "Este modal será fechado automaticamente...",
+      "processing": "Processando...",
+      "sendCode": "Enviar código",
+      "closeSessions": "Fechar sessões",
+      "cancel": "Cancelar",
+      "errors": {
+        "enterCode": "Digite o código de 6 dígitos",
+        "codeSent": "Código enviado para seu e-mail",
+        "errorRequestingCode": "Erro ao solicitar código",
+        "connectionError": "Erro de conexão",
+        "sessionsClosed": "🎉 Todas as sessões foram fechadas com sucesso!",
+        "errorClosingSessions": "Erro ao fechar sessões"
+      }
+    },
+    "deleteAccountModal": {
+      "title": "Excluir Conta",
+      "warning": "AVISO",
+      "warningPermanent": "Esta ação é PERMANENTE e IRREVERSÍVEL",
+      "warningDeleteData": "Todos os seus dados e conversas serão excluídos",
+      "warningNoRecovery": "Você não poderá recuperar sua conta",
+      "warningLoseAccess": "Você perderá acesso a todas as funções",
+      "confirmPassword": "Para continuar, confirme sua senha:",
+      "currentPassword": "Sua senha atual",
+      "finalVerification": "Verificação final",
+      "finalVerificationDescription": "Enviamos um código de verificação. Esta é sua última chance de cancelar.",
+      "confirmText": "Para confirmar, digite \"EXCLUIR\":",
+      "confirmPlaceholder": "EXCLUIR",
+      "codePlaceholder": "Código de 6 dígitos",
+      "resendCode": "Não recebeu o código? Reenviar",
+      "successTitle": "Conta excluída",
+      "successMessage": "Sua conta foi excluída permanentemente.",
+      "redirecting": "Redirecionando para o início...",
+      "processing": "Processando...",
+      "sendCode": "Enviar código",
+      "deleteAccount": "EXCLUIR CONTA",
+      "cancel": "Cancelar",
+      "errors": {
+        "enterPassword": "Digite sua senha",
+        "enterCode": "Digite o código de 6 dígitos",
+        "mustWriteDelete": "Você deve digitar \"EXCLUIR\" para confirmar",
+        "codeSent": "Código enviado para seu e-mail",
+        "errorRequestingCode": "Erro ao solicitar código",
+        "connectionError": "Erro de conexão",
+        "accountDeleted": "🗑️ Conta excluída com sucesso. Redirecionando...",
+        "errorDeletingAccount": "Erro ao excluir conta",
+        "sessionExpired": "Sessão expirada. Por favor, faça login novamente."
+      }
+    },
+    "setupPassword": {
+      "title": "Definir senha",
+      "description": "Defina uma senha para sua conta. Você poderá fazer login tanto com o Google quanto com seu e-mail e senha.",
+      "newPassword": "Nova senha",
+      "newPasswordPlaceholder": "Digite sua nova senha",
+      "confirmPassword": "Confirmar senha",
+      "confirmPasswordPlaceholder": "Confirme sua nova senha",
+      "setupButton": "Definir senha",
+      "settingUp": "Configurando...",
+      "successTitle": "Senha definida!",
+      "successMessage": "Sua senha foi definida com sucesso. Agora você pode fazer login com seu e-mail e senha, ou continuar usando o Google.",
+      "redirecting": "Redirecionando para o login...",
+      "invalidLink": "Link inválido",
+      "invalidLinkDescription": "O link de definição de senha é inválido ou incompleto.",
+      "passwordsMismatch": "As senhas não coincidem",
+      "passwordTooShort": "A senha deve ter pelo menos 8 caracteres",
+      "error": "Erro ao definir senha",
+      "connectionError": "Erro de conexão. Tente novamente.",
+      "backToHome": "Voltar para a página inicial",
+      "requirementsTitle": "Requisitos de segurança:",
+      "minimumCharacters": "Mínimo de 8 caracteres",
+      "canUseGoogle": "Você pode continuar usando o Google para fazer login",
+      "canUseEmail": "Ou usar seu e-mail e senha"
+    }
   },
   "subirHistoria": {
     "titulo": "Envie ou grave sua história",
+    "tituloNoDisponible": "História não disponível",
     "grabar": "Gravar história",
+    "noDisponible": "Não disponível",
     "subir": "Enviar do seu dispositivo",
     "publicar": "Publicar história",
+    "subiendo": "Enviando...",
+    "verHistoria": "Ver História",
+    "eliminar": "Excluir",
+    "eliminarYCrearNueva": "Excluir e Criar Nova",
+    "seleccionaCamara": "Selecione sua câmera",
+    "consejo": "Dica",
+    "informacion": "Informação",
+    "consejoAprobacion": "As histórias passam por aprovação antes de serem públicas. Os vídeos não podem durar mais de 15 segundos.",
+    "informacionRestriccion": "Você só pode ter uma história ativa por vez. Cada história dura 24 horas desde sua aprovação.",
     "alerta_grabacion": "Função de gravação em desenvolvimento ou integre getUserMedia para capturar vídeo."
   },
   "esperandoVerificacion": {
@@ -538,7 +997,19 @@
     "sessionEnded": "Sessão encerrada!",
     "connecting": "Conectando...",
     "redirectingIn": "Redirecionando em {{seconds}}s...",
-    "dontWorry": "Não se preocupe, te conectaremos com outro cara"
+    "dontWorry": "Não se preocupe, te conectaremos com outro cara",
+    "chat": {
+      "title": "Chat",
+      "notReady": "O chat ainda não está pronto. Tente novamente.",
+      "startConversation": "Inicie uma conversa interessante e aproveite o chat",
+      "chatWith": "Conversa com {{name}}",
+      "waitingModel": "Aguardando modelo...",
+      "modelWillConnect": "Uma modelo se conectará em breve para conversar com você"
+    },
+    "gifts": "Presentes",
+    "minutes": "Minutos",
+    "connected": "Conectado",
+    "connectionEstablished": "Vide chamada estabelecida com sucesso"
   },
   "time": {
     "callDuration": "Tempo"
@@ -1070,5 +1541,102 @@
       "keepSufficientCoins": "Mantenha moedas suficientes",
       "beRespectful": "Seja sempre respeitoso",
       "eachConnectionUnique": "Cada conexão é única"
+    },
+    "sessionSuspended": {
+      "title": "Uma nova sessão foi aberta em outro dispositivo",
+      "message": "Sua sessão atual foi suspensa porque uma nova sessão foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
+      "continueSession": "Continuar com esta sessão",
+      "reactivating": "Reativando sessão...",
+      "noToken": "Nenhum token disponível",
+      "reactivateError": "Erro ao reativar sessão",
+      "networkError": "Erro de conexão. Por favor, tente novamente."
+    },
+    "sessionClosed": {
+      "title": "Sua conta foi aberta em outro dispositivo",
+      "message": "Sua conta foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
+      "continueSession": "Continuar com esta sessão",
+      "reclaiming": "Reivindicando...",
+      "successTitle": "Sessão reivindicada",
+      "successMessage": "Sua sessão foi reivindicada com sucesso. Recarregando...",
+      "noToken": "Nenhum token disponível",
+      "invalidResponse": "Resposta inválida do servidor",
+      "reclaimError": "Erro ao reivindicar sessão",
+      "networkError": "Erro de conexão. Por favor, tente novamente."
+    },
+  "earnings": {
+    "title": "Sistema de Pagamentos",
+    "subtitle": "Ganhos e pagamentos semanais",
+    "unifiedPaymentSystem": "Sistema de Pagamentos Unificado",
+    "earningsByTimeAndGifts": "Ganhos por tempo e presentes",
+    "loading": "Carregando...",
+    "error": "Erro",
+    "retry": "Tentar novamente",
+    "tabs": {
+      "all": "Tudo",
+      "sessions": "Sessões",
+      "gifts": "Presentes",
+      "thisWeek": "Esta Semana",
+      "pending": "Pendentes",
+      "paid": "Pagos"
+    },
+    "balance": {
+      "general": "Saldo Geral",
+      "available": "Saldo total disponível",
+      "weeklyBreakdown": "Resumo Esta Semana",
+      "timeEarnings": "Por Tempo",
+      "giftEarnings": "Por Presentes",
+      "totalWeekly": "Total Semanal",
+      "chatSessions": "Sessões de chat",
+      "giftsReceived": "Presentes recebidos",
+      "sessions": "sessões",
+      "regalos": "presentes",
+      "time": "Tempo",
+      "thisWeek": "Esta Semana",
+      "unprocessed": "Não processado",
+      "received": "Recebido",
+      "mixed": "Misto",
+      "timeOnly": "Apenas Tempo",
+      "giftOnly": "Apenas Presentes",
+      "totalHistoric": "Total Histórico Ganho",
+      "lastEarning": "Último Ganho",
+      "none": "Nenhum",
+      "loadingBalance": "Carregando saldo..."
+    },
+    "weekly": {
+      "noEarnings": "Nenhum ganho registrado esta semana",
+      "dailyDetail": "Detalhe diário",
+      "dayEarnings": "ganho do dia",
+      "valid": "Válido",
+      "tooShort": "Muito Curto",
+      "earningPercentage": "60% ganho",
+      "page": "Página",
+      "of": "de",
+      "previous": "Anterior",
+      "next": "Próximo",
+      "loadingEarnings": "Carregando ganhos...",
+      "records": "registros",
+      "retry": "Tentar novamente",
+      "onlySessions": "Apenas Sessões",
+      "onlyGifts": "Apenas Presentes",
+      "noSessionEarnings": "Você não tem ganhos por sessões esta semana",
+      "noGiftEarnings": "Você não tem ganhos por presentes esta semana"
     }
+  },
+  "roulette": {
+    "titulo": "Roleta de Vídeo",
+    "estado": "Pronto para conectar",
+    "camera_label": "Câmera",
+    "mic_label": "Microfone",
+    "start_button": "Iniciar Busca",
+    "random_user_notice": "Você será conectado com um usuário aleatório",
+    "default_camera": "Câmera {{number}}",
+    "default_microphone": "Microfone {{number}}"
+  },
+  "mirror": {
+    "label": "Modo espelho",
+    "enable": "Ativar espelho",
+    "disable": "Desativar espelho",
+    "active": "Espelho ativo",
+    "description": "Ver minha imagem como em um espelho"
+  }
 }

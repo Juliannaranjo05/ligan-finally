@@ -3,6 +3,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Header from "./header";
 import { getUser } from "../../utils/auth.js";
 import { useGlobalTranslation } from '../../contexts/GlobalTranslationContext';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { useSessionValidation } from '../hooks/useSessionValidation';
 
 import {
   MessageSquare,
@@ -22,6 +25,10 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivadoMobile() {
+  // 🔥 VALIDACIÓN DE SESIÓN: Solo modelos pueden acceder
+  useSessionValidation('modelo');
+
+  const { t } = useTranslation();
   // 🔥 ESTADOS BÁSICOS PARA MÓVIL
   const [usuario, setUsuario] = useState({ id: null, name: "Usuario", rol: "modelo" });
   const [conversaciones, setConversaciones] = useState([]);
@@ -62,6 +69,51 @@ export default function ChatPrivadoMobile() {
   const [translations, setTranslations] = useState(new Map());
   const [translatingIds, setTranslatingIds] = useState(new Set());
   const [stableMessages, setStableMessages] = useState([]);
+
+  // 🔥 OBTENER EL HOOK DE i18n PARA ESCUCHAR CAMBIOS
+  const { i18n: i18nInstance } = useTranslation();
+
+  // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
+  useEffect(() => {
+    const handleLanguageChange = (lng) => {
+      // Solo actualizar si el idioma realmente cambió
+      if (lng && lng !== currentLanguage) {
+        
+        setCurrentLanguage(lng);
+        localStorage.setItem('selectedLanguage', lng);
+        
+        // Habilitar traducción automáticamente si no es español
+        const shouldEnableTranslation = lng !== 'es';
+        setLocalTranslationEnabled(shouldEnableTranslation);
+        localStorage.setItem('translationEnabled', shouldEnableTranslation.toString());
+        
+        // Actualizar el contexto global también
+        if (typeof changeGlobalLanguage === 'function') {
+          try {
+            changeGlobalLanguage(lng);
+          } catch (error) {
+          }
+        }
+        
+        // Limpiar traducciones existentes para forzar retraducción
+        setTranslations(new Map());
+        setTranslatingIds(new Set());
+      }
+    };
+
+    // Escuchar cambios en el idioma de i18n
+    i18nInstance.on('languageChanged', handleLanguageChange);
+    
+    // También verificar el idioma inicial
+    const currentI18nLang = i18nInstance.language || i18n.language;
+    if (currentI18nLang && currentI18nLang !== currentLanguage) {
+      handleLanguageChange(currentI18nLang);
+    }
+
+    return () => {
+      i18nInstance.off('languageChanged', handleLanguageChange);
+    };
+  }, [currentLanguage, changeGlobalLanguage, i18nInstance]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -1019,7 +1071,7 @@ export default function ChatPrivadoMobile() {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-white/50" />
                 <input
                   type="text"
-                  placeholder="Buscar conversaciones..."
+                  placeholder={t('chat.searchPlaceholder')}
                   className="w-full pl-10 pr-4 py-2 rounded-lg bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
                   value={busquedaConversacion}
                   onChange={(e) => setBusquedaConversacion(e.target.value)}
@@ -1056,8 +1108,19 @@ export default function ChatPrivadoMobile() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold">
-                            {getInitial(conv.other_user_name)}
+                          {conv.avatar_url ? (
+                            <img
+                              src={conv.avatar_url}
+                              alt={conv.other_user_display_name || conv.other_user_name}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-[#ff007a]"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextElementSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold ${conv.avatar_url ? 'hidden' : ''}`}>
+                            {getInitial(conv.other_user_display_name || conv.other_user_name)}
                           </div>
                           
                           <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
@@ -1073,7 +1136,7 @@ export default function ChatPrivadoMobile() {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm truncate">
-                            {conv.other_user_name}
+                            {conv.other_user_display_name || conv.other_user_name}
                           </p>
                           <div className="text-xs text-white/60 truncate">
                             {conv.last_message_sender_id === usuario.id ? (
@@ -1106,8 +1169,8 @@ export default function ChatPrivadoMobile() {
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="text-center">
                   <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">Selecciona una conversación</h3>
-                  <p className="text-white/60">Elige una conversación para ver los mensajes</p>
+                  <h3 className="text-xl font-semibold mb-2">{t('chat.selectConversation')}</h3>
+                  <p className="text-white/60">{t('chat.selectConversationDesc')}</p>
                 </div>
               </div>
             ) : (
@@ -1122,13 +1185,24 @@ export default function ChatPrivadoMobile() {
                       <ArrowLeft size={20} />
                     </button>
                     
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      {getInitial(conversacionSeleccionada?.other_user_name)}
+                    {conversacionSeleccionada?.avatar_url ? (
+                      <img
+                        src={conversacionSeleccionada.avatar_url}
+                        alt={conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name}
+                        className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextElementSibling.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conversacionSeleccionada?.avatar_url ? 'hidden' : ''}`}>
+                      {getInitial(conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name)}
                     </div>
                     
                     <div>
                       <span className="font-semibold block">
-                        {conversacionSeleccionada?.other_user_name}
+                        {conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name}
                       </span>
                     </div>
                   </div>

@@ -7,21 +7,30 @@ import { useState, useCallback, useEffect } from 'react';
 class SessionTokenManager {
   static async generateSessionToken(userId, userIP = 'web-client') {
     try {
+      if (!userId) {
+        return null;
+      }
+      
       const currentHour = new Date().toISOString().slice(0, 13).replace('T', '-');
       const sessionId = this.getSessionId();
       
       // 🔥 STRING EXACTO QUE ESPERA TU MIDDLEWARE
+      // El backend usa config('app.key'), pero en el frontend usamos una clave pública
+      // que debe coincidir con lo que el backend espera para requests desde web
       const data = [
         userId.toString(),
         sessionId,
         currentHour,
-        'web-app-key',
-        userIP
+        'web-app-key', // Clave pública para requests desde web
+        userIP || 'web-client'
       ].join('|');
       
+      // Calcular el hash SHA-256
+      const hash = await this.sha256(data);
       return hash;
     } catch (error) {
-            return null;
+      console.error('Error generando token de sesión:', error);
+      return null;
     }
   }
   
@@ -52,6 +61,38 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
 
   const API_BASE_URL = apiBaseUrl || import.meta.env.VITE_API_BASE_URL;
 
+  // 🔥 FUNCIÓN PARA PRECARGAR IMÁGENES DE REGALOS
+  const preloadGiftImages = useCallback((giftsArray) => {
+    giftsArray.forEach((gift) => {
+      const imagePath = gift.image_path || gift.image || gift.image_url || gift.pic || gift.icon;
+      if (imagePath) {
+        const img = new Image();
+        // Construir URL completa
+        let imageUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://')
+          ? imagePath 
+          : `${API_BASE_URL.replace(/\/$/, '')}/${imagePath.replace(/^\/+/, '')}`;
+        
+        // 🔥 AGREGAR PARÁMETRO DE VERSIÓN BASADO EN EL NOMBRE DEL ARCHIVO PARA INVALIDAR CACHÉ
+        // Extraer nombre del archivo de la URL
+        const urlParts = imageUrl.split('/');
+        const fileName = urlParts[urlParts.length - 1].split('?')[0]; // Remover query params existentes
+        
+        // Crear hash simple del nombre del archivo para versión estable
+        // Si el nombre del archivo cambia, la versión cambiará
+        const fileHash = fileName ? btoa(fileName).substring(0, 8) : Date.now();
+        const separator = imageUrl.includes('?') ? '&' : '?';
+        imageUrl = `${imageUrl.split('?')[0]}${separator}v=${fileHash}&_preload=${Date.now()}`;
+        
+        img.src = imageUrl;
+        
+        // Opcional: manejar errores silenciosamente
+        img.onerror = () => {
+          // Imagen no disponible, se manejará cuando se renderice
+        };
+      }
+    });
+  }, [API_BASE_URL]);
+
   // 🔐 GENERAR TOKEN
   const generateSessionToken = useCallback(async () => {
     if (!userId) return null;
@@ -70,8 +111,13 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
     try {
       setLoadingGifts(true);
             
-      const response = await fetch(`${API_BASE_URL}/api/gifts/available`, {
-        headers: getAuthHeaders()
+      const response = await fetch(`${API_BASE_URL}/api/gifts/available?t=${Date.now()}`, {
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       });
       
             
@@ -81,9 +127,25 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
       }
 
       const data = await response.json();
+      console.log('🎁 Respuesta completa de regalos:', data);
       if (data.success) {
-        setGifts(data.gifts || []);
-                return { success: true, gifts: data.gifts };
+        const giftsArray = data.gifts || [];
+        console.log('🎁 Regalos cargados:', giftsArray.length, giftsArray);
+        if (giftsArray.length === 0) {
+          console.warn('⚠️ No se encontraron regalos en la respuesta');
+        }
+        setGifts(giftsArray);
+        
+        // 🔥 PRECARGAR IMÁGENES DE REGALOS PARA QUE ESTÉN LISTAS CUANDO SE ABRA EL MODAL
+        if (giftsArray.length > 0) {
+          preloadGiftImages(giftsArray);
+        }
+        
+        return { success: true, gifts: giftsArray };
+      } else {
+        console.error('❌ Error cargando regalos:', data.error || 'Unknown error', data);
+        setGifts([]);
+        return { success: false, error: data.error || 'Unknown error' };
       }
     } catch (error) {
             return { success: false, error: error.message };
@@ -227,7 +289,7 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
             
       // Análisis detallado para debugging
       if (data.error === 'missing_parameters') {
-        console.group('🔍 DEBUGGING MISSING PARAMETERS');
+        // Debug disabled
                                 
         // Mostrar cada campo que enviamos con su tipo
         Object.keys(requestData).forEach(key => {
@@ -235,7 +297,7 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
           const type = typeof value;
         });
         
-        console.groupEnd();
+        // Debug disabled
       }
       
       let errorMessage = 'Error enviando solicitud';

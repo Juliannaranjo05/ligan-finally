@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\ChatSession;
 use App\Models\User;
+use App\Models\UserNickname;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\ProfileSettingsController;
+use App\Helpers\VideoChatLogger;
 
 class CallController extends Controller
 {
@@ -76,37 +79,32 @@ class CallController extends Controller
                 ], 404);
             }
 
-            // Verificar que el caller no esté en otra llamada
-            $callerActiveCall = ChatSession::where(function($query) use ($caller) {
+            // Verificar y cancelar automáticamente llamadas activas previas del caller
+            $callerActiveCalls = ChatSession::where(function($query) use ($caller) {
                 $query->where('cliente_id', $caller->id)
                       ->orWhere('modelo_id', $caller->id);
             })
             ->whereIn('status', ['calling', 'active'])
             ->where('session_type', 'call')
-            ->first();
+            ->get();
 
-            if ($callerActiveCall) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Ya tienes una llamada activa'
-                ], 409);
+            // Cancelar automáticamente llamadas activas previas
+            foreach ($callerActiveCalls as $activeCall) {
+                $activeCall->update([
+                    'status' => 'cancelled',
+                    'ended_at' => now(),
+                    'end_reason' => 'replaced_by_new_call'
+                ]);
+                
+                Log::info('🔄 [CALL] Llamada previa cancelada automáticamente', [
+                    'old_call_id' => $activeCall->id,
+                    'caller_id' => $caller->id
+                ]);
             }
 
-            // Verificar que el receiver no esté ocupado
-            $receiverActiveCall = ChatSession::where(function($query) use ($receiverId) {
-                $query->where('cliente_id', $receiverId)
-                      ->orWhere('modelo_id', $receiverId);
-            })
-            ->whereIn('status', ['calling', 'active'])
-            ->where('session_type', 'call')
-            ->first();
-
-            if ($receiverActiveCall) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'El usuario está ocupado en otra llamada'
-                ], 409);
-            }
+            // 🔥 REMOVIDO: Permitir llamadas incluso si el receiver está en otra llamada
+            // Las personas pueden recibir múltiples llamadas y decidir cuál contestar
+            // La lógica de cancelar la llamada anterior se maneja cuando aceptan la nueva
 
             // 🔥 CREAR ROOM NAME ÚNICO
             $roomName = "call_" . $caller->id . "_" . $receiverId . "_" . time();
@@ -114,7 +112,7 @@ class CallController extends Controller
             // 🔥 CREAR REGISTRO DE LLAMADA
             DB::beginTransaction();
             try {
-                // 🔥 ASIGNAR IDs SEGÚN ROL DEL CALLER
+                // 🔥 NUEVA LÓGICA SIMPLIFICADA: Usar caller_id explícito
                 $sessionData = [
                     'room_name' => $roomName,
                     'session_type' => 'call',
@@ -122,10 +120,12 @@ class CallController extends Controller
                     'status' => 'calling',
                     'started_at' => now(),
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
+                    'caller_id' => $caller->id, // 🔥 NUEVO: Caller explícito
                 ];
 
-                // 🔥 LÓGICA: Quien llama va en cliente_id, quien recibe en modelo_id
+                // Asignar cliente_id y modelo_id según los roles
+                // Esto se mantiene para compatibilidad con el resto del sistema
                 if ($caller->rol === 'cliente') {
                     $sessionData['cliente_id'] = $caller->id;
                     $sessionData['modelo_id'] = $receiverId;
@@ -145,7 +145,9 @@ class CallController extends Controller
                     'caller' => $caller->name,
                     'receiver' => $receiver->name,
                     'cliente_id' => $call->cliente_id,
-                    'modelo_id' => $call->modelo_id
+                    'modelo_id' => $call->modelo_id,
+                    'started_at' => $call->started_at ? $call->started_at->toDateTimeString() : 'NULL',
+                    'status' => $call->status
                 ]);
 
             } catch (\Exception $e) {
@@ -187,6 +189,9 @@ class CallController extends Controller
      */
     public function answerCall(Request $request)
     {
+        VideoChatLogger::start('ANSWER_CALL', 'Modelo respondiendo llamada');
+        VideoChatLogger::request('ANSWER_CALL', $request);
+        
         try {
             $request->validate([
                 'call_id' => 'required|integer|exists:chat_sessions,id',
@@ -197,6 +202,15 @@ class CallController extends Controller
             $callId = $request->call_id;
             $action = $request->action;
 
+            VideoChatLogger::log('ANSWER_CALL', 'Validación pasada', [
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'user_name' => $user->name,
+                'call_id' => $callId,
+                'action' => $action,
+                'is_modelo' => $user->rol === 'modelo'
+            ]);
+
             Log::info('📱 [CALL] Respondiendo llamada', [
                 'user_id' => $user->id,
                 'call_id' => $callId,
@@ -204,7 +218,25 @@ class CallController extends Controller
             ]);
 
             $call = ChatSession::find($callId);
+            
+            VideoChatLogger::log('ANSWER_CALL', 'Llamada buscada en BD', [
+                'call_id' => $callId,
+                'call_found' => $call !== null,
+                'call_session_type' => $call?->session_type,
+                'call_status' => $call?->status,
+                'call_cliente_id' => $call?->cliente_id,
+                'call_modelo_id' => $call?->modelo_id,
+                'call_caller_id' => $call?->caller_id,
+                'call_room_name' => $call?->room_name,
+            ]);
+            
             if (!$call || $call->session_type !== 'call') {
+                VideoChatLogger::error('ANSWER_CALL', 'Llamada no encontrada o tipo incorrecto', [
+                    'call_id' => $callId,
+                    'call_exists' => $call !== null,
+                    'session_type' => $call?->session_type
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'error' => 'Llamada no encontrada'
@@ -213,7 +245,23 @@ class CallController extends Controller
 
             // Verificar que el usuario sea el receiver (esté en cliente_id o modelo_id)
             $isReceiver = ($call->cliente_id === $user->id) || ($call->modelo_id === $user->id);
+            
+            VideoChatLogger::log('ANSWER_CALL', 'Verificación de receiver', [
+                'user_id' => $user->id,
+                'call_cliente_id' => $call->cliente_id,
+                'call_modelo_id' => $call->modelo_id,
+                'is_receiver' => $isReceiver,
+                'user_is_cliente' => $call->cliente_id === $user->id,
+                'user_is_modelo' => $call->modelo_id === $user->id,
+            ]);
+            
             if (!$isReceiver) {
+                VideoChatLogger::error('ANSWER_CALL', 'Usuario no autorizado para responder', [
+                    'user_id' => $user->id,
+                    'call_cliente_id' => $call->cliente_id,
+                    'call_modelo_id' => $call->modelo_id,
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'error' => 'No autorizado para responder esta llamada'
@@ -221,7 +269,18 @@ class CallController extends Controller
             }
 
             // Verificar que la llamada esté en estado 'calling'
+            VideoChatLogger::log('ANSWER_CALL', 'Verificación de estado de llamada', [
+                'call_status' => $call->status,
+                'expected_status' => 'calling',
+                'status_match' => $call->status === 'calling',
+            ]);
+            
             if ($call->status !== 'calling') {
+                VideoChatLogger::warning('ANSWER_CALL', 'Llamada no está en estado calling', [
+                    'call_status' => $call->status,
+                    'call_id' => $call->id,
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'error' => 'Esta llamada ya no está disponible'
@@ -230,7 +289,43 @@ class CallController extends Controller
 
             // Obtener datos del caller
             $callerId = ($call->cliente_id === $user->id) ? $call->modelo_id : $call->cliente_id;
+            
+            VideoChatLogger::log('ANSWER_CALL', 'Identificando caller', [
+                'user_id' => $user->id,
+                'user_role' => $user->rol,
+                'call_cliente_id' => $call->cliente_id,
+                'call_modelo_id' => $call->modelo_id,
+                'calculated_caller_id' => $callerId,
+                'logic' => $call->cliente_id === $user->id ? 'modelo' : 'cliente',
+            ]);
+            
             $caller = User::find($callerId);
+            
+            // Validar que el caller existe
+            if (!$caller) {
+                VideoChatLogger::error('ANSWER_CALL', 'Caller no encontrado', [
+                    'call_id' => $callId,
+                    'caller_id' => $callerId,
+                    'user_id' => $user->id
+                ]);
+                
+                Log::error('❌ [CALL] Caller no encontrado', [
+                    'call_id' => $callId,
+                    'caller_id' => $callerId,
+                    'user_id' => $user->id
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Error: Usuario no encontrado'
+                ], 404);
+            }
+            
+            VideoChatLogger::log('ANSWER_CALL', 'Caller identificado', [
+                'caller_id' => $caller->id,
+                'caller_name' => $caller->name,
+                'caller_role' => $caller->rol,
+            ]);
 
             // 🔥 VERIFICAR BLOQUEOS ANTES DE ACEPTAR
             if ($action === 'accept') {
@@ -266,19 +361,182 @@ class CallController extends Controller
                     ], 403);
                 }
 
+                // 🔥 CANCELAR LLAMADAS ACTIVAS PREVIAS DEL RECEIVER
+                // Cuando el receiver acepta una nueva llamada, cancelar automáticamente cualquier otra llamada activa
+                $receiverActiveCalls = ChatSession::where(function($query) use ($user, $callId) {
+                    $query->where('cliente_id', $user->id)
+                          ->orWhere('modelo_id', $user->id);
+                })
+                ->whereIn('status', ['calling', 'active'])
+                ->where('session_type', 'call')
+                ->where('id', '!=', $callId) // Excluir la llamada actual que estamos aceptando
+                ->get();
+
+                // Cancelar automáticamente llamadas activas previas del receiver
+                foreach ($receiverActiveCalls as $activeCall) {
+                    // Identificar al cliente de la llamada anterior (el que será notificado)
+                    $previousCallClientId = $activeCall->cliente_id;
+                    $previousCallModelId = $activeCall->modelo_id;
+                    
+                    // Determinar quién es el cliente (el que debe ser redirigido a ruletear)
+                    $clientToNotify = null;
+                    if ($user->rol === 'modelo') {
+                        // Si el modelo acepta nueva llamada, el cliente de la llamada anterior debe ser notificado
+                        $clientToNotify = $previousCallClientId;
+                    } else {
+                        // Si el cliente acepta nueva llamada, el modelo de la llamada anterior debe ser notificado
+                        $clientToNotify = $previousCallModelId;
+                    }
+                    
+                    // Actualizar estado de la llamada anterior
+                    $activeCall->update([
+                        'status' => 'cancelled',
+                        'ended_at' => now(),
+                        'end_reason' => 'replaced_by_new_call'
+                    ]);
+                    
+                    Log::info('🔄 [CALL] Llamada previa del receiver cancelada automáticamente', [
+                        'old_call_id' => $activeCall->id,
+                        'receiver_id' => $user->id,
+                        'new_call_id' => $callId,
+                        'client_to_notify' => $clientToNotify
+                    ]);
+                    
+                    // 🔥 NOTIFICAR AL CLIENTE/MODELO DE LA LLAMADA ANTERIOR
+                    if ($clientToNotify) {
+                        try {
+                            // Determinar el partner que debe ser notificado
+                            $partnerToNotify = User::find($clientToNotify);
+                            
+                            if ($partnerToNotify) {
+                                // Crear notificación para redirigir a ruletear
+                                DB::table('notifications')->insert([
+                                    'user_id' => $clientToNotify,
+                                    'type' => 'call_replaced',
+                                    'data' => json_encode([
+                                        'message' => 'La modelo aceptó otra llamada. Serás redirigido a buscar otra persona.',
+                                        'call_id' => $activeCall->id,
+                                        'redirect_url' => '/usersearch',
+                                        'redirect_params' => [
+                                            'role' => $partnerToNotify->rol,
+                                            'action' => 'siguiente',
+                                            'from' => 'call_replaced',
+                                            'reason' => 'model_accepted_other_call'
+                                        ]
+                                    ]),
+                                    'read' => false,
+                                    'expires_at' => now()->addMinutes(5),
+                                    'created_at' => now(),
+                                    'updated_at' => now()
+                                ]);
+                                
+                                Log::info('📢 [CALL] Notificación enviada al partner de llamada anterior', [
+                                    'partner_id' => $clientToNotify,
+                                    'partner_name' => $partnerToNotify->name,
+                                    'old_call_id' => $activeCall->id
+                                ]);
+                                
+                                // También notificar vía LiveKit si hay una sesión activa
+                                if ($activeCall->room_name) {
+                                    try {
+                                        $liveKitController = new \App\Http\Controllers\LiveKitController();
+                                        $request = new \Illuminate\Http\Request();
+                                        $request->merge(['roomName' => $activeCall->room_name]);
+                                        
+                                        // Usar el método de notificación existente
+                                        $liveKitController->notifyPartnerStop($request);
+                                    } catch (\Exception $e) {
+                                        Log::warning('⚠️ [CALL] Error notificando vía LiveKit', [
+                                            'error' => $e->getMessage(),
+                                            'room_name' => $activeCall->room_name
+                                        ]);
+                                    }
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            Log::error('❌ [CALL] Error creando notificación para partner', [
+                                'error' => $e->getMessage(),
+                                'client_id' => $clientToNotify
+                            ]);
+                        }
+                    }
+                }
+
                 // 🎉 ACEPTAR LLAMADA
+                VideoChatLogger::log('ANSWER_CALL', 'Actualizando estado de llamada a active', [
+                    'call_id' => $call->id,
+                    'old_status' => $call->status,
+                    'new_status' => 'active',
+                    'room_name' => $call->room_name,
+                ]);
+                
                 $call->update([
                     'status' => 'active',
                     'answered_at' => now()
                 ]);
-
-                Log::info('✅ [CALL] Llamada aceptada', [
+                
+                VideoChatLogger::log('ANSWER_CALL', 'Llamada actualizada a active', [
                     'call_id' => $call->id,
-                    'caller' => $caller->name,
-                    'receiver' => $user->name
+                    'room_name' => $call->room_name,
+                    'answered_at' => $call->answered_at,
                 ]);
 
-                return response()->json([
+                // 🔥 CREAR NOTIFICACIÓN PARA EL CALLER (quien inició la llamada)
+                try {
+                    $notificationData = [
+                        'message' => 'Tu llamada fue aceptada',
+                        'call_id' => $call->id,
+                        'room_name' => $call->room_name,
+                        'receiver' => [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'avatar' => $user->avatar ?? null
+                        ],
+                        'redirect_url' => '/videochat',
+                        'redirect_params' => [
+                            'roomName' => $call->room_name,
+                            'userName' => $user->name,
+                            'from' => 'call_accepted'
+                        ]
+                    ];
+                    
+                    VideoChatLogger::log('ANSWER_CALL', 'Creando notificación para caller', [
+                        'caller_id' => $callerId,
+                        'notification_data' => $notificationData,
+                    ]);
+                    
+                    DB::table('notifications')->insert([
+                        'user_id' => $callerId,
+                        'type' => 'call_accepted',
+                        'data' => json_encode($notificationData),
+                        'read' => false,
+                        'expires_at' => now()->addMinutes(5),
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                    
+                    VideoChatLogger::log('ANSWER_CALL', 'Notificación creada exitosamente', [
+                        'caller_id' => $callerId,
+                        'call_id' => $call->id
+                    ]);
+                    
+                    Log::info('📢 [CALL] Notificación de llamada aceptada creada para caller', [
+                        'caller_id' => $callerId,
+                        'call_id' => $call->id
+                    ]);
+                } catch (\Exception $e) {
+                    VideoChatLogger::error('ANSWER_CALL', 'Error creando notificación para caller', [
+                        'error' => $e->getMessage(),
+                        'caller_id' => $callerId
+                    ], $e);
+                    
+                    Log::error('❌ [CALL] Error creando notificación para caller', [
+                        'error' => $e->getMessage(),
+                        'caller_id' => $callerId
+                    ]);
+                }
+
+                $responseData = [
                     'success' => true,
                     'action' => 'accepted',
                     'call_id' => $call->id,
@@ -288,15 +546,51 @@ class CallController extends Controller
                         'name' => $caller->name,
                         'avatar' => $caller->avatar ?? null
                     ],
+                    'receiver' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'avatar' => $user->avatar ?? null
+                    ],
                     'message' => 'Llamada aceptada'
+                ];
+                
+                VideoChatLogger::end('ANSWER_CALL', 'Llamada aceptada exitosamente', [
+                    'call_id' => $call->id,
+                    'caller' => $caller->name,
+                    'receiver' => $user->name,
+                    'room_name' => $call->room_name,
+                    'response_data' => $responseData,
                 ]);
+
+                Log::info('✅ [CALL] Llamada aceptada', [
+                    'call_id' => $call->id,
+                    'caller' => $caller->name,
+                    'receiver' => $user->name
+                ]);
+
+                $response = response()->json($responseData);
+                VideoChatLogger::response('ANSWER_CALL', $response);
+                
+                return $response;
 
             } else {
                 // ❌ RECHAZAR LLAMADA
+                VideoChatLogger::log('ANSWER_CALL', 'Rechazando llamada', [
+                    'call_id' => $call->id,
+                    'caller' => $caller->name,
+                    'receiver' => $user->name,
+                ]);
+                
                 $call->update([
                     'status' => 'rejected',
                     'ended_at' => now(),
                     'end_reason' => 'rejected_by_receiver'
+                ]);
+
+                VideoChatLogger::end('ANSWER_CALL', 'Llamada rechazada', [
+                    'call_id' => $call->id,
+                    'caller' => $caller->name,
+                    'receiver' => $user->name
                 ]);
 
                 Log::info('❌ [CALL] Llamada rechazada', [
@@ -313,6 +607,13 @@ class CallController extends Controller
             }
 
         } catch (\Exception $e) {
+            VideoChatLogger::error('ANSWER_CALL', 'Error respondiendo llamada', [
+                'error' => $e->getMessage(),
+                'call_id' => $request->call_id ?? null,
+                'action' => $request->action ?? null,
+                'user_id' => auth()->id(),
+            ], $e);
+            
             Log::error('❌ [CALL] Error respondiendo llamada', [
                 'error' => $e->getMessage(),
                 'user_id' => auth()->id()
@@ -405,8 +706,29 @@ class CallController extends Controller
             $user = auth()->user();
             $callId = $request->call_id;
 
+            // 🔥 LOG DETALLADO PARA DEBUG
+            Log::info('📋 [CALL] Verificando estado de llamada', [
+                'user_id' => $user->id ?? 'NO_USER',
+                'user_rol' => $user->rol ?? 'NO_ROL',
+                'call_id' => $callId,
+                'has_user' => $user !== null
+            ]);
+
+            if (!$user) {
+                Log::warning('❌ [CALL] Usuario no autenticado en getCallStatus');
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Usuario no autenticado'
+                ], 401);
+            }
+
             $call = ChatSession::with(['cliente', 'modelo'])->find($callId);
             if (!$call || $call->session_type !== 'call') {
+                Log::warning('❌ [CALL] Llamada no encontrada o tipo incorrecto', [
+                    'call_id' => $callId,
+                    'call_exists' => $call !== null,
+                    'call_type' => $call->session_type ?? 'N/A'
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Llamada no encontrada'
@@ -414,8 +736,33 @@ class CallController extends Controller
             }
 
             // Verificar que el usuario sea participante
-            $isParticipant = ($call->cliente_id === $user->id) || ($call->modelo_id === $user->id);
+            // 🔥 USAR MÚLTIPLES CRITERIOS: cliente_id, modelo_id, y caller_id como respaldo
+            $isParticipant = ($call->cliente_id === $user->id) 
+                          || ($call->modelo_id === $user->id)
+                          || ($call->caller_id && $call->caller_id === $user->id);
+            
+            // 🔥 LOG DETALLADO PARA DEBUG
+            Log::info('📋 [CALL] Verificación de participante', [
+                'user_id' => $user->id,
+                'call_cliente_id' => $call->cliente_id,
+                'call_modelo_id' => $call->modelo_id,
+                'call_caller_id' => $call->caller_id ?? 'NO_CALLER_ID',
+                'is_participant' => $isParticipant,
+                'match_cliente' => $call->cliente_id === $user->id,
+                'match_modelo' => $call->modelo_id === $user->id,
+                'match_caller' => $call->caller_id && $call->caller_id === $user->id
+            ]);
+            
             if (!$isParticipant) {
+                Log::warning('❌ [CALL] Usuario no es participante de la llamada', [
+                    'user_id' => $user->id,
+                    'user_rol' => $user->rol,
+                    'call_id' => $callId,
+                    'call_cliente_id' => $call->cliente_id,
+                    'call_modelo_id' => $call->modelo_id,
+                    'call_caller_id' => $call->caller_id ?? 'NO_CALLER_ID',
+                    'call_status' => $call->status
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'No autorizado'
@@ -465,17 +812,46 @@ class CallController extends Controller
     {
         try {
             $user = auth()->user();
+            
+            // 🔥 VALIDAR AUTENTICACIÓN
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'has_incoming' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
 
-            // Buscar llamadas entrantes sin responder
+            Log::info('📞 [CALL] Verificando llamadas entrantes', [
+                'user_id' => $user->id,
+                'user_rol' => $user->rol
+            ]);
+
+            // 🔥 NUEVA LÓGICA SIMPLIFICADA: Buscar llamadas donde el usuario es el receiver (NO el caller)
+            // Usar caller_id para identificar explícitamente quién inició la llamada
             $incomingCall = ChatSession::where(function($query) use ($user) {
-                $query->where('cliente_id', $user->id)
+                // Buscar llamadas donde el usuario participa (cliente_id o modelo_id)
+                $query->where(function($q) use ($user) {
+                    $q->where('cliente_id', $user->id)
                       ->orWhere('modelo_id', $user->id);
+                });
             })
             ->where('session_type', 'call')
             ->where('status', 'calling')
-            ->with(['cliente', 'modelo'])
+            ->where('caller_id', '!=', $user->id) // 🔥 NUEVO: Excluir llamadas donde el usuario es el caller
+            ->with(['cliente:id,name,rol,avatar', 'modelo:id,name,rol,avatar', 'caller:id,name,rol,avatar'])
             ->orderBy('started_at', 'desc')
             ->first();
+
+            Log::info('📞 [CALL] Resultado de búsqueda', [
+                'user_id' => $user->id,
+                'user_rol' => $user->rol,
+                'found_call' => $incomingCall ? true : false,
+                'call_id' => $incomingCall?->id,
+                'call_cliente_id' => $incomingCall?->cliente_id,
+                'call_modelo_id' => $incomingCall?->modelo_id,
+                'call_caller_id' => $incomingCall?->caller_id
+            ]);
 
             if (!$incomingCall) {
                 return response()->json([
@@ -484,12 +860,77 @@ class CallController extends Controller
                 ]);
             }
 
+            // Validar que started_at existe antes de usarlo
+            if (!$incomingCall->started_at) {
+                Log::warning('⚠️ [CALL] Llamada sin started_at, estableciendo started_at ahora', [
+                    'call_id' => $incomingCall->id,
+                    'user_id' => $user->id
+                ]);
+                
+                // Si no tiene started_at, establecerlo ahora (puede ser una llamada recién creada)
+                $incomingCall->update([
+                    'started_at' => now()
+                ]);
+                
+                // No cancelar, solo establecer started_at y continuar
+            }
+
             // Verificar que no haya expirado (más de 30 segundos)
-            if ($incomingCall->started_at->addSeconds(30)->isPast()) {
+            // 🔥 FIX: Usar copy() para no modificar el objeto original
+            // 🔥 IMPORTANTE: Solo verificar expiración si started_at existe y han pasado más de 30 segundos
+            if ($incomingCall->started_at) {
+                $secondsSinceStart = $incomingCall->started_at->diffInSeconds(now());
+                
+                // Solo cancelar si han pasado MÁS de 30 segundos (no igual, para evitar cancelaciones prematuras)
+                if ($secondsSinceStart > 30) {
+                    Log::info('⏰ [CALL] Llamada expirada por timeout', [
+                        'call_id' => $incomingCall->id,
+                        'seconds_since_start' => $secondsSinceStart,
+                        'user_id' => $user->id
+                    ]);
+                    
+                    $incomingCall->update([
+                        'status' => 'cancelled',
+                        'ended_at' => now(),
+                        'end_reason' => 'timeout'
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'has_incoming' => false
+                    ]);
+                }
+            }
+
+            // 🔥 NUEVA LÓGICA SIMPLIFICADA: Usar caller_id directamente
+            // Si caller_id está definido, usarlo directamente
+            // Si no, usar la lógica antigua como fallback (para compatibilidad con llamadas antiguas)
+            $callerId = $incomingCall->caller_id;
+            
+            // Si caller_id no está definido (llamadas antiguas), determinar usando la lógica antigua
+            if (!$callerId) {
+                // Fallback: determinar caller basándose en cliente_id y modelo_id
+                if ($incomingCall->cliente_id === $user->id) {
+                    $callerId = $incomingCall->modelo_id;
+                } elseif ($incomingCall->modelo_id === $user->id) {
+                    $callerId = $incomingCall->cliente_id;
+                }
+            }
+            
+            // Validar que callerId no sea null
+            if (!$callerId) {
+                Log::warning('⚠️ [CALL] Llamada con callerId null, cancelando', [
+                    'call_id' => $incomingCall->id,
+                    'user_id' => $user->id,
+                    'user_rol' => $user->rol,
+                    'cliente_id' => $incomingCall->cliente_id,
+                    'modelo_id' => $incomingCall->modelo_id
+                ]);
+                
                 $incomingCall->update([
                     'status' => 'cancelled',
                     'ended_at' => now(),
-                    'end_reason' => 'timeout'
+                    'end_reason' => 'invalid_caller_id'
                 ]);
 
                 return response()->json([
@@ -497,10 +938,29 @@ class CallController extends Controller
                     'has_incoming' => false
                 ]);
             }
-
-            // Determinar quién es el caller
-            $callerId = ($incomingCall->cliente_id === $user->id) ? $incomingCall->modelo_id : $incomingCall->cliente_id;
+            
             $caller = User::find($callerId);
+
+            // Validar que el caller existe
+            if (!$caller) {
+                Log::warning('⚠️ [CALL] Caller no encontrado, cancelando llamada', [
+                    'call_id' => $incomingCall->id,
+                    'caller_id' => $callerId,
+                    'user_id' => $user->id,
+                    'user_rol' => $user->rol
+                ]);
+                
+                $incomingCall->update([
+                    'status' => 'cancelled',
+                    'ended_at' => now(),
+                    'end_reason' => 'caller_not_found'
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'has_incoming' => false
+                ]);
+            }
 
             // 🔥 VERIFICAR SI EL CALLER ESTÁ BLOQUEADO
             $isCallerBlocked = DB::table('user_blocks')
@@ -529,6 +989,47 @@ class CallController extends Controller
                 ]);
             }
 
+            // Obtener nickname y avatar_url del caller
+            // 🔥 IMPORTANTE: Cuando el receiver recibe una llamada, debe ver el NICKNAME PROPIO del caller
+            // Ejemplo: Si la modelo llama al cliente, el cliente debe ver el nickname que la modelo se puso a sí misma
+            // Primero buscar el nickname propio del caller (el que se puso a sí mismo)
+            $nicknamePropio = UserNickname::where('user_id', $caller->id)
+                ->where('target_user_id', $caller->id)
+                ->first();
+            
+            // Si no hay nickname propio, usar el nombre real del caller
+            $displayName = $nicknamePropio ? $nicknamePropio->nickname : $caller->name;
+            
+            $profileController = new ProfileSettingsController();
+            $avatarUrl = null;
+
+            // Aplicar lógica de privacidad: para clientes, solo mostrar foto si fue subida manualmente
+            if ($caller->rol === 'modelo' || ($caller->rol === 'cliente' && !$this->isGoogleAvatar($caller->avatar))) {
+                try {
+                    $avatarUrl = $profileController->generateAvatarUrl($caller->avatar);
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ [CALL] Error generando avatar URL', [
+                        'caller_id' => $caller->id,
+                        'avatar' => $caller->avatar,
+                        'error' => $e->getMessage()
+                    ]);
+                    $avatarUrl = null; // Usar null si hay error
+                }
+            }
+
+            Log::info('📞 [CALL] Datos de llamada entrante', [
+                'caller_id' => $caller->id,
+                'caller_name' => $caller->name,
+                'caller_display_name' => $displayName,
+                'caller_avatar' => $caller->avatar,
+                'caller_avatar_url' => $avatarUrl,
+                'caller_rol' => $caller->rol,
+                'is_google_avatar' => $this->isGoogleAvatar($caller->avatar)
+            ]);
+
+            // Calcular duración solo si started_at existe (ya validado anteriormente)
+            $durationCalling = $incomingCall->started_at ? $incomingCall->started_at->diffInSeconds(now()) : 0;
+
             return response()->json([
                 'success' => true,
                 'has_incoming' => true,
@@ -539,23 +1040,43 @@ class CallController extends Controller
                     'caller' => [
                         'id' => $caller->id,
                         'name' => $caller->name,
-                        'avatar' => $caller->avatar ?? null
+                        'display_name' => $displayName,
+                        'avatar' => $caller->avatar ?? null,
+                        'avatar_url' => $avatarUrl
                     ],
                     'started_at' => $incomingCall->started_at,
-                    'duration_calling' => $incomingCall->started_at->diffInSeconds(now())
+                    'duration_calling' => $durationCalling
                 ]
             ]);
 
-        } catch (\Exception $e) {
-            Log::error('❌ [CALL] Error verificando llamadas entrantes', [
-                'error' => $e->getMessage(),
+        } catch (\Illuminate\Database\QueryException $dbError) {
+            Log::error('❌ [CALL] Error de base de datos verificando llamadas entrantes', [
+                'error' => $dbError->getMessage(),
+                'sql' => $dbError->getSql() ?? 'N/A',
                 'user_id' => auth()->id()
             ]);
 
+            // 🔥 IMPORTANTE: Devolver 200 con success=false para errores de BD
             return response()->json([
                 'success' => false,
+                'has_incoming' => false,
+                'error' => 'Error de base de datos'
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('❌ [CALL] Error verificando llamadas entrantes', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => auth()->id()
+            ]);
+
+            // 🔥 IMPORTANTE: Devolver 200 con success=false para no interrumpir el polling
+            return response()->json([
+                'success' => false,
+                'has_incoming' => false,
                 'error' => 'Error verificando llamadas'
-            ], 500);
+            ], 200);
         }
     }
 
@@ -603,6 +1124,155 @@ class CallController extends Controller
     }
 
     /**
+     * 📜 OBTENER HISTORIAL DE VIDEOLLAMADAS Y FAVORITOS
+     * Devuelve las últimas 5 videollamadas y notificaciones de favoritos del usuario autenticado
+     */
+    public function getCallHistory(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Usuario no autenticado'
+                ], 401);
+            }
+
+            // Obtener las últimas 5 videollamadas donde el usuario participó
+            // Incluye llamadas desde mensajes (status: ended, rejected, cancelled)
+            // y llamadas desde ruleteo que hayan terminado (ended_at no null)
+            $calls = ChatSession::where(function($query) use ($user) {
+                $query->where('cliente_id', $user->id)
+                      ->orWhere('modelo_id', $user->id);
+            })
+            ->where('session_type', 'call')
+            ->where(function($query) {
+                // Incluir llamadas terminadas explícitamente
+                $query->whereIn('status', ['ended', 'rejected', 'cancelled'])
+                      // O llamadas que tienen ended_at (terminaron de alguna forma)
+                      ->orWhereNotNull('ended_at');
+            })
+            ->with(['cliente:id,name', 'modelo:id,name'])
+            ->where(function($query) {
+                // Solo incluir si tiene al menos cliente_id o modelo_id definido (no solo waiting)
+                $query->whereNotNull('cliente_id')
+                      ->whereNotNull('modelo_id');
+            })
+            ->orderByRaw('COALESCE(ended_at, started_at, created_at) DESC')
+            ->limit(5)
+            ->get();
+
+            // Formatear las llamadas para el frontend
+            $callHistory = $calls->map(function($call) use ($user) {
+                // Determinar el otro usuario (no el autenticado)
+                $otherUser = $call->cliente_id == $user->id 
+                    ? $call->modelo 
+                    : $call->cliente;
+                
+                // Determinar la fecha de la llamada
+                $callDate = $call->ended_at ?? $call->started_at ?? now();
+                
+                return [
+                    'id' => $call->id,
+                    'type' => 'call',
+                    'user_id' => $otherUser->id ?? null,
+                    'user_name' => $otherUser->name ?? 'Usuario desconocido',
+                    'call_type' => $call->call_type,
+                    'status' => $call->status,
+                    'ended_at' => $call->ended_at ? $call->ended_at->toISOString() : null,
+                    'started_at' => $call->started_at ? $call->started_at->toISOString() : null,
+                    'timestamp' => $callDate->toISOString(),
+                    'formatted_date' => $this->formatCallDate($callDate)
+                ];
+            });
+
+            // Obtener las últimas notificaciones de favoritos donde el usuario fue agregado a favoritos
+            // Solo para modelos (cuando un cliente los agrega a favoritos)
+            $favorites = DB::table('user_favorites')
+                ->join('users', 'user_favorites.user_id', '=', 'users.id')
+                ->where('user_favorites.favorite_user_id', $user->id)
+                ->where('user_favorites.is_active', true)
+                ->select(
+                    'user_favorites.id',
+                    'user_favorites.user_id',
+                    'user_favorites.created_at',
+                    'users.name as user_name'
+                )
+                ->orderBy('user_favorites.created_at', 'DESC')
+                ->limit(5)
+                ->get();
+
+            // Formatear las notificaciones de favoritos
+            $favoriteHistory = $favorites->map(function($favorite) {
+                return [
+                    'id' => 'favorite_' . $favorite->id,
+                    'type' => 'favorite',
+                    'user_id' => $favorite->user_id,
+                    'user_name' => $favorite->user_name ?? 'Usuario desconocido',
+                    'timestamp' => \Carbon\Carbon::parse($favorite->created_at)->toISOString(),
+                    'formatted_date' => $this->formatCallDate(\Carbon\Carbon::parse($favorite->created_at))
+                ];
+            });
+
+            // Combinar y ordenar por fecha (más reciente primero)
+            $combinedHistory = $callHistory->concat($favoriteHistory)
+                ->sortByDesc(function($item) {
+                    return $item['timestamp'];
+                })
+                ->take(5)
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'history' => $combinedHistory
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [CALL HISTORY] Error obteniendo historial', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al obtener el historial'
+            ], 500);
+        }
+    }
+
+    /**
+     * 📅 Formatear fecha de llamada de manera amigable
+     */
+    private function formatCallDate($date)
+    {
+        if (!$date) {
+            return 'Fecha desconocida';
+        }
+        
+        $now = \Carbon\Carbon::now();
+        $callTime = \Carbon\Carbon::parse($date);
+        
+        // Formatear hora
+        $timeFormatted = $callTime->format('g:i A');
+        
+        if ($callTime->isToday()) {
+            return 'Hoy, ' . $timeFormatted;
+        } elseif ($callTime->isYesterday()) {
+            return 'Ayer, ' . $timeFormatted;
+        } elseif ($callTime->isCurrentWeek()) {
+            $days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            return $days[$callTime->dayOfWeek] . ', ' . $timeFormatted;
+        } elseif ($callTime->isCurrentYear()) {
+            $months = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            return $callTime->format('d') . ' ' . $months[$callTime->month] . ', ' . $timeFormatted;
+        } else {
+            return $callTime->format('d/m/Y, g:i A');
+        }
+    }
+
+    /**
      * 🔍 MÉTODO AUXILIAR: Verificar si existe bloqueo entre dos usuarios
      */
     private function isBlocked($userId1, $userId2)
@@ -620,5 +1290,16 @@ class CallController extends Controller
             })
             ->where('is_active', true)
             ->exists();
+    }
+
+    /**
+     * 🔍 MÉTODO AUXILIAR: Verificar si el avatar es de Google
+     */
+    private function isGoogleAvatar($filename)
+    {
+        if (!$filename) return false;
+        return str_contains($filename, 'googleusercontent.com') ||
+               str_contains($filename, 'googleapis.com') ||
+               str_contains($filename, 'google.com');
     }
 }

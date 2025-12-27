@@ -52,7 +52,6 @@ const ResetPasswordPage = () => {
         setError(data.error || 'Token inválido o expirado');
       }
     } catch (err) {
-      console.error('Error validating token:', err);
       setError('Error de conexión. Por favor, intenta nuevamente.');
     } finally {
       setValidatingToken(false);
@@ -101,7 +100,6 @@ const ResetPasswordPage = () => {
         setError(data.error || 'Error al restablecer la contraseña');
       }
     } catch (err) {
-      console.error('Error resetting password:', err);
       setError('Error de conexión. Por favor, intenta nuevamente.');
     } finally {
       setLoading(false);

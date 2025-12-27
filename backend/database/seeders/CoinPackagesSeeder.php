@@ -9,7 +9,8 @@ class CoinPackagesSeeder extends Seeder
 {
     public function run()
     {
-        // PAQUETES DE MINUTOS (precio regular + $1 USD cada uno, sin descuentos)
+        // PAQUETES DE MINUTOS - Nueva estructura: 1 minuto = 10 monedas
+        // Precios base (LATAM): USD/EUR aplica +10% dinámicamente
         $minutePackages = [
             [
                 'name' => '15 Minutos',
@@ -17,60 +18,60 @@ class CoinPackagesSeeder extends Seeder
                 'type' => 'minutes',
                 'minutes' => 15,
                 'coins' => 150,
-                'bonus_coins' => 0,
-                'price' => 0.50, // Precio regular + $1
-                'regular_price' => 0.50, // Mismo precio siempre
-                'original_price' => 0.50,
-                'discount_percentage' => 0, // Sin descuento
-                'is_first_time_only' => false, // No solo primera vez
+                'bonus_coins' => 0, // Sin bono
+                'price' => 7.50, // Precio base LATAM (USD)
+                'regular_price' => 7.50,
+                'original_price' => 7.50,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
                 'is_active' => true,
                 'is_popular' => false,
                 'sort_order' => 1
             ],
             [
                 'name' => '30 Minutos',
-                'description' => 'El más popular',
+                'description' => 'Recomendado',
                 'type' => 'minutes',
                 'minutes' => 30,
                 'coins' => 300,
-                'bonus_coins' => 30,
-                'price' => 13.00, // Precio regular + $1
-                'regular_price' => 13.00, // Mismo precio siempre
-                'original_price' => 13.00,
-                'discount_percentage' => 0, // Sin descuento
-                'is_first_time_only' => false, // No solo primera vez
+                'bonus_coins' => 30, // 10% de bono
+                'price' => 15.00, // Precio base LATAM (USD)
+                'regular_price' => 15.00,
+                'original_price' => 15.00,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
                 'is_active' => true,
-                'is_popular' => true,
+                'is_popular' => false,
                 'sort_order' => 2
             ],
             [
                 'name' => '60 Minutos',
-                'description' => 'Una hora completa',
+                'description' => 'El más popular',
                 'type' => 'minutes',
                 'minutes' => 60,
                 'coins' => 600,
-                'bonus_coins' => 90,
-                'price' => 24.00, // Precio regular + $1
-                'regular_price' => 24.00, // Mismo precio siempre
-                'original_price' => 24.00,
-                'discount_percentage' => 0, // Sin descuento
-                'is_first_time_only' => false, // No solo primera vez
+                'bonus_coins' => 90, // 15% de bono
+                'price' => 30.00, // Precio base LATAM (USD)
+                'regular_price' => 30.00,
+                'original_price' => 30.00,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
                 'is_active' => true,
-                'is_popular' => false,
+                'is_popular' => true, // MÁS POPULAR
                 'sort_order' => 3
             ],
             [
                 'name' => '120 Minutos',
-                'description' => 'Dos horas VIP',
+                'description' => 'Premium - Alto valor',
                 'type' => 'minutes',
                 'minutes' => 120,
                 'coins' => 1200,
-                'bonus_coins' => 240,
-                'price' => 42.00, // Precio regular + $1
-                'regular_price' => 42.00, // Mismo precio siempre
-                'original_price' => 42.00,
-                'discount_percentage' => 0, // Sin descuento
-                'is_first_time_only' => false, // No solo primera vez
+                'bonus_coins' => 240, // 20% de bono
+                'price' => 60.00, // Precio base LATAM (USD)
+                'regular_price' => 60.00,
+                'original_price' => 60.00,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
                 'is_active' => true,
                 'is_popular' => false,
                 'sort_order' => 4
@@ -145,18 +146,30 @@ class CoinPackagesSeeder extends Seeder
             ]
         ];
 
-        // Crear paquetes de minutos
+        // Actualizar o crear paquetes de minutos
         foreach ($minutePackages as $package) {
-            CoinPackage::create($package);
+            CoinPackage::updateOrCreate(
+                [
+                    'name' => $package['name'],
+                    'type' => $package['type']
+                ],
+                $package
+            );
         }
 
-        // Crear paquetes de regalos
+        // Actualizar o crear paquetes de regalos
         foreach ($giftPackages as $package) {
-            CoinPackage::create($package);
+            CoinPackage::updateOrCreate(
+                [
+                    'name' => $package['name'],
+                    'type' => $package['type']
+                ],
+                $package
+            );
         }
 
-        $this->command->info('✅ 4 paquetes de minutos creados correctamente');
-        $this->command->info('✅ 4 paquetes de regalos creados correctamente');
-        $this->command->info('🎉 Total: 8 paquetes creados');
+        $this->command->info('✅ 4 paquetes de minutos actualizados/creados correctamente');
+        $this->command->info('✅ 4 paquetes de regalos actualizados/creados correctamente');
+        $this->command->info('🎉 Total: 8 paquetes procesados');
     }
 }

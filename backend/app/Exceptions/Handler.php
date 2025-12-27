@@ -51,6 +51,23 @@ class Handler extends ExceptionHandler
     }
     public function render($request, Throwable $exception)
     {
+        // Para peticiones API, devolver JSON con información detallada
+        if ($request->expectsJson() || $request->is('api/*')) {
+            $statusCode = method_exists($exception, 'getStatusCode') ? $exception->getStatusCode() : 500;
+            $message = $exception->getMessage();
+            
+            // Si el mensaje es genérico "Server Error", proporcionar más información
+            if ($message === 'Server Error' || empty($message)) {
+                $message = 'Error interno del servidor. Por favor, revisa los logs para más detalles.';
+            }
+            
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], $statusCode);
+        }
+        
         if ($exception instanceof \Symfony\Component\HttpKernel\Exception\HttpException &&
             $exception->getStatusCode() === 403) {
             return response()->json([

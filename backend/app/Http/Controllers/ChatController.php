@@ -6,12 +6,26 @@ use Illuminate\Http\Request;
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\User;
+use App\Models\UserNickname;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log; // 👈 AGREGAR ESTA LÍNEA
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\ProfileSettingsController;
 
 class ChatController extends Controller
 {
+    /**
+     * Verificar si el avatar es de Google
+     */
+    private function isGoogleAvatar($filename)
+    {
+        if (!$filename) return false;
+        
+        return str_contains($filename, 'googleusercontent.com') || 
+               str_contains($filename, 'googleapis.com') ||
+               str_contains($filename, 'google.com');
+    }
+
     /**
      * Obtener perfil del usuario actual
      */
@@ -128,6 +142,42 @@ class ChatController extends Controller
                 // Marcar como procesado
                 $processedUsers[] = $otherUserId;
 
+                // Obtener nickname si existe
+                $nickname = UserNickname::where('user_id', $otherUserId)
+                    ->where('target_user_id', $user->id)
+                    ->first();
+                
+                // Si no hay nickname del usuario actual, buscar el nickname que el otro usuario se puso a sí mismo
+                if (!$nickname && $otherUser->rol === 'modelo') {
+                    $nickname = UserNickname::where('user_id', $otherUserId)
+                        ->where('target_user_id', $otherUserId)
+                        ->first();
+                }
+                
+                $displayName = $nickname ? $nickname->nickname : $otherUser->name;
+
+                // Generar avatar_url
+                // 🔒 PRIVACIDAD: Clientes solo muestran foto si la subieron manualmente (no de Google)
+                // Modelos pueden mostrar cualquier foto (incluyendo Google)
+                $avatar = $otherUser->avatar;
+                $avatarUrl = null;
+                
+                if ($otherUser->rol === 'modelo') {
+                    // Modelo: mostrar cualquier foto
+                    $profileController = new \App\Http\Controllers\ProfileSettingsController();
+                    $avatarUrl = $profileController->generateAvatarUrl($avatar);
+                } else if ($otherUser->rol === 'cliente') {
+                    // Cliente: solo mostrar foto si NO es de Google
+                    if ($avatar && !$this->isGoogleAvatar($avatar)) {
+                        $profileController = new \App\Http\Controllers\ProfileSettingsController();
+                        $avatarUrl = $profileController->generateAvatarUrl($avatar);
+                    }
+                } else {
+                    // Otros roles: mostrar cualquier foto
+                    $profileController = new \App\Http\Controllers\ProfileSettingsController();
+                    $avatarUrl = $profileController->generateAvatarUrl($avatar);
+                }
+
                 // Crear room_name único para esta conversación
                 $roomName = $this->generateRoomName($user->id, $otherUserId);
 
@@ -147,7 +197,8 @@ class ChatController extends Controller
                 $conversations[] = [
                     'id' => $session->id,
                     'other_user_id' => $otherUserId,
-                    'other_user_name' => $otherUser->alias ?? $otherUser->name,
+                    'other_user_name' => $displayName,
+                    'other_user_display_name' => $displayName,
                     'other_user_role' => $otherUser->rol,
                     'room_name' => $roomName,
                     'last_message' => $lastMessage ? $lastMessage->message : 'Conversación disponible',
@@ -155,7 +206,8 @@ class ChatController extends Controller
                     'last_message_sender_id' => $lastMessage ? $lastMessage->user_id : null,
                     'unread_count' => $unreadCount,
                     'session_date' => $sessionDate->toISOString(),
-                    'avatar' => "https://i.pravatar.cc/40?u={$otherUserId}"
+                    'avatar' => $otherUser->avatar,
+                    'avatar_url' => $avatarUrl
                 ];
             }
 
@@ -221,7 +273,7 @@ class ChatController extends Controller
                 ->limit(100)
                 ->get()
                 ->map(function ($message) {
-                    return [
+                    $result = [
                         'id' => $message->id,
                         'user_id' => $message->user_id,
                         'user_name' => $message->user_name,
@@ -231,6 +283,19 @@ class ChatController extends Controller
                         'extra_data' => $message->extra_data,
                         'created_at' => $message->created_at->toISOString()
                     ];
+                    
+                    // Si extra_data contiene información de regalo, también incluirla como gift_data
+                    if ($message->extra_data) {
+                        $extraData = is_string($message->extra_data) 
+                            ? json_decode($message->extra_data, true) 
+                            : $message->extra_data;
+                        
+                        if ($extraData && (isset($extraData['gift_name']) || isset($extraData['gift_image']))) {
+                            $result['gift_data'] = $extraData;
+                        }
+                    }
+                    
+                    return $result;
                 });
 
 
@@ -271,11 +336,27 @@ class ChatController extends Controller
             $type = $request->type ?? 'text';
             $extraData = $request->extra_data ?? null;
 
+            Log::info('📤 [ChatController] Intento de envío de mensaje', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'user_role' => $user->rol,
+                'room_name' => $roomName,
+                'message_length' => strlen($message),
+                'type' => $type
+            ]);
+
             // Verificar acceso a la conversación
             if (!$this->userHasAccessToRoom($user->id, $roomName)) {
+                Log::warning('🚫 [ChatController] Acceso denegado al intentar enviar mensaje', [
+                    'user_id' => $user->id,
+                    'room_name' => $roomName,
+                    'room_name_type' => strpos($roomName, 'omegle_') === 0 ? 'videochat' : 'chat'
+                ]);
+
                 return response()->json([
                     'success' => false,
-                    'error' => 'Acceso denegado'
+                    'error' => 'Acceso denegado',
+                    'message' => 'No tienes acceso a esta conversación. Verifica que la sesión esté activa.'
                 ], 403);
             }
 
@@ -465,38 +546,127 @@ class ChatController extends Controller
      */
     private function userHasAccessToRoom($userId, $roomName)
     {
+        Log::debug('🔍 [ChatController] Validando acceso a sala', [
+            'user_id' => $userId,
+            'room_name' => $roomName,
+            'is_videochat' => strpos($roomName, 'omegle_') === 0
+        ]);
+
         // Para salas de videochat (omegle_*), verificar participación en sesiones activas
         if (strpos($roomName, 'omegle_') === 0) {
-            return $this->userParticipatesInVideoSession($userId, $roomName);
+            $hasAccess = $this->userParticipatesInVideoSession($userId, $roomName);
+            Log::debug('🎥 [ChatController] Resultado validación videollamada', [
+                'user_id' => $userId,
+                'room_name' => $roomName,
+                'has_access' => $hasAccess
+            ]);
+            return $hasAccess;
         }
         
         // Para chats normales, usar la lógica original
         $hasAccess = strpos($roomName, "_{$userId}_") !== false || 
                     strpos($roomName, "chat_user_{$userId}_") === 0 ||
                     preg_match("/chat_user_\d+_{$userId}$/", $roomName);
+        
+        Log::debug('💬 [ChatController] Resultado validación chat normal', [
+            'user_id' => $userId,
+            'room_name' => $roomName,
+            'has_access' => $hasAccess
+        ]);
+        
         return $hasAccess;
     }
 
     private function userParticipatesInVideoSession($userId, $roomName)
     {
         try {
-            // Buscar sesión activa con este room_name
+            Log::info('🔍 [ChatController] Validando acceso a sala de videollamada', [
+                'user_id' => $userId,
+                'room_name' => $roomName,
+                'room_name_length' => strlen($roomName)
+            ]);
+
+            // Buscar sesión con este room_name exacto - estados más permisivos
             $session = ChatSession::where('room_name', $roomName)
-                ->whereIn('status', ['active', 'waiting'])
+                ->whereIn('status', ['active', 'waiting', 'connected', 'ongoing', 'calling'])
                 ->where(function($query) use ($userId) {
                     $query->where('cliente_id', $userId)
                           ->orWhere('modelo_id', $userId);
                 })
                 ->first();
 
-            $hasAccess = $session !== null;
-            
+            if ($session) {
+                Log::info('✅ [ChatController] Sesión encontrada con room_name exacto', [
+                    'user_id' => $userId,
+                    'room_name' => $roomName,
+                    'session_id' => $session->id,
+                    'status' => $session->status,
+                    'cliente_id' => $session->cliente_id,
+                    'modelo_id' => $session->modelo_id
+                ]);
+                return true;
+            }
 
-            
-            return $hasAccess;
+            // Si no encuentra con room_name exacto, intentar búsqueda parcial
+            // Esto ayuda si hay diferencias menores en el formato
+            $partialSession = ChatSession::where('room_name', 'like', $roomName . '%')
+                ->orWhere('room_name', 'like', '%' . $roomName)
+                ->whereIn('status', ['active', 'waiting', 'connected', 'ongoing', 'calling'])
+                ->where(function($query) use ($userId) {
+                    $query->where('cliente_id', $userId)
+                          ->orWhere('modelo_id', $userId);
+                })
+                ->first();
+
+            if ($partialSession) {
+                Log::info('✅ [ChatController] Sesión encontrada con búsqueda parcial', [
+                    'user_id' => $userId,
+                    'requested_room_name' => $roomName,
+                    'found_room_name' => $partialSession->room_name,
+                    'session_id' => $partialSession->id,
+                    'status' => $partialSession->status
+                ]);
+                return true;
+            }
+
+            // Último intento: verificar si el usuario está en alguna sesión activa
+            // aunque el room_name no coincida exactamente (por si hay problemas de sincronización)
+            $anyActiveSession = ChatSession::whereIn('status', ['active', 'waiting', 'connected', 'ongoing', 'calling'])
+                ->where(function($query) use ($userId) {
+                    $query->where('cliente_id', $userId)
+                          ->orWhere('modelo_id', $userId);
+                })
+                ->where('session_type', 'call')
+                ->first();
+
+            if ($anyActiveSession) {
+                Log::warning('⚠️ [ChatController] Usuario tiene sesión activa pero room_name no coincide', [
+                    'user_id' => $userId,
+                    'requested_room_name' => $roomName,
+                    'found_session_room_name' => $anyActiveSession->room_name,
+                    'session_id' => $anyActiveSession->id,
+                    'status' => $anyActiveSession->status
+                ]);
+                // Permitir acceso si el usuario está en una sesión activa
+                // Esto previene bloqueos por problemas de sincronización de nombres
+                return true;
+            }
+
+            Log::warning('❌ [ChatController] No se encontró sesión válida para el usuario', [
+                'user_id' => $userId,
+                'room_name' => $roomName,
+                'searched_states' => ['active', 'waiting', 'connected', 'ongoing', 'calling']
+            ]);
+
+            return false;
             
         } catch (\Exception $e) {
-
+            Log::error('❌ [ChatController] Error validando acceso a sala de videollamada', [
+                'user_id' => $userId,
+                'room_name' => $roomName,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return false;
         }
     }

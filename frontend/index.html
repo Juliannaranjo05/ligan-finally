@@ -19,9 +19,135 @@
     <!-- 🔧 CONFIGURACIONES ESPECÍFICAS PARA MÓVIL -->
     <meta name="format-detection" content="telephone=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- 🔇 FILTRAR LOGS REPETITIVOS DE LIVEKIT - DEBE EJECUTARSE EN HEAD PRIMERO -->
+    <script>
+      // Interceptar console.log LO MÁS TEMPRANO POSIBLE
+      (function() {
+        'use strict';
+        
+        // Guardar funciones originales INMEDIATAMENTE antes de cualquier otro código
+        var originalLog = console.log;
+        var originalWarn = console.warn;
+        var originalError = console.error;
+        var originalInfo = console.info;
+        var originalDebug = console.debug || console.log;
+        var originalTrace = console.trace || console.log;
+        
+        // Función para convertir cualquier argumento a string (más robusta)
+        function argToString(arg) {
+          if (arg === null) return 'null';
+          if (arg === undefined) return 'undefined';
+          if (typeof arg === 'string') return arg;
+          if (typeof arg === 'object') {
+            try {
+              var jsonStr = JSON.stringify(arg);
+              return jsonStr;
+            } catch (e) {
+              try {
+                return String(arg);
+              } catch (e2) {
+                try {
+                  return arg.toString ? arg.toString() : '[Object]';
+                } catch (e3) {
+                  return '[Object]';
+                }
+              }
+            }
+          }
+          return String(arg);
+        }
+        
+        // Función para verificar si debe filtrarse (MUY AGRESIVA)
+        function shouldFilter() {
+          var args = Array.prototype.slice.call(arguments);
+          if (!args || args.length === 0) return false;
+          
+          // Convertir TODO a string completo
+          var fullMessage = '';
+          for (var i = 0; i < args.length; i++) {
+            fullMessage += ' ' + argToString(args[i]);
+          }
+          fullMessage = fullMessage.toLowerCase().trim();
+          
+          // Verificar patrones específicos
+          if (fullMessage.indexOf('already connected to room') !== -1) return true;
+          if (fullMessage.indexOf('disconnect from room') !== -1) return true;
+          if (fullMessage.indexOf('waiting for pending publication promise timed out') !== -1) return true;
+          
+          // Verificar también variaciones: "already" + "connected" + "room" en cualquier orden
+          if (fullMessage.indexOf('already') !== -1 && 
+              fullMessage.indexOf('connected') !== -1 && 
+              fullMessage.indexOf('room') !== -1) {
+            return true;
+          }
+          
+          return false;
+        }
+        
+        // Sobrescribir TODOS los métodos de console
+        console.log = function() {
+          if (!shouldFilter.apply(null, arguments)) {
+            originalLog.apply(console, arguments);
+          }
+        };
+        
+        console.warn = function() {
+          if (!shouldFilter.apply(null, arguments)) {
+            originalWarn.apply(console, arguments);
+          }
+        };
+        
+        console.error = function() {
+          if (!shouldFilter.apply(null, arguments)) {
+            originalError.apply(console, arguments);
+          }
+        };
+        
+        console.info = function() {
+          if (!shouldFilter.apply(null, arguments)) {
+            originalInfo.apply(console, arguments);
+          }
+        };
+        
+        if (console.debug) {
+          console.debug = function() {
+            if (!shouldFilter.apply(null, arguments)) {
+              originalDebug.apply(console, arguments);
+            }
+          };
+        }
+        
+        if (console.trace) {
+          console.trace = function() {
+            if (!shouldFilter.apply(null, arguments)) {
+              originalTrace.apply(console, arguments);
+            }
+          };
+        }
+      })();
+    </script>
   </head>
   <body class="bg-gray-100 text-gray-900">
+    <style>
+      /* 🔥 PREVENIR SCROLLBARS GLOBALES */
+      html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+        width: 100% !important;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #root {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+        width: 100% !important;
+      }
+    </style>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

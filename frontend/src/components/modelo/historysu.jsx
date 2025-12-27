@@ -144,20 +144,15 @@ export default function SubirHistoria() {
       // No fallar aquí, el createPerfectFile lo corregirá
     }
 
-    // Verificar tamaño (50MB = 52,428,800 bytes)
-    if (file.size > 52428800) {
-      return {
-        valid: false,
-        error: 'Archivo muy grande. Máximo 50MB permitido.'
-      };
-    }
+    // No hay límite de peso - permitir archivos de alta calidad
+    // El peso no importa, solo la duración para videos
 
     return { valid: true };
   };
 
   const validateFileType = (file) => {
     
-    // Lista de tipos MIME permitidos que coincidan con el backend
+    // Solo permitir fotos o videos - nada más
     const allowedImageTypes = [
       'image/jpeg',
       'image/jpg', 
@@ -188,14 +183,19 @@ export default function SubirHistoria() {
     const hasValidVideoExt = videoExtensions.some(ext => fileName.endsWith(ext));
 
     if (hasValidImageExt) {
-            return { valid: true, mediaType: 'image' };
+      return { valid: true, mediaType: 'image' };
     }
 
     if (hasValidVideoExt) {
-            return { valid: true, mediaType: 'video' };
+      return { valid: true, mediaType: 'video' };
     }
 
-    return { valid: false, mediaType: null };
+    // Si no es foto ni video, rechazar
+    return { 
+      valid: false, 
+      mediaType: null,
+      error: 'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM).'
+    };
   };
 
   // 🆕 Verificar si puede subir historia
@@ -596,7 +596,14 @@ export default function SubirHistoria() {
     if (!selectedFile) return;
 
     
-    // Validar archivo
+    // Validar tipo de archivo - solo fotos o videos
+    const typeValidation = validateFileType(selectedFile);
+    if (!typeValidation.valid) {
+      notifications.error(typeValidation.error || 'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM).');
+      return;
+    }
+
+    // Validar archivo (sin límite de peso)
     const validation = validateFileForBackend(selectedFile);
     if (!validation.valid) {
       notifications.error(validation.error);
@@ -612,15 +619,21 @@ export default function SubirHistoria() {
                     perfectFile.name.toLowerCase().endsWith('.webm');
 
     if (isVideo) {
-      // Validar duración del video
+      // Validar duración del video - máximo 15 segundos
       const video = document.createElement("video");
       video.preload = "metadata";
       
       video.onloadedmetadata = () => {
+        const duration = video.duration;
         URL.revokeObjectURL(video.src);
                 
-        if (video.duration > 15) {
-          notifications.videoDuration();
+        if (duration > 15) {
+          notifications.error(`El video no puede durar más de 15 segundos. Duración actual: ${duration.toFixed(1)}s`);
+          return;
+        }
+        
+        if (duration <= 0 || !isFinite(duration)) {
+          notifications.error('No se pudo determinar la duración del video. Intenta con otro archivo.');
           return;
         }
         
@@ -631,7 +644,7 @@ export default function SubirHistoria() {
       };
       
       video.onerror = () => {
-                notifications.error('Error al procesar el video. Intenta con otro archivo.');
+        notifications.error('Error al procesar el video. Intenta con otro archivo.');
         URL.revokeObjectURL(video.src);
       };
       
@@ -735,11 +748,59 @@ export default function SubirHistoria() {
     }
 
         
-    // Validación final
+    // Validación final de tipo de archivo - solo fotos o videos
+    const typeValidation = validateFileType(file);
+    if (!typeValidation.valid) {
+      notifications.error(typeValidation.error || 'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM).');
+      return;
+    }
+
+    // Validación final (sin límite de peso)
     const finalValidation = validateFileForBackend(file);
     if (!finalValidation.valid) {
       notifications.error(`Error final: ${finalValidation.error}`);
       return;
+    }
+
+    // Validar duración del video si es un video (máximo 15 segundos)
+    if (typeValidation.mediaType === 'video') {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      
+      const checkDuration = () => {
+        return new Promise((resolve, reject) => {
+          video.onloadedmetadata = () => {
+            const duration = video.duration;
+            URL.revokeObjectURL(video.src);
+            
+            if (duration > 15) {
+              reject(new Error(`El video no puede durar más de 15 segundos. Duración actual: ${duration.toFixed(1)}s`));
+              return;
+            }
+            
+            if (duration <= 0 || !isFinite(duration)) {
+              reject(new Error('No se pudo determinar la duración del video. Intenta con otro archivo.'));
+              return;
+            }
+            
+            resolve();
+          };
+          
+          video.onerror = () => {
+            URL.revokeObjectURL(video.src);
+            reject(new Error('Error al procesar el video. Intenta con otro archivo.'));
+          };
+          
+          video.src = URL.createObjectURL(file);
+        });
+      };
+
+      try {
+        await checkDuration();
+      } catch (error) {
+        notifications.error(error.message);
+        return;
+      }
     }
 
     const formData = new FormData();
@@ -977,35 +1038,155 @@ export default function SubirHistoria() {
             </div>
 
             {/* Vista previa de la historia */}
-            {existingStory?.file_url && (
+            {(existingStory?.file_url || existingStory?.file_url_asset || existingStory?.file_url_manual || existingStory?.file_path) && (
               <div className="bg-[#2b2d31] rounded-2xl overflow-hidden mb-6">
-                {(existingStory.file_url.includes('.mp4') || 
-                  existingStory.file_url.includes('.webm') ||
-                  existingStory.mime_type?.startsWith('video/')) ? (
-                  <video 
-                    src={
-                      existingStory.file_url.startsWith('http') 
-                        ? existingStory.file_url 
-                        : `${import.meta.env.VITE_API_BASE_URL}${existingStory.file_url}`
-                    }
-                    className="w-full h-[300px] object-cover"
-                    controls={isApproved}
-                    onError={(e) => {
-                                                                }}
-                  />
-                ) : (
-                  <img 
-                    src={
-                      existingStory.file_url.startsWith('http') 
-                        ? existingStory.file_url 
-                        : `${import.meta.env.VITE_API_BASE_URL}${existingStory.file_url}`
-                    }
-                    alt="Historia" 
-                    className="w-full object-cover"
-                    onError={(e) => {
-                                                                }}
-                  />
-                )}
+                {(() => {
+                  // Determinar la URL a usar (con fallbacks en orden de preferencia)
+                  let mediaUrl = existingStory.file_url_manual ||  // Preferir manual (URL completa)
+                                existingStory.file_url_asset ||     // Luego asset
+                                existingStory.file_url;             // Luego storage URL
+                  
+                  // Si tenemos file_path pero no URL, construirla
+                  if (!mediaUrl && existingStory.file_path) {
+                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+                    // Remover /api si está presente para obtener la base URL
+                    const baseUrl = apiBase.replace('/api', '').replace(/\/$/, '');
+                    // Construir la ruta completa
+                    mediaUrl = `${baseUrl}/storage/${existingStory.file_path}`;
+                  }
+                  
+                  // Si aún no tenemos URL, mostrar placeholder
+                  if (!mediaUrl) {
+                    return (
+                      <div className="w-full h-[300px] bg-[#1f2125] flex items-center justify-center">
+                        <div className="text-center text-white/60">
+                          <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">Previsualización no disponible</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Asegurar que la URL sea absoluta
+                  if (!mediaUrl.startsWith('http')) {
+                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+                    const baseUrl = apiBase.replace('/api', '').replace(/\/$/, '');
+                    mediaUrl = mediaUrl.startsWith('/') 
+                      ? `${baseUrl}${mediaUrl}` 
+                      : `${baseUrl}/${mediaUrl}`;
+                  }
+                  
+                  // Determinar si es video o imagen
+                  const isVideo = existingStory.mime_type?.startsWith('video/') ||
+                                 existingStory.file_path?.includes('.mp4') ||
+                                 existingStory.file_path?.includes('.webm') ||
+                                 existingStory.file_url?.includes('.mp4') ||
+                                 existingStory.file_url?.includes('.webm') ||
+                                 mediaUrl.includes('.mp4') ||
+                                 mediaUrl.includes('.webm');
+                  
+                  console.log('🔍 [Story Preview]', {
+                    file_path: existingStory.file_path,
+                    mime_type: existingStory.mime_type,
+                    file_url: existingStory.file_url,
+                    file_url_asset: existingStory.file_url_asset,
+                    file_url_manual: existingStory.file_url_manual,
+                    final_mediaUrl: mediaUrl,
+                    isVideo: isVideo
+                  });
+                  
+                  return isVideo ? (
+                    <video 
+                      key={mediaUrl} // Forzar re-render si cambia la URL
+                      src={mediaUrl}
+                      className="w-full h-[300px] object-cover"
+                      controls={isApproved || isPending}
+                      preload="metadata"
+                      onError={(e) => {
+                        console.error('❌ Error cargando video:', {
+                          url: mediaUrl,
+                          error: e,
+                          file_path: existingStory.file_path
+                        });
+                        // Ocultar el video y mostrar mensaje de error
+                        const videoElement = e.target;
+                        videoElement.style.display = 'none';
+                        
+                        // Verificar si ya existe un mensaje de error
+                        if (!videoElement.parentNode.querySelector('.error-message')) {
+                          const errorDiv = document.createElement('div');
+                          errorDiv.className = 'error-message w-full h-[300px] bg-[#1f2125] flex items-center justify-center text-white/60';
+                          errorDiv.innerHTML = `
+                            <div class="text-center">
+                              <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                              <p class="text-sm">Error al cargar el video</p>
+                              <p class="text-xs mt-1 text-white/40">URL: ${mediaUrl.substring(0, 50)}...</p>
+                            </div>
+                          `;
+                          videoElement.parentNode.appendChild(errorDiv);
+                        }
+                      }}
+                      onLoadStart={() => {
+                        console.log('▶️ Iniciando carga del video:', mediaUrl);
+                      }}
+                      onLoadedData={() => {
+                        console.log('✅ Video cargado exitosamente');
+                      }}
+                    />
+                  ) : (
+                    <img 
+                      key={mediaUrl} // Forzar re-render si cambia la URL
+                      src={mediaUrl}
+                      alt="Historia" 
+                      className="w-full h-[300px] object-cover"
+                      onError={(e) => {
+                        console.error('❌ Error cargando imagen:', {
+                          url: mediaUrl,
+                          error: e,
+                          file_path: existingStory.file_path
+                        });
+                        // Ocultar la imagen y mostrar mensaje de error
+                        const imgElement = e.target;
+                        imgElement.style.display = 'none';
+                        
+                        // Verificar si ya existe un mensaje de error
+                        if (!imgElement.parentNode.querySelector('.error-message')) {
+                          const errorDiv = document.createElement('div');
+                          errorDiv.className = 'error-message w-full h-[300px] bg-[#1f2125] flex items-center justify-center text-white/60';
+                          errorDiv.innerHTML = `
+                            <div class="text-center">
+                              <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                              <p class="text-sm">Error al cargar la imagen</p>
+                              <p class="text-xs mt-1 text-white/40">URL: ${mediaUrl.substring(0, 50)}...</p>
+                            </div>
+                          `;
+                          imgElement.parentNode.appendChild(errorDiv);
+                        }
+                      }}
+                      onLoad={() => {
+                        console.log('✅ Imagen cargada exitosamente');
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+            )}
+            
+            {/* Mostrar placeholder si no hay file_url ni file_path */}
+            {!existingStory?.file_url && 
+             !existingStory?.file_url_asset && 
+             !existingStory?.file_url_manual && 
+             !existingStory?.file_path && (
+              <div className="bg-[#2b2d31] rounded-2xl overflow-hidden mb-6">
+                <div className="w-full h-[300px] bg-[#1f2125] flex items-center justify-center">
+                  <div className="text-center text-white/60">
+                    <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Previsualización no disponible</p>
+                    <p className="text-xs mt-1 text-white/40">
+                      La historia está siendo procesada
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1017,7 +1198,7 @@ export default function SubirHistoria() {
                   className="bg-[#ff007a] hover:bg-[#e6006e] text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-colors"
                 >
                   <Eye size={18} />
-                  Ver Historia
+                  {t("subirHistoria.verHistoria")}
                 </button>
               )}
 
@@ -1027,7 +1208,7 @@ export default function SubirHistoria() {
                   className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-colors"
                 >
                   <Trash size={18} />
-                  Eliminar y Crear Nueva
+                  {t("subirHistoria.eliminarYCrearNueva")}
                 </button>
               )}
 
@@ -1037,7 +1218,7 @@ export default function SubirHistoria() {
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-full font-bold flex items-center gap-2 transition-colors"
                 >
                   <Trash size={16} />
-                  Eliminar
+                  {t("subirHistoria.eliminar")}
                 </button>
               )}
             </div>
@@ -1073,7 +1254,7 @@ export default function SubirHistoria() {
           <div className="flex items-center gap-3 justify-center mb-8">
             <Sparkles className="w-8 h-8 text-[#ff007a]" />
             <h2 className="text-2xl font-bold text-[#ff007a]">
-              {canUpload ? "Sube o graba tu historia" : "Historia no disponible"}
+              {canUpload ? t("subirHistoria.titulo") : t("subirHistoria.tituloNoDisponible")}
             </h2>
           </div>
           
@@ -1085,7 +1266,7 @@ export default function SubirHistoria() {
                 <div className="bg-[#2b2d31] rounded-xl p-3 mb-3 border border-[#ff007a]/30">
                   <label className="block text-xs font-semibold text-white/70 mb-2 flex items-center gap-2">
                     <Camera className="w-3 h-3 text-[#ff007a]" />
-                    Selecciona tu cámara
+                    {t("subirHistoria.seleccionaCamara")}
                   </label>
                   <select
                     value={selectedDeviceId || ""}
@@ -1192,8 +1373,8 @@ export default function SubirHistoria() {
                 className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-8 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors mb-4"
               >
                 {loading
-                  ? "Subiendo..."
-                  : "Publicar Historia"}
+                  ? t("subirHistoria.subiendo")
+                  : t("subirHistoria.publicar")}
               </button>
             </>
           )}
@@ -1212,7 +1393,7 @@ export default function SubirHistoria() {
                   }`}
                 >
                   <Camera size={20} />
-                  {canUpload ? "Grabar historia" : "No disponible"}
+                  {canUpload ? t("subirHistoria.grabar") : t("subirHistoria.noDisponible")}
                 </button>
 
                 <button
@@ -1225,13 +1406,13 @@ export default function SubirHistoria() {
                   }`}
                 >
                   <UploadCloud size={20} />
-                  {canUpload ? "Subir desde tu dispositivo" : "No disponible"}
+                  {canUpload ? t("subirHistoria.subir") : t("subirHistoria.noDisponible")}
                 </button>
 
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept=".jpg,.jpeg,.png,.mp4,.webm"
+                  accept="image/jpeg,image/jpg,image/png,video/mp4,video/webm"
                   className="hidden"
                   onChange={handleVideoUpload}
                 />
@@ -1243,12 +1424,12 @@ export default function SubirHistoria() {
           <div className="bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-4 text-center">
             <p className="text-white text-sm mb-2 font-semibold flex items-center justify-center gap-2">
               <Sparkles className="w-4 h-4 text-[#ff007a]" />
-              📱 {canUpload ? "Consejo" : "Información"}
+              📱 {canUpload ? t("subirHistoria.consejo") : t("subirHistoria.informacion")}
             </p>
             <p className="text-white/70 text-sm">
               {canUpload 
-                ? "Las historias pasan por aprobación antes de ser públicas. Los videos no pueden durar más de 15 segundos."
-                : "Solo puedes tener una historia activa a la vez. Cada historia dura 24 horas desde su aprobación."
+                ? t("subirHistoria.consejoAprobacion")
+                : t("subirHistoria.informacionRestriccion")
               }
             </p>
           </div>

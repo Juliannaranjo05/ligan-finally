@@ -132,7 +132,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           setTimeLeft(Math.floor(difference / 1000));
         } else {
           setTimeLeft(0);
-          setError("El código de verificación ha expirado");
+          setError(t("settings.payoutAccountModal.errors.codeExpiredMessage"));
         }
       }, 1000);
     }
@@ -141,9 +141,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
 
   const fetchCurrentPaymentInfo = async () => {
     try {
-      console.log('🔍 Fetching current payment info...');
       const response = await api.get(`${API_BASE_URL}/api/payment-methods`);
-      console.log('✅ Payment info fetched:', response.data);
       
       setCurrentPaymentInfo(response.data);
       if (response.data.current_method || response.data.country_code) {
@@ -156,7 +154,6 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
         });
       }
     } catch (err) {
-      console.error("❌ Error fetching payment info:", err);
     }
   };
 
@@ -172,18 +169,18 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
   const handleUpdatePaymentMethod = async () => {
     // Validar que se haya seleccionado país
     if (!formData.country_code || !formData.country_name) {
-      setError("Por favor selecciona tu país");
+      setError(t("settings.payoutAccountModal.errors.selectCountry"));
       return;
     }
 
     if (!formData.payment_method || !formData.account_details) {
-      setError("Por favor completa todos los campos");
+      setError(t("settings.payoutAccountModal.errors.enterAccountDetails"));
       return;
     }
 
     // Para métodos que no sean TRC-20, requerir nombre del titular
     if (formData.payment_method !== 'trc20' && !formData.account_holder_name) {
-      setError("Por favor ingresa el nombre del titular");
+      setError(t("settings.payoutAccountModal.errors.enterAccountHolderName"));
       return;
     }
 
@@ -191,7 +188,6 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
     setError("");
 
     try {
-      console.log('🔍 Updating payment method...', formData);
       
       // Para TRC-20, enviar nombre vacío o por defecto
       const dataToSend = {
@@ -201,16 +197,14 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
       
       const response = await api.post(`${API_BASE_URL}/api/payment-method`, dataToSend);
       
-      console.log('✅ Payment method request sent:', response.data);
       
-      setSuccess("Código de verificación enviado a tu correo");
+      setSuccess(t("settings.payoutAccountModal.success.codeSent"));
       setStep("verify");
       setCodeExpiry(new Date(Date.now() + 15 * 60 * 1000).toISOString());
       setTimeLeft(15 * 60);
       
     } catch (err) {
-      console.error("❌ Error updating payment method:", err);
-      const errorMessage = err.response?.data?.error || "Error al procesar la solicitud";
+      const errorMessage = err.response?.data?.error || t("settings.payoutAccountModal.errors.connectionError");
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -220,20 +214,17 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
   const sendVerificationCode = async () => {
     setLoading(true);
     try {
-      console.log('🔍 Sending verification code...');
       
       // USAR API INSTANCE EN LUGAR DE FETCH - SIN userId
       const response = await api.post(`${API_BASE_URL}/api/send-verification`);
       
-      console.log('✅ Verification code sent:', response.data);
       setCodeExpiry(response.data.expires_at);
       setTimeLeft(15 * 60); // 15 minutos en segundos
       setStep("verify");
-      setSuccess("Código de verificación enviado a tu correo");
+      setSuccess(t("settings.payoutAccountModal.success.codeSent"));
       
     } catch (err) {
-      console.error("❌ Error sending verification code:", err);
-      const errorMessage = err.response?.data?.error || "Error al enviar el código";
+      const errorMessage = err.response?.data?.error || t("settings.payoutAccountModal.errors.connectionError");
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -242,12 +233,12 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
 
   const handleVerifyCode = async () => {
     if (verificationCode.length !== 6) {
-      setError("Por favor ingresa un código de 6 dígitos");
+      setError(t("settings.payoutAccountModal.errors.enterVerificationCode"));
       return;
     }
 
     if (timeLeft === 0) {
-      setError("El código ha expirado");
+      setError(t("settings.payoutAccountModal.errors.codeExpiredMessage"));
       return;
     }
 
@@ -255,23 +246,20 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
     setError("");
 
     try {
-      console.log('🔍 Verifying code...', verificationCode);
       
       // USAR API INSTANCE EN LUGAR DE FETCH - SIN userId
       const response = await api.post(`${API_BASE_URL}/api/verify-code`, {
         verification_code: verificationCode
       });
       
-      console.log('✅ Code verified:', response.data);
       setStep("success");
-      setSuccess("¡Método de pago verificado con éxito!");
+      setSuccess(t("settings.payoutAccountModal.success.verified"));
       
       // 🔄 RECARGAR INFORMACIÓN DE PAGO DESPUÉS DE VERIFICAR
       await fetchCurrentPaymentInfo();
       
     } catch (err) {
-      console.error("❌ Error verifying code:", err);
-      const errorMessage = err.response?.data?.error || "Código de verificación incorrecto";
+      const errorMessage = err.response?.data?.error || t("settings.payoutAccountModal.errors.invalidCode");
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -289,12 +277,12 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
       {/* Información actual */}
       {(currentPaymentInfo?.current_method || currentPaymentInfo?.country_code) && (
         <div className="bg-[#0a0d10] p-4 rounded-lg border border-[#ff007a]/20">
-          <h4 className="text-sm font-medium text-[#ff007a] mb-2">Configuración actual</h4>
+          <h4 className="text-sm font-medium text-[#ff007a] mb-2">{t("settings.payoutAccountModal.currentConfiguration")}</h4>
           
           {/* País actual */}
           {currentPaymentInfo.country_code && (
             <div className="mb-3 pb-3 border-b border-white/10">
-              <p className="text-white/60 text-xs mb-1">País</p>
+              <p className="text-white/60 text-xs mb-1">{t("settings.payoutAccountModal.country")}</p>
               <div className="flex items-center gap-2">
                 <span className="text-lg">
                   {countries.find(c => c.code === currentPaymentInfo.country_code)?.flag || '🌍'}
@@ -326,11 +314,11 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
                 )}
                 {currentPaymentInfo.is_verified ? (
                   <span className="inline-flex items-center gap-1 text-green-400 text-xs">
-                    <Check size={12} /> Verificado
+                    <Check size={12} /> {t("settings.payoutAccountModal.verified")}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-yellow-400 text-xs">
-                    <AlertCircle size={12} /> Pendiente de verificación
+                    <AlertCircle size={12} /> {t("settings.payoutAccountModal.pendingVerification")}
                   </span>
                 )}
               </div>
@@ -349,7 +337,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
             }}
             className="w-full mt-3 text-[#ff007a] hover:text-[#ff007a]/80 text-sm font-medium"
           >
-            Cambiar configuración
+            {t("settings.payoutAccountModal.changeConfiguration")}
           </button>
         </div>
       )}
@@ -359,7 +347,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
         <div>
           <label className="block text-sm font-medium text-white/80 mb-3">
             <Globe size={16} className="inline mr-2" />
-            Selecciona tu país
+            {t("settings.payoutAccountModal.selectCountry")}
           </label>
           <select
             value={formData.country_code}
@@ -376,7 +364,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
             }}
             className="w-full px-3 py-2 bg-[#0a0d10] border border-white/10 rounded-lg text-white focus:border-[#ff007a] focus:outline-none"
           >
-            <option value="">Selecciona tu país</option>
+            <option value="">{t("settings.payoutAccountModal.selectCountry")}</option>
             {countries.map(country => (
               <option key={country.code} value={country.code}>
                 {country.flag} {country.name}
@@ -390,12 +378,12 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           <div>
             <label className="block text-sm font-medium text-white/80 mb-3">
               <CreditCard size={16} className="inline mr-2" />
-              Selecciona método de pago
+              {t("settings.payoutAccountModal.selectPaymentMethod")}
               {formData.country_code === 'CO' && (
-                <span className="text-xs text-green-400 ml-2">(Métodos locales disponibles)</span>
+                <span className="text-xs text-green-400 ml-2">({t("settings.payoutAccountModal.localMethodsAvailable")})</span>
               )}
               {formData.country_code !== 'CO' && formData.country_code && (
-                <span className="text-xs text-blue-400 ml-2">(Solo criptomonedas)</span>
+                <span className="text-xs text-blue-400 ml-2">({t("settings.payoutAccountModal.cryptoOnly")})</span>
               )}
             </label>
             <div className="grid grid-cols-2 gap-3">
@@ -425,7 +413,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           <>
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">
-                {formData.payment_method === 'trc20' ? 'Dirección de wallet TRC-20' : 'Detalles de la cuenta'}
+                {formData.payment_method === 'trc20' ? t("settings.payoutAccountModal.walletAddress") : t("settings.payoutAccountModal.accountDetails")}
               </label>
               <input
                 type="text"
@@ -437,7 +425,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
               />
               {formData.payment_method === 'trc20' && (
                 <p className="text-xs text-white/60 mt-1">
-                  ⚠️ Verifica que la dirección sea correcta. Las transacciones son irreversibles.
+                  {t("settings.payoutAccountModal.verifyWalletWarning")}
                 </p>
               )}
             </div>
@@ -446,14 +434,14 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
             {formData.payment_method !== 'trc20' && (
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-2">
-                  Nombre del titular
+                  {t("settings.payoutAccountModal.accountHolderName")}
                 </label>
                 <input
                   type="text"
                   name="account_holder_name"
                   value={formData.account_holder_name}
                   onChange={handleInputChange}
-                  placeholder="Nombre completo del titular de la cuenta"
+                  placeholder={t("settings.payoutAccountModal.accountHolderPlaceholder")}
                   className="w-full px-3 py-2 bg-[#0a0d10] border border-white/10 rounded-lg text-white placeholder-white/40 focus:border-[#ff007a] focus:outline-none"
                 />
               </div>
@@ -489,12 +477,12 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           {loading ? (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Enviando código...
+              {t("settings.payoutAccountModal.sendingCode")}
             </>
           ) : (
             <>
               <CreditCard size={16} />
-              Enviar código de verificación
+              {t("settings.payoutAccountModal.sendVerificationCode")}
             </>
           )}
         </button>
@@ -509,14 +497,14 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           <Mail className="text-[#ff007a]" size={24} />
         </div>
         <h3 className="text-lg font-semibold text-white mb-2">
-          Confirma tu método de pago
+          {t("settings.payoutAccountModal.confirmPaymentMethod")}
         </h3>
         <p className="text-white/60 text-sm">
-          Ingresa el código de 6 dígitos enviado a tu correo para confirmar el cambio de método de pago
+          {t("settings.payoutAccountModal.enterVerificationCode")}
         </p>
         {timeLeft > 0 && (
           <p className="text-[#ff007a] text-sm mt-2">
-            Código válido por: {formatTime(timeLeft)}
+            {t("settings.payoutAccountModal.codeValidFor")} {formatTime(timeLeft)}
           </p>
         )}
       </div>
@@ -524,7 +512,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-white/80 mb-2">
-            Código de verificación
+            {t("settings.payoutAccountModal.verificationCode")}
           </label>
           <input
             type="text"
@@ -553,7 +541,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
             className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >
             <ArrowLeft size={16} />
-            Volver
+            {t("settings.payoutAccountModal.back")}
           </button>
           <button
             onClick={handleVerifyCode}
@@ -563,12 +551,12 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
             {loading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Verificando...
+                {t("settings.payoutAccountModal.verifying")}
               </>
             ) : (
               <>
                 <Shield size={16} />
-                Verificar código
+                {t("settings.payoutAccountModal.verifyCode")}
               </>
             )}
           </button>
@@ -579,7 +567,7 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
           disabled={loading || timeLeft > 0}
           className="w-full text-[#ff007a] hover:text-[#ff007a]/80 disabled:opacity-50 disabled:cursor-not-allowed text-sm underline"
         >
-          Reenviar código
+          {t("settings.payoutAccountModal.resendCode")}
         </button>
       </div>
     </div>
@@ -592,17 +580,17 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
       </div>
       <div>
         <h3 className="text-lg font-semibold text-white mb-2">
-          ¡Método de pago actualizado!
+          {t("settings.payoutAccountModal.paymentMethodUpdated")}
         </h3>
         <p className="text-white/60 text-sm">
-          Tu método de pago ha sido verificado y actualizado correctamente. Ya puedes recibir pagos.
+          {t("settings.payoutAccountModal.paymentMethodUpdatedDescription")}
         </p>
       </div>
       <button
         onClick={onClose}
         className="w-full bg-[#ff007a] hover:bg-[#ff007a]/80 text-white py-2 px-4 rounded-lg font-medium transition-colors"
       >
-        Continuar
+        {t("settings.payoutAccountModal.continue")}
       </button>
     </div>
   );
@@ -613,14 +601,17 @@ export default function PaymentManager({ onClose }) { // ELIMINAR userId
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-white/50 hover:text-white transition-colors"
-          title="Cerrar"
+          title={t("settings.payoutAccountModal.close")}
         >
           <X size={20} />
         </button>
 
-        <h2 className="text-xl font-bold text-[#ff007a] mb-6">
-          Gestionar método de pago
+        <h2 className="text-xl font-bold text-[#ff007a] mb-2">
+          {t("settings.payoutAccountTitle") || "Configurar cuenta para consignaciones"}
         </h2>
+        <p className="text-sm text-white/60 mb-6">
+          {t("settings.payoutAccountDescription") || "Configura la cuenta donde recibirás tus pagos laborales. Esta información se utilizará para realizar las consignaciones de tus ganancias."}
+        </p>
 
         {step === "select" && renderSelectStep()}
         {step === "verify" && renderVerifyStep()}

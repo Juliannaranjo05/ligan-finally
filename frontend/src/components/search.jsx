@@ -61,7 +61,6 @@ const UserSearch = () => {
   const excludeUser = searchParams.get('excludeUser');
   const excludeUserName = searchParams.get('excludeUserName');
   
-  console.log('🔍 [USERSEARCH] Parámetros:', { role, action, from, currentRoom, userName });
 
   // 🌐 FUNCIÓN: VERIFICAR CALIDAD DE RED
   const checkNetworkQuality = async () => {
@@ -92,7 +91,6 @@ const UserSearch = () => {
       return { isOnline: true, quality, latency };
       
     } catch (error) {
-      console.log('🌐 [NETWORK] Error checking quality:', error);
       setNetworkStatus(prev => ({
         ...prev,
         isOnline: false,
@@ -128,7 +126,6 @@ const UserSearch = () => {
         const actionUser = statusData.pendingAction.userId;
         const actionTime = statusData.pendingAction.timestamp;
         
-        console.log(`🎯 [ACTION] Detectada acción: ${actionType} por usuario: ${actionUser}`);
         
         setActionDetection(prev => ({
           ...prev,
@@ -143,7 +140,6 @@ const UserSearch = () => {
       return null;
       
     } catch (error) {
-      console.log('🎯 [ACTION] Error detectando acciones:', error);
       return null;
     }
   };
@@ -152,12 +148,10 @@ const UserSearch = () => {
   const createRoomSafe = async () => {
     // 🛑 MÚLTIPLES PROTECCIONES
     if (isCreatingRoom || isRedirecting || hasProcessedResponse) {
-      console.log('⚠️ [USERSEARCH] Operación en curso, IGNORANDO');
       return;
     }
 
     if (!isMountedRef.current) {
-      console.log('⚠️ [USERSEARCH] Componente desmontado, IGNORANDO');
       return;
     }
 
@@ -167,7 +161,6 @@ const UserSearch = () => {
 
     try {
       setSearchStatus(t("usersearch.creando_sala", "Creando sala..."));
-      console.log('🏗️ [USERSEARCH] Creando sala ÚNICA');
 
       // 🌐 VERIFICAR RED ANTES DE CONTINUAR
       const networkCheck = await checkNetworkQuality();
@@ -202,8 +195,6 @@ const UserSearch = () => {
         };
       }
 
-      console.log(`📡 [USERSEARCH] Request a ${endpoint}:`, body);
-
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: {
@@ -221,13 +212,11 @@ const UserSearch = () => {
       }
 
       const data = await response.json();
-      console.log('✅ [USERSEARCH] Respuesta:', JSON.stringify(data, null, 2));
 
       // 🚨 PROCESAMIENTO CRÍTICO DE RESPUESTA
       await processServerResponse(data);
 
     } catch (error) {
-      console.error('❌ [USERSEARCH] Error:', error);
       setError(error.message);
       setSearchStatus(t("usersearch.error_conectando", "Error conectando"));
       
@@ -243,11 +232,8 @@ const UserSearch = () => {
       throw new Error(t("usersearch.respuesta_no_exitosa", "Respuesta del servidor no exitosa"));
     }
 
-    console.log('🔍 [USERSEARCH] Procesando tipo:', data.type);
-
     // 🎉 CASO 1: MATCH ENCONTRADO - REDIRECCIONAR INMEDIATAMENTE
     if (data.type === 'match_found' || data.type === 'direct_match') {
-      console.log('🎉 [USERSEARCH] MATCH ENCONTRADO - REDIRIGIENDO INMEDIATAMENTE');
       
       if (!data.roomName || !data.userName) {
         throw new Error(t("usersearch.datos_match_incompletos", "Datos de match incompletos"));
@@ -259,7 +245,6 @@ const UserSearch = () => {
 
     // ⏳ CASO 2: SALA CREADA PARA ESPERAR
     if (data.type === 'waiting' || data.type === 'room_created' || data.roomName) {
-      console.log('⏳ [USERSEARCH] SALA CREADA - INICIAR ESPERA');
       
       const roomName = data.roomName || data.newRoomName;
       const finalUserName = data.userName;
@@ -293,7 +278,6 @@ const UserSearch = () => {
 
   // 🚨 FUNCIÓN: ESPERA OPTIMIZADA CON DETECCIÓN DE ACCIONES
   const startOptimizedWaiting = (roomName, finalUserName, roomDataObj) => {
-    console.log(`⏳ [USERSEARCH] Iniciando espera OPTIMIZADA para: ${roomName}`);
     
     // 🌐 Monitor de red cada 5 segundos
     networkTimerRef.current = setInterval(() => {
@@ -306,7 +290,6 @@ const UserSearch = () => {
       
       const action = await detectUserActions(roomName);
       if (action) {
-        console.log(`🎯 [ACTION] Acción detectada: ${action.type}`);
         setActionDetection(prev => ({
           ...prev,
           isMonitoring: true,
@@ -316,14 +299,12 @@ const UserSearch = () => {
         
         // Si es stop, redirigir inmediatamente a home
         if (action.type === 'stop') {
-          console.log('🛑 [ACTION] STOP detectado - redirigiendo a esperarcall');
           handleStopAction();
           return;
         }
         
         // 🔥 FORZAR REDIRECCIÓN INMEDIATA EN "SIGUIENTE"
         if (action.type === 'siguiente') {
-          console.log('⏭️ [ACTION] SIGUIENTE detectado - FORZANDO REDIRECCIÓN INMEDIATA');
           handleNextAction();
           return;
         }
@@ -341,13 +322,11 @@ const UserSearch = () => {
     // 🔄 VERIFICACIÓN CADA 2 SEGUNDOS (MÁS RÁPIDO) - SOLO REDIRIGE CON MATCH REAL
     checkIntervalRef.current = setInterval(async () => {
       if (!isMountedRef.current || isRedirecting) {
-        console.log('🛑 [USERSEARCH] Componente desmontado o redirigiendo, deteniendo checks');
         return;
       }
       
       checkCount++;
       setCheckCount(checkCount);
-      console.log(`🔍 [USERSEARCH] Check ${checkCount} - Esperando match real`);
 
       // 🎯 SOLO REDIRIGIR CON MATCH REAL - SIN TIMEOUT AUTOMÁTICO
       
@@ -355,18 +334,15 @@ const UserSearch = () => {
         // 🌐 Verificar red antes del check
         const networkCheck = await checkNetworkQuality();
         if (!networkCheck.isOnline) {
-          console.log('🌐 [CHECK] Sin red, saltando verificación');
           return;
         }
 
         const participantData = await checkParticipantsSafe(roomName);
         const participantCount = participantData?.total_count || 0;
         
-        console.log(`📊 [USERSEARCH] Check ${checkCount}: ${participantCount}/2 participantes - Esperando match real`);
 
         // 🎉 SOLO REDIRIGIR CUANDO HAY MATCH REAL (2+ participantes)
         if (participantCount >= 2) {
-          console.log('🎉 [USERSEARCH] MATCH REAL ENCONTRADO - REDIRIGIENDO');
           clearAllIntervals();
           
           await redirectToVideoChat(roomName, finalUserName, roomDataObj.ruletaData, false);
@@ -374,14 +350,12 @@ const UserSearch = () => {
         // 🔄 SI NO HAY MATCH, CONTINUAR ESPERANDO (NO TIMEOUT)
 
       } catch (error) {
-        console.log(`⚠️ [USERSEARCH] Error en check ${checkCount}:`, error);
       }
     }, 2000); // 🔥 CAMBIADO A 2 SEGUNDOS (más rápido)
   };
 
   // 🛑 FUNCIÓN: MANEJAR ACCIÓN DE STOP
   const handleStopAction = () => {
-    console.log('🛑 [STOP] Procesando acción de stop');
     
     clearAllIntervals();
     
@@ -401,7 +375,6 @@ const UserSearch = () => {
 
   // ⏭️ FUNCIÓN: MANEJAR ACCIÓN DE SIGUIENTE (NUEVA)
   const handleNextAction = () => {
-    console.log('⏭️ [NEXT] Procesando acción de siguiente - FORZANDO REDIRECCIÓN');
     
     clearAllIntervals();
     
@@ -422,7 +395,6 @@ const UserSearch = () => {
       timestamp: Date.now()
     });
     
-    console.log('🚀 [NEXT] Redirigiendo a nueva búsqueda:', searchParams.toString());
     
     // 🔥 MÚLTIPLES MÉTODOS DE REDIRECCIÓN PARA ASEGURAR
     navigate(`/usersearch?${searchParams}`, { replace: true });
@@ -430,7 +402,6 @@ const UserSearch = () => {
     // Backup con timeout
     setTimeout(() => {
       if (window.location.pathname !== '/usersearch') {
-        console.log('🔄 [NEXT] Backup redirect ejecutándose');
         window.location.href = `/usersearch?${searchParams}`;
       }
     }, 500);
@@ -467,7 +438,6 @@ const UserSearch = () => {
       
       // 🔥 REDUCIR RATE LIMITING PARA SER MÁS RÁPIDO
       if (lastCheck && (now - parseInt(lastCheck)) < 1000) {
-        console.log('⏰ [CHECK] Rate limited, retornando 0');
         return { total_count: 0 };
       }
       
@@ -486,7 +456,6 @@ const UserSearch = () => {
       
       return { total_count: 0 };
     } catch (error) {
-      console.log('⚠️ [CHECK] Error verificando participantes:', error);
       return { total_count: 0 };
     }
   };
@@ -494,19 +463,14 @@ const UserSearch = () => {
   // 🚨 FUNCIÓN: REDIRECCIÓN PROTEGIDA (MÁS AGRESIVA)
   const redirectToVideoChat = async (roomName, finalUserName, ruletaData = null, fromMatch = false) => {
     if (isRedirecting) {
-      console.log('⚠️ [REDIRECT] Ya redirigiendo, ignorando');
       return;
     }
 
     setIsRedirecting(true);
 
     try {
-      console.log('🎯 [REDIRECT] Navegando a videochat:', {
-        roomName,
-        finalUserName,
-        fromMatch,
-        role
-      });
+      // Iniciando redirección protegida (no-op placeholder)
+      // Continúa con el flujo de redirección a continuación
 
       setSearchStatus(t("usersearch.conectando", "Conectando..."));
       clearAllIntervals();
@@ -518,13 +482,12 @@ const UserSearch = () => {
       localStorage.setItem('inCall', 'true');
       localStorage.setItem('videochatActive', 'true');
 
-      // 🔥 CORREGIDO: chico/chica en lugar de cliente/modelo
+      // 🔥 AMBAS RUTAS USAN EL MISMO COMPONENTE (videochatclient.jsx)
       const targetRoute = role === 'modelo' ? '/videochat' : '/videochatclient';
       
       // 🔥 ASEGURAR CÁMARA PRINCIPAL PARA MODELO (MOVIDO AQUÍ)
       const camaraPrincipal = role === 'modelo' ? 'local' : 'remote';
       
-      console.log(`🧭 [REDIRECT] Navegando a: ${targetRoute}`);
 
       // 🔥 REDIRECCIÓN MÚLTIPLE PARA ASEGURAR
       navigate(targetRoute, {
@@ -558,7 +521,6 @@ const UserSearch = () => {
         
         // 🚀 FORZAR REDIRECCIÓN SI NO FUNCIONÓ
         if (window.location.pathname !== targetRoute) {
-          console.log('🔄 [REDIRECT] Forzando redirección con window.location');
           window.location.href = `${targetRoute}?${urlParams}`;
         }
       }, 100);
@@ -566,13 +528,11 @@ const UserSearch = () => {
       // 🔥 SEGUNDO BACKUP
       setTimeout(() => {
         if (window.location.pathname !== targetRoute) {
-          console.log('🚨 [REDIRECT] Segundo intento de redirección forzada');
           window.location.replace(`${targetRoute}?roomName=${roomName}&userName=${finalUserName}`);
         }
       }, 1000);
 
     } catch (error) {
-      console.error('❌ [REDIRECT] Error:', error);
       setError(t("usersearch.error_conectando", "Error conectando"));
       setIsRedirecting(false);
       
@@ -589,12 +549,10 @@ const UserSearch = () => {
     const mountKey = `usersearch_${role}_${Date.now()}`;
     
     if (window.__USERSEARCH_ACTIVE === mountKey) {
-      console.log('🛑 [MOUNT] Ya activo con esta clave, ignorando');
       return;
     }
 
     if (window.__USERSEARCH_ACTIVE) {
-      console.log('🛑 [MOUNT] Hay otra instancia activa, esperando...');
       setTimeout(() => {
         window.__USERSEARCH_ACTIVE = null;
       }, 1000);
@@ -604,12 +562,10 @@ const UserSearch = () => {
     window.__USERSEARCH_ACTIVE = mountKey;
 
     if (!role) {
-      console.error('❌ [MOUNT] Sin rol, navegando a home');
       navigate('/home');
       return;
     }
 
-    console.log('🚀 [MOUNT] Iniciando UserSearch ÚNICO:', mountKey);
     isMountedRef.current = true;
     
     // 🌐 VERIFICAR RED AL INICIO
@@ -622,7 +578,6 @@ const UserSearch = () => {
     }, 300);
 
     return () => {
-      console.log('🧹 [CLEANUP] Limpiando UserSearch:', mountKey);
       clearTimeout(initTimeout);
       
       if (window.__USERSEARCH_ACTIVE === mountKey) {
@@ -641,7 +596,6 @@ const UserSearch = () => {
   // 🚨 TIMEOUT DE SEGURIDAD CORREGIDO (SOLO PARA CASOS EXTREMOS)
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
-      console.log('🚨 [SAFETY] Timeout de seguridad (5 min) - REGRESANDO AL ESPERARCALL');
       
       clearAllIntervals();
       
@@ -660,7 +614,6 @@ const UserSearch = () => {
         setTimeout(() => {
           // 🔥 CORREGIDO: esperarcall/esperarcallcliente
           const esperarRoute = role === 'modelo' ? '/esperandocall' : '/esperandocallcliente';
-          console.log('🏠 [SAFETY] Redirigiendo a:', esperarRoute);
           
           // 🚀 MÚLTIPLES MÉTODOS PARA ASEGURAR REDIRECCIÓN AL ESPERARCALL
           navigate(esperarRoute, { replace: true });
@@ -668,7 +621,6 @@ const UserSearch = () => {
           // Backup 1
           setTimeout(() => {
             if (window.location.pathname !== esperarRoute) {
-              console.log('🔄 [SAFETY] Backup 1 - window.location');
               window.location.href = esperarRoute;
             }
           }, 500);
@@ -676,7 +628,6 @@ const UserSearch = () => {
           // Backup 2
           setTimeout(() => {
             if (window.location.pathname !== esperarRoute) {
-              console.log('🚨 [SAFETY] Backup 2 - forzando esperarcall');
               window.location.replace(esperarRoute);
             }
           }, 1500);
@@ -690,7 +641,6 @@ const UserSearch = () => {
 
   // 🚨 FUNCIÓN PARA VOLVER (MEJORADA)
   const handleGoBack = () => {
-    console.log('↩️ [BACK] Cancelando búsqueda');
     
     clearAllIntervals();
     isMountedRef.current = false;
@@ -868,7 +818,6 @@ const UserSearch = () => {
         <div className="fixed top-4 right-4">
           <button
             onClick={() => {
-              console.log('🚨 [EMERGENCY] Reset total');
               window.__USERSEARCH_ACTIVE = null;
               clearAllIntervals();
               

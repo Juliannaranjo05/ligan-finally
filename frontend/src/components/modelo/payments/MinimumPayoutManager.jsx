@@ -29,35 +29,35 @@ export default function MinimumPayoutManager({ onClose }) {
     {
       amount: 40,
       label: "$40 USD",
-      description: "Pago mínimo básico",
+      description: t("settings.minimumPayoutModal.payoutOptions.basic"),
       color: "bg-blue-500",
       recommended: false
     },
     {
       amount: 80,
       label: "$80 USD", 
-      description: "Pago mínimo recomendado",
+      description: t("settings.minimumPayoutModal.payoutOptions.recommended"),
       color: "bg-green-500",
       recommended: true
     },
     {
       amount: 120,
       label: "$120 USD",
-      description: "Pago mínimo medio",
+      description: t("settings.minimumPayoutModal.payoutOptions.medium"),
       color: "bg-purple-500",
       recommended: false
     },
     {
       amount: 180,
       label: "$180 USD",
-      description: "Pago mínimo alto",
+      description: t("settings.minimumPayoutModal.payoutOptions.high"),
       color: "bg-orange-500",
       recommended: false
     },
     {
       amount: 240,
       label: "$240 USD",
-      description: "Pago mínimo máximo",
+      description: t("settings.minimumPayoutModal.payoutOptions.maximum"),
       color: "bg-red-500",
       recommended: false
     }
@@ -71,18 +71,15 @@ export default function MinimumPayoutManager({ onClose }) {
   const fetchCurrentMinimum = async () => {
     try {
       setLoadingData(true);
-      console.log('🔍 Fetching current minimum payout...');
       
       const response = await api.get(`${API_BASE_URL}/api/minimum-payout`);
-      console.log('✅ Current minimum fetched:', response.data);
       
       const minimum = response.data.minimum_payout;
       setCurrentMinimum(minimum);
       setSelectedMinimum(minimum);
       
     } catch (err) {
-      console.error("❌ Error fetching minimum payout:", err);
-      setError("Error cargando configuración actual");
+      setError(t("settings.minimumPayoutModal.errors.loadingError"));
     } finally {
       setLoadingData(false);
     }
@@ -90,7 +87,7 @@ export default function MinimumPayoutManager({ onClose }) {
 
   const handleUpdateMinimum = async () => {
     if (selectedMinimum === currentMinimum) {
-      setError("Selecciona un monto diferente al actual");
+      setError(t("settings.minimumPayoutModal.errors.selectDifferentAmount"));
       return;
     }
 
@@ -99,16 +96,14 @@ export default function MinimumPayoutManager({ onClose }) {
     setSuccess("");
 
     try {
-      console.log('🔍 Updating minimum payout...', { minimum_payout: selectedMinimum });
       
       const response = await api.post(`${API_BASE_URL}/api/minimum-payout`, {
         minimum_payout: selectedMinimum
       });
       
-      console.log('✅ Minimum payout updated:', response.data);
       
       setCurrentMinimum(selectedMinimum);
-      setSuccess(`Pago mínimo actualizado a $${selectedMinimum} USD`);
+      setSuccess(`${t("settings.minimumPayoutModal.success.updated")} $${selectedMinimum} USD`);
       
       // Cerrar modal después de 2 segundos
       setTimeout(() => {
@@ -116,8 +111,7 @@ export default function MinimumPayoutManager({ onClose }) {
       }, 2000);
       
     } catch (err) {
-      console.error("❌ Error updating minimum payout:", err);
-      const errorMessage = err.response?.data?.error || "Error al actualizar el pago mínimo";
+      const errorMessage = err.response?.data?.error || t("settings.minimumPayoutModal.errors.updateError");
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -134,7 +128,7 @@ export default function MinimumPayoutManager({ onClose }) {
         <div className="bg-[#1f2125] rounded-xl p-6 w-full max-w-md border border-[#ff007a]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#ff007a] mx-auto mb-4"></div>
-            <p className="text-white/80">Cargando configuración...</p>
+            <p className="text-white/80">{t("settings.minimumPayoutModal.loadingConfiguration")}</p>
           </div>
         </div>
       </div>
@@ -147,7 +141,7 @@ export default function MinimumPayoutManager({ onClose }) {
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-white/50 hover:text-white transition-colors"
-          title="Cerrar"
+          title={t("settings.payoutAccountModal.close")}
         >
           <X size={20} />
         </button>
@@ -158,17 +152,17 @@ export default function MinimumPayoutManager({ onClose }) {
               <DollarSign className="text-[#ff007a]" size={24} />
             </div>
             <h2 className="text-xl font-bold text-[#ff007a]">
-              Configurar Pago Mínimo
+              {t("settings.minimumPayoutModal.title")}
             </h2>
           </div>
           <p className="text-white/60 text-sm">
-            Define el monto mínimo para recibir tus pagos. Las ganancias se acumularán hasta alcanzar este monto.
+            {t("settings.minimumPayoutModal.description")}
           </p>
         </div>
 
         {/* Configuración actual */}
         <div className="bg-[#0a0d10] p-4 rounded-lg border border-[#ff007a]/20 mb-6">
-          <h4 className="text-sm font-medium text-[#ff007a] mb-2">Configuración actual</h4>
+          <h4 className="text-sm font-medium text-[#ff007a] mb-2">{t("settings.minimumPayoutModal.currentConfiguration")}</h4>
           <div className="flex items-center gap-3">
             <div className="bg-[#ff007a]/10 p-2 rounded-lg">
               <Target size={20} className="text-[#ff007a]" />
@@ -176,7 +170,7 @@ export default function MinimumPayoutManager({ onClose }) {
             <div>
               <p className="text-white font-medium">${currentMinimum} USD</p>
               <p className="text-white/60 text-sm">
-                {payoutOptions.find(opt => opt.amount === currentMinimum)?.description || "Pago personalizado"}
+                {payoutOptions.find(opt => opt.amount === currentMinimum)?.description || t("settings.minimumPayoutModal.customPayout")}
               </p>
             </div>
           </div>
@@ -184,7 +178,7 @@ export default function MinimumPayoutManager({ onClose }) {
 
         {/* Opciones de pago mínimo */}
         <div className="space-y-4 mb-6">
-          <h4 className="text-white font-medium">Selecciona nuevo monto mínimo:</h4>
+          <h4 className="text-white font-medium">{t("settings.minimumPayoutModal.selectNewMinimum")}</h4>
           
           <div className="grid gap-3">
             {payoutOptions.map((option) => (
@@ -204,7 +198,7 @@ export default function MinimumPayoutManager({ onClose }) {
                 {/* Badge recomendado */}
                 {option.recommended && (
                   <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                    Recomendado
+                    {t("settings.minimumPayoutModal.recommended")}
                   </div>
                 )}
                 
@@ -222,7 +216,7 @@ export default function MinimumPayoutManager({ onClose }) {
                     </div>
                     <p className="text-white/60 text-sm">{option.description}</p>
                     <p className="text-white/40 text-xs mt-1">
-                      Solo recibirás pagos cuando alcances este monto
+                      {t("settings.minimumPayoutModal.payoutInfo")}
                     </p>
                   </div>
                 </div>
@@ -236,13 +230,13 @@ export default function MinimumPayoutManager({ onClose }) {
           <div className="bg-blue-500/10 p-4 rounded-lg border border-blue-500/20 mb-4">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp size={16} className="text-blue-400" />
-              <span className="text-blue-400 font-medium text-sm">Nuevo monto seleccionado</span>
+              <span className="text-blue-400 font-medium text-sm">{t("settings.minimumPayoutModal.newAmountSelected")}</span>
             </div>
             <p className="text-white text-sm">
-              Con <strong>${selectedMinimum} USD</strong> como mínimo, solo recibirás pagos cuando tus ganancias acumuladas alcancen este monto.
+              {t("settings.minimumPayoutModal.newAmountDescription")} <strong>${selectedMinimum} USD</strong> {t("settings.minimumPayoutModal.asMinimum")}
               {selectedMinimum > currentMinimum ? 
-                " Esto significa que necesitarás más ganancias antes de recibir un pago." : 
-                " Esto significa que recibirás pagos más frecuentemente."
+                ` ${t("settings.minimumPayoutModal.moreEarningsNeeded")}` : 
+                ` ${t("settings.minimumPayoutModal.moreFrequentPayments")}`
               }
             </p>
           </div>
@@ -269,7 +263,7 @@ export default function MinimumPayoutManager({ onClose }) {
             onClick={onClose}
             className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-lg font-medium transition-colors"
           >
-            Cancelar
+            {t("settings.minimumPayoutModal.cancel")}
           </button>
           
           <button
@@ -280,12 +274,12 @@ export default function MinimumPayoutManager({ onClose }) {
             {loading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Actualizando...
+                {t("settings.minimumPayoutModal.updating")}
               </>
             ) : (
               <>
                 <Check size={16} />
-                Actualizar Mínimo
+                {t("settings.minimumPayoutModal.updateMinimum")}
               </>
             )}
           </button>

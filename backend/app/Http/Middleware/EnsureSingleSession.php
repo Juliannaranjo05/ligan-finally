@@ -11,6 +11,12 @@ class EnsureSingleSession
 {
     public function handle(Request $request, Closure $next)
     {
+        // ⚠️ Ignorar esta verificación en rutas específicas
+        // 🔥 NO ignorar heartbeat - debe verificar el estado del token
+        if ($request->is('api/reclamar-sesion') || $request->is('api/reactivar-sesion') || $request->is('api/verify-email-code')) {
+            return $next($request);
+        }
+
         $user = $request->user();
         
         if (!$user) {
@@ -26,13 +32,64 @@ class EnsureSingleSession
         // Extraer el ID del token (parte antes del pipe)
         $tokenId = explode('|', $currentToken)[0];
         
-        // Verificar si este token es el token activo actual
-        if ($user->current_access_token_id != $tokenId) {
-            Log::info("🔥 Sesión duplicada detectada para {$user->email}. Token actual: {$user->current_access_token_id}, Token recibido: {$tokenId}");
+        // Obtener el token del modelo para verificar su status
+        $tokenModel = PersonalAccessToken::find($tokenId);
+        
+        if (!$tokenModel) {
+            return response()->json(['message' => 'Token no encontrado'], 401);
+        }
+        
+        // Verificar si el token está suspendido
+        if ($tokenModel->status === 'suspended') {
+            Log::info("⏸️ Sesión suspendida detectada para {$user->email}", [
+                'token_id' => $tokenId,
+                'ip' => $request->ip(),
+                'user_agent' => substr($request->userAgent(), 0, 100)
+            ]);
             
             return response()->json([
-                'message' => 'Sesión iniciada en otro dispositivo',
-                'code' => 'SESSION_DUPLICATED'
+                'message' => 'Tu sesión ha sido suspendida',
+                'code' => 'SESSION_SUSPENDED',
+                'reason' => 'Se abrió una nueva sesión en otro dispositivo'
+            ], 403);
+        }
+        
+        // Verificar si este token es el token activo actual
+        // Si el token tiene status 'active' pero NO es el current_access_token_id,
+        // significa que otra sesión fue reactivada y esta debe suspenderse
+        if ($user->current_access_token_id != $tokenId) {
+            // Si el token tiene status 'active' pero no es el current, fue reactivada otra sesión
+            if ($tokenModel->status === 'active') {
+                Log::info("⏸️ Token activo detectado pero no es el current_access_token_id - otra sesión fue reactivada para {$user->email}", [
+                    'token_actual_esperado' => $user->current_access_token_id,
+                    'token_recibido' => $tokenId,
+                    'token_status' => $tokenModel->status,
+                    'ip' => $request->ip(),
+                    'user_agent' => substr($request->userAgent(), 0, 100)
+                ]);
+                
+                // Marcar este token como suspendido automáticamente
+                $tokenModel->update(['status' => 'suspended']);
+                
+                return response()->json([
+                    'message' => 'Tu sesión ha sido suspendida',
+                    'code' => 'SESSION_SUSPENDED',
+                    'reason' => 'Otra sesión fue reactivada en otro dispositivo',
+                    'action' => 'close_immediately' // 🔥 Flag para cerrar inmediatamente
+                ], 403);
+            }
+            
+            Log::info("🔥 Sesión duplicada detectada para {$user->email}", [
+                'token_actual_esperado' => $user->current_access_token_id,
+                'token_recibido' => $tokenId,
+                'ip' => $request->ip(),
+                'user_agent' => substr($request->userAgent(), 0, 100)
+            ]);
+            
+            return response()->json([
+                'message' => 'Se abrió tu cuenta en otro dispositivo',
+                'code' => 'SESSION_CLOSED_BY_OTHER_DEVICE',
+                'reason' => 'La cuenta ha sido abierta en otro dispositivo'
             ], 401);
         }
 

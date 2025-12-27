@@ -7,7 +7,6 @@ export default function AxiosErrorHandler() {
     const handler = (event) => {
       const { status, mensaje, codigo, url, method } = event.detail;
 
-      console.error("🔴 Axios Error Global:", {
         status,
         mensaje,
         codigo,

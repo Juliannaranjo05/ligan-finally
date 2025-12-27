@@ -1,13 +1,11 @@
 import React from 'react';
 import { loginWithGoogle } from '../../utils/auth'; // ← Verifica esta ruta
 
-
 const GoogleLoginButton = ({ loading, onError, disabled, text = "Continuar con Google" }) => {
   const handleGoogleLogin = async () => {
     try {
       await loginWithGoogle();
     } catch (error) {
-      console.error('Error Google login:', error);
       if (onError) onError(error.message);
     }
   };

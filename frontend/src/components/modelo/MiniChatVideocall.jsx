@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   MessageSquare, 
   Send, 
@@ -67,6 +68,7 @@ const MiniChatVideocall = ({
   getInitial,
   translationSettings
 }) => {
+  const { t } = useTranslation();
   const mensajesRef = useRef(null);
 
   // Auto scroll al final
@@ -92,7 +94,7 @@ const MiniChatVideocall = ({
         {/* Lista de conversaciones - izquierda */}
         <div className="w-1/3 bg-[#2b2d31] p-4 rounded-l-xl border-r border-[#ff007a]/20">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-white">Conversaciones</h3>
+            <h3 className="font-semibold text-white">{t("chat.title")}</h3>
             <div className="flex items-center gap-2">
               {translationSettings?.enabled && (
                 <div className="flex items-center gap-1 bg-[#ff007a]/20 px-2 py-1 rounded-full">
@@ -114,7 +116,7 @@ const MiniChatVideocall = ({
             {conversaciones.length === 0 ? (
               <div className="text-center py-8">
                 <MessageSquare size={32} className="text-white/30 mx-auto mb-2" />
-                <p className="text-sm text-white/60">No hay conversaciones</p>
+                <p className="text-sm text-white/60">{t("chat.noConversations")}</p>
               </div>
             ) : (
               conversaciones.map((conv) => {
@@ -162,8 +164,8 @@ const MiniChatVideocall = ({
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2 text-white">Selecciona una conversación</h3>
-                <p className="text-white/60">Elige una conversación para chatear durante tu videollamada</p>
+                <h3 className="text-xl font-semibold mb-2 text-white">{t("chat.selectConversation")}</h3>
+                <p className="text-white/60">{t("chat.selectConversationDesc")}</p>
               </div>
             </div>
           ) : (
@@ -173,7 +175,7 @@ const MiniChatVideocall = ({
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <h3 className="font-semibold text-white">
-                    Chat con {getDisplayName(
+                    {t("chat.videochat")} {getDisplayName(
                       conversaciones.find(c => c.room_name === conversacionActiva)?.other_user_id,
                       conversaciones.find(c => c.room_name === conversacionActiva)?.other_user_name
                     )}
@@ -189,7 +191,7 @@ const MiniChatVideocall = ({
               >
                 {mensajes.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-white/60">No hay mensajes aún</p>
+                    <p className="text-white/60">{t("chat.noMessages")}</p>
                   </div>
                 ) : (
                   mensajes.map((mensaje) => {
@@ -248,7 +250,7 @@ const MiniChatVideocall = ({
                 <div className="flex gap-3">
                   <input
                     type="text"
-                    placeholder="Escribe un mensaje..."
+                    placeholder={t("chat.messagePlaceholder")}
                     className="flex-1 px-4 py-3 rounded-full bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
                     value={nuevoMensaje}
                     onChange={(e) => setNuevoMensaje(e.target.value)}
@@ -264,7 +266,7 @@ const MiniChatVideocall = ({
                     }`}
                   >
                     <Send size={16} />
-                    Enviar
+                    {t("chat.send")}
                   </button>
                 </div>
               </div>

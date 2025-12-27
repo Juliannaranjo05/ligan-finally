@@ -43,7 +43,6 @@ const VideoRecorder = ({ onRecorded, onCancel }) => {
       previewRef.current.src = videoUrl;
       previewRef.current.load(); // Importante: cargar el nuevo video
       previewRef.current.play().catch(error => {
-        console.log("Error al reproducir automáticamente:", error);
       });
     }
   }, [videoUrl]);
@@ -57,7 +56,6 @@ const VideoRecorder = ({ onRecorded, onCancel }) => {
       videoRef.current.srcObject = mediaStream;
       setStream(mediaStream);
     } catch (error) {
-      console.error("Error al acceder a la cámara:", error);
     }
   };
 

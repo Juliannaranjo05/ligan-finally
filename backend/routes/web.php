@@ -8,11 +8,16 @@ use App\Models\User;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProfileLinkController;
 
 // ✅ Ruta para obtener token CSRF
 Route::get('/sanctum/csrf-cookie', function () {
     return response()->json(['csrf' => true]);
 });
+
+// 🔗 Ruta pública para redirigir al chat con la modelo
+Route::get('/chat/{slug}', [ProfileLinkController::class, 'redirectToChat'])
+    ->name('profile.chat');
 
 // ✅ Todas las rutas de autenticación en el grupo web (con CSRF)
 Route::middleware(['web'])->group(function () {

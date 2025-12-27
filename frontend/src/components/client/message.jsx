@@ -4,45 +4,12 @@ import Header from "./headercliente.jsx";
 import { getUser } from "../../utils/auth";
 
 import {
-  useTranslation,
+  useTranslation as useTranslationSystem,
   TranslationSettings,
   TranslatedMessage
 } from '../../utils/translationSystem.jsx';
-
-// Función t simple para traducciones
-const t = (key, defaultValue = key) => {
-  const translations = {
-    'chat.searchPlaceholder': 'Buscar conversaciones...',
-    'chat.loading': 'Cargando...',
-    'chat.noConversations': 'No hay conversaciones',
-    'chat.noMessages': 'No hay mensajes',
-    'chat.you': 'Tú',
-    'chat.send': 'Enviar',
-    'chat.messagePlaceholder': 'Escribe un mensaje...',
-    'chat.status.userBlocked': 'Usuario bloqueado',
-    'chat.status.userBlockedDesc': 'No puedes enviar mensajes a este usuario',
-    'chat.status.cannotSendBlocked': 'No puedes enviar mensajes',
-    'chat.status.userBlockedYou': 'Este usuario te bloqueó',
-    'chat.status.blockedByYou': 'Bloqueado por ti',
-    'chat.status.blockedYou': 'Te bloqueó',
-    'chat.status.mutualBlock': 'Bloqueo mutuo',
-    'chat.online': 'En línea',
-    'chat.offline': 'Desconectado',
-    'chat.menu.translation': 'Traducción',
-    'chat.menu.translationActive': 'Activa',
-    'chat.menu.translationInactive': 'Inactiva',
-    'chat.menu.addFavorite': 'Agregar a favoritos',
-    'chat.menu.removeFavorite': 'Quitar de favoritos',
-    'chat.menu.changeNickname': 'Cambiar apodo',
-    'chat.menu.block': 'Bloquear',
-    'chat.menu.unblock': 'Desbloquear',
-    'chat.actions.cancel': 'Cancelar',
-    'chat.actions.save': 'Guardar',
-    'chat.nickname.description': 'Cambia cómo aparece este usuario en tus chats',
-    'chat.nickname.label': 'Apodo',
-  };
-  return translations[key] || defaultValue;
-};
+import { useTranslation } from 'react-i18next';
+import { useGlobalTranslation } from '../../contexts/GlobalTranslationContext';
 
 import {
   MessageSquare,
@@ -64,13 +31,22 @@ import {
 import CallingSystem from '../CallingOverlay';
 import IncomingCallOverlay from '../IncomingCallOverlay';
 import { useGiftSystem, GiftMessageComponent, GiftNotificationOverlay, GiftsModal, giftSystemStyles } from '../GiftSystem';
+import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
+import { createLogger } from '../../utils/logger';
+import { useSessionValidation } from '../hooks/useSessionValidation';
 
+const logger = createLogger('MessageClient');
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivado() {
-  const { settings: translationSettings, setSettings: setTranslationSettings, languages } = useTranslation();
+  const { t, i18n: i18nInstance } = useTranslation();
+  const { settings: translationSettings, setSettings: setTranslationSettings, languages } = useTranslationSystem();
+  const { translateGlobalText, isEnabled: globalTranslationEnabled, changeGlobalLanguage, currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // 🔥 VALIDACIÓN DE SESIÓN: Solo clientes pueden acceder
+  useSessionValidation('cliente');
   
 
   // 🔥 ESTADOS PRINCIPALES OPTIMIZADOS
@@ -89,6 +65,9 @@ export default function ChatPrivado() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [userBalance, setUserBalance] = useState(0);        // Balance de COINS
   const [giftBalance, setGiftBalance] = useState(0);
+  const [showNoBalanceModal, setShowNoBalanceModal] = useState(false);
+  const [balanceDetails, setBalanceDetails] = useState(null);
+  const [showBuyMinutes, setShowBuyMinutes] = useState(false);
 
   // Estados de llamadas simplificados
   const [isCallActive, setIsCallActive] = useState(false);
@@ -115,15 +94,32 @@ export default function ChatPrivado() {
   const [nicknameTarget, setNicknameTarget] = useState(null);
   const [nicknameValue, setNicknameValue] = useState('');
 
+  // 🔥 ESTADOS PARA EL SISTEMA DE TRADUCCIÓN AUTOMÁTICA
+  const [translations, setTranslations] = useState(new Map());
+  const [translatingIds, setTranslatingIds] = useState(new Set());
+  
+  // Inicializar con el idioma actual de i18n
+  const initialLanguage = i18nInstance.language || translationSettings?.targetLanguage || globalCurrentLanguage || 'es';
+  const initialTranslationEnabled = initialLanguage !== 'es' || translationSettings?.enabled || globalTranslationEnabled || false;
+  
+  const [localTranslationEnabled, setLocalTranslationEnabled] = useState(initialTranslationEnabled);
+  const [currentLanguage, setCurrentLanguage] = useState(initialLanguage);
+
   // Refs
   const mensajesRef = useRef(null);
   const globalPollingInterval = useRef(null);
   const openChatWith = location.state?.openChatWith;
   const hasOpenedSpecificChat = useRef(false);
+  const mensajesRefForTranslation = useRef([]);
+  const translateMessageRef = useRef(null);
   const [isReceivingCall, setIsReceivingCall] = useState(false);
+const searchParams = new URLSearchParams(location.search);
+// Usamos user (alias/nombre) solo informativo; no exponemos IDs en URL
+const userParam = searchParams.get('user');
   const [incomingCall, setIncomingCall] = useState(null);
   const [incomingCallPollingInterval, setIncomingCallPollingInterval] = useState(null);
-  const audioRef = useRef(null)
+  const audioRef = useRef(null);
+  const outgoingCallAudioRef = useRef(null);
 
   // 🔥 FUNCIONES MEMOIZADAS (DEFINIR PRIMERO)
   const getAuthHeaders = useCallback(() => {
@@ -136,7 +132,7 @@ export default function ChatPrivado() {
     };
   }, []);
 const iniciarPollingLlamada = useCallback((callId) => {
-  console.log('🔄 Iniciando polling para llamada:', callId);
+  logger.debug('Iniciando polling para llamada', { callId });
   
   const interval = setInterval(async () => {
     try {
@@ -147,33 +143,45 @@ const iniciarPollingLlamada = useCallback((callId) => {
       });
       
       if (!response.ok) {
-        console.error('❌ Error en response del polling:', response.status);
+        logger.error('Error en response del polling', { status: response.status });
         return;
       }
       
       const data = await response.json();
-      console.log('📞 Polling response:', data);
+      logger.debug('Polling response', data);
       
       if (data.success && data.call) {
         const callStatus = data.call.status;
-        console.log('📊 Estado de llamada:', callStatus);
+        logger.debug('Estado de llamada', { callStatus });
                 
         if (callStatus === 'active') {
           // ✅ ¡Llamada aceptada por la modelo!
-          console.log('🎉 ¡Llamada ACEPTADA! Redirigiendo...');
+          console.log('✅ [message] Llamada ACEPTADA, redirigiendo', { callId, roomName: data.call.room_name });
+          logger.info('Llamada ACEPTADA, redirigiendo');
+          
+          // 🔥 DETENER SONIDO DE LLAMADA
+          if (outgoingCallAudioRef.current) {
+            outgoingCallAudioRef.current.pause();
+            outgoingCallAudioRef.current.currentTime = 0;
+            outgoingCallAudioRef.current = null;
+          }
+          
           clearInterval(interval);
           setCallPollingInterval(null);
           
           // 🔥 CRITICAL: Asegurar que tenemos room_name
           const roomName = data.call.room_name || data.room_name;
+          console.log('🔍 [message] Room name obtenido:', roomName);
           if (!roomName) {
-            console.error('❌ No se recibió room_name en la respuesta');
+            console.error('❌ [message] No se recibió room_name en la respuesta', data);
+            logger.error('No se recibió room_name en la respuesta');
             alert('Error: No se pudo obtener información de la sala');
             setIsCallActive(false);
             setCurrentCall(null);
             return;
           }
           
+          console.log('🚀 [message] Llamando a redirigirAVideochatCliente', { roomName, callId });
           redirigirAVideochatCliente({
             ...data.call,
             room_name: roomName,
@@ -182,7 +190,15 @@ const iniciarPollingLlamada = useCallback((callId) => {
           
         } else if (callStatus === 'rejected') {
           // ❌ Llamada rechazada por la modelo
-          console.log('😞 Llamada RECHAZADA');
+          logger.info('Llamada RECHAZADA');
+          
+          // 🔥 DETENER SONIDO DE LLAMADA
+          if (outgoingCallAudioRef.current) {
+            outgoingCallAudioRef.current.pause();
+            outgoingCallAudioRef.current.currentTime = 0;
+            outgoingCallAudioRef.current = null;
+          }
+          
           clearInterval(interval);
           setCallPollingInterval(null);
           setIsCallActive(false);
@@ -191,7 +207,15 @@ const iniciarPollingLlamada = useCallback((callId) => {
           
         } else if (callStatus === 'cancelled') {
           // ⏰ Llamada cancelada por timeout
-          console.log('⏰ Llamada CANCELADA por timeout');
+          logger.info('Llamada CANCELADA por timeout');
+          
+          // 🔥 DETENER SONIDO DE LLAMADA
+          if (outgoingCallAudioRef.current) {
+            outgoingCallAudioRef.current.pause();
+            outgoingCallAudioRef.current.currentTime = 0;
+            outgoingCallAudioRef.current = null;
+          }
+          
           clearInterval(interval);
           setCallPollingInterval(null);
           setIsCallActive(false);
@@ -200,18 +224,18 @@ const iniciarPollingLlamada = useCallback((callId) => {
           
         } else if (callStatus === 'pending') {
           // 🕐 Llamada aún pendiente (normal)
-          console.log('⏳ Llamada aún pendiente...');
+          logger.debug('Llamada aún pendiente');
           
         } else {
           // ❓ Estado desconocido
-          console.log('❓ Estado desconocido:', callStatus);
+          logger.warn('Estado desconocido', { callStatus });
         }
       } else {
-        console.error('❌ Respuesta inválida del polling:', data);
+        logger.error('Respuesta inválida del polling', data);
       }
       
     } catch (error) {
-      console.error('💥 Error en polling:', error);
+      logger.error('Error en polling', error);
     }
   }, 2000); // Cada 2 segundos
   
@@ -220,11 +244,18 @@ const iniciarPollingLlamada = useCallback((callId) => {
   // ⏰ Timeout de seguridad - más largo para dar tiempo
   setTimeout(() => {
     if (interval) {
-      console.log('⏰ Timeout de seguridad activado');
+      logger.debug('Timeout de seguridad activado');
       clearInterval(interval);
       setCallPollingInterval(null);
       
       if (isCallActive) {
+        // 🔥 DETENER SONIDO DE LLAMADA
+        if (outgoingCallAudioRef.current) {
+          outgoingCallAudioRef.current.pause();
+          outgoingCallAudioRef.current.currentTime = 0;
+          outgoingCallAudioRef.current = null;
+        }
+        
         setIsCallActive(false);
         setCurrentCall(null);
         alert('La llamada expiró por tiempo de espera');
@@ -238,11 +269,13 @@ const iniciarPollingLlamada = useCallback((callId) => {
 // ============================================================================
 
 const redirigirAVideochatCliente = useCallback((callData) => {
-  console.log('🚀 Redirigiendo a videochat CLIENTE con datos:', callData);
+  console.log('🚀 [message] redirigirAVideochatCliente ejecutado', callData);
+  logger.debug('Redirigiendo a videochat CLIENTE', callData);
   
   // Verificar que tenemos datos mínimos
   if (!callData.room_name) {
-    console.error('❌ Error: No room_name en callData');
+    console.error('❌ [message] No room_name en callData', callData);
+    logger.error('Error: No room_name en callData');
     alert('Error: Información de llamada incompleta');
     return;
   }
@@ -277,7 +310,8 @@ const redirigirAVideochatCliente = useCallback((callData) => {
     setIncomingCallPollingInterval(null);
   }
   
-  console.log('📱 Navegando a videochatclient...');
+  console.log('🧭 [message] Navegando a /videochatclient', { roomName: callData.room_name });
+  logger.debug('Navegando a videochatclient');
   
   // 🔥 CRÍTICO: Redirigir al videochat DEL CLIENTE, NO de la modelo
   navigate('/videochatclient', {
@@ -299,10 +333,7 @@ const redirigirAVideochatCliente = useCallback((callData) => {
 
 const iniciarLlamadaRealMejorada = useCallback(async (otherUserId, otherUserName) => {
   try {
-    console.log('📞 Iniciando llamada a:', {
-      userId: otherUserId,
-      userName: otherUserName
-    });
+    logger.debug('Iniciando llamada', { userId: otherUserId, userName: otherUserName });
     
     setCurrentCall({ id: otherUserId, name: otherUserName, status: 'initiating' });
     setIsCallActive(true);
@@ -314,7 +345,7 @@ const iniciarLlamadaRealMejorada = useCallback(async (otherUserId, otherUserName
     });
 
     const data = await response.json();
-    console.log('✅ Respuesta del servidor:', data);
+    logger.debug('Respuesta del servidor', data);
     
     if (data.success) {
       setCurrentCall({
@@ -329,13 +360,13 @@ const iniciarLlamadaRealMejorada = useCallback(async (otherUserId, otherUserName
       iniciarPollingLlamada(data.call_id);
       
     } else {
-      console.error('❌ Error en llamada:', data);
+      logger.error('Error en llamada', data);
       setIsCallActive(false);
       setCurrentCall(null);
       alert(data.error || 'No se pudo iniciar la llamada');
     }
   } catch (error) {
-    console.error('💥 Error iniciando llamada:', error);
+    logger.error('Error iniciando llamada', error);
     setIsCallActive(false);
     setCurrentCall(null);
     alert('Error de conexión al iniciar llamada');
@@ -348,7 +379,14 @@ const iniciarLlamadaRealMejorada = useCallback(async (otherUserId, otherUserName
 
 const cancelarLlamadaMejorada = useCallback(async () => {
   try {
-    console.log('🛑 Cancelando llamada...');
+    logger.debug('Cancelando llamada');
+    
+    // 🔥 DETENER SONIDO DE LLAMADA PRIMERO
+    if (outgoingCallAudioRef.current) {
+      outgoingCallAudioRef.current.pause();
+      outgoingCallAudioRef.current.currentTime = 0;
+      outgoingCallAudioRef.current = null;
+    }
     
     if (currentCall?.callId) {
       const response = await fetch(`${API_BASE_URL}/api/calls/cancel`, {
@@ -360,9 +398,9 @@ const cancelarLlamadaMejorada = useCallback(async () => {
       });
       
       if (response.ok) {
-        console.log('✅ Llamada cancelada exitosamente');
+        logger.debug('Llamada cancelada exitosamente');
       } else {
-        console.error('❌ Error cancelando llamada:', response.status);
+        logger.error('Error cancelando llamada', { status: response.status });
       }
     }
     
@@ -373,7 +411,7 @@ const cancelarLlamadaMejorada = useCallback(async () => {
     }
     
   } catch (error) {
-    console.error('💥 Error cancelando llamada:', error);
+    logger.error('Error cancelando llamada', error);
   } finally {
     // Siempre limpiar estado
     setIsCallActive(false);
@@ -382,7 +420,7 @@ const cancelarLlamadaMejorada = useCallback(async () => {
 }, [currentCall, callPollingInterval, getAuthHeaders]);
 
 useEffect(() => {
-  console.log('🔍 Estado actual de llamadas:', {
+  logger.debug('Estado actual de llamadas', {
     isCallActive,
     currentCall: currentCall?.callId,
     callPollingInterval: !!callPollingInterval,
@@ -898,8 +936,11 @@ useEffect(() => {
   useEffect(() => {
     // Manejar parámetros URL como fallback (para compatibilidad)
     const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('userId');
+    const userId = urlParams.get('userId') || urlParams.get('openChatWith');
     const userName = urlParams.get('userName');
+    const userRole = urlParams.get('userRole') || 'modelo';
+    const avatarUrl = urlParams.get('avatar_url');
+    const isOnline = urlParams.get('is_online') === 'true';
     
     if (userId && userName && !hasOpenedSpecificChat.current && conversaciones.length > 0) {
       
@@ -924,13 +965,15 @@ useEffect(() => {
           id: Date.now(),
           other_user_id: otherUserId,
           other_user_name: decodeURIComponent(userName),
-          other_user_role: 'modelo',
+          other_user_display_name: decodeURIComponent(userName),
+          other_user_role: userRole,
           room_name: roomName,
           last_message: "Conversación iniciada - Envía tu primer mensaje",
           last_message_time: new Date().toISOString(),
           last_message_sender_id: null,
           unread_count: 0,
-          avatar: `https://i.pravatar.cc/40?u=${otherUserId}`
+          avatar_url: avatarUrl || `https://i.pravatar.cc/40?u=${otherUserId}`,
+          is_online: isOnline
         };
         
         setConversaciones(prev => [nuevaConversacion, ...prev]);
@@ -1051,85 +1094,166 @@ useEffect(() => {
 }, [conversaciones, calculateUnreadCount]);
 
 useEffect(() => {
+  if (!openChatWith || hasOpenedSpecificChat.current) return;
+  if (!usuario.id) return;
+  // Esperar a que se carguen las conversaciones si están cargando
+  if (loading && conversaciones.length === 0) return;
 
-  if (openChatWith && !hasOpenedSpecificChat.current) {
-
-    
+  const procesarOpenChatWith = async () => {
     // Marcar como procesado PRIMERO
     hasOpenedSpecificChat.current = true;
     
-    // 🔥 VERIFICAR SI VIENE DEL BACKEND O ES LOCAL
-    const isFromBackend = openChatWith.fromBackend || openChatWith.id;
+    const targetUserId = openChatWith.other_user_id || openChatWith.userId;
+    const targetUserName = openChatWith.other_user_name || openChatWith.userName || openChatWith.name || 'Usuario';
     
-    let conversacionFinal = openChatWith;
+    if (!targetUserId) return;
     
-    if (!isFromBackend) {
-
-      // Si es local, agregar campos que el backend habría proporcionado
-      conversacionFinal = {
-        ...openChatWith,
-        // No marcar como persistente si no viene del backend
-        createdLocally: true,
-        needsSync: true // Marcar que necesita sincronización
-      };
-    } else {
-
+    // Buscar si ya existe una conversación con este usuario en las conversaciones cargadas
+    const conversacionExistente = conversaciones.find(
+      conv => conv.other_user_id === parseInt(targetUserId)
+    );
+    
+    if (conversacionExistente) {
+      // Si existe, abrirla directamente
+      await abrirConversacion(conversacionExistente);
+      
+      // Limpiar estado
+      setTimeout(() => {
+        navigate('/message', { replace: true, state: {} });
+      }, 500);
+      return;
     }
     
+    // Si no existe, crear nueva conversación en el backend
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat/start-conversation`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ other_user_id: parseInt(targetUserId) })
+      });
 
-    
-    // 🔥 SIEMPRE AGREGAR A LA LISTA (sin localStorage si es del backend)
-    setConversaciones(prev => {
-      const exists = prev.some(conv => 
-        conv.room_name === conversacionFinal.room_name ||
-        conv.other_user_id === conversacionFinal.other_user_id
-      );
-      
-      if (exists) {
-
-        return prev.map(conv => {
-          if (conv.room_name === conversacionFinal.room_name || conv.other_user_id === conversacionFinal.other_user_id) {
-            return { ...conversacionFinal, id: conv.id }; // Mantener ID local si existe
-          }
-          return conv;
-        });
-      }
-      
-
-      return [conversacionFinal, ...prev];
-    });
-    
-    // 🔥 ABRIR CONVERSACIÓN
-    setTimeout(() => {
-      setConversacionActiva(conversacionFinal.room_name);
-      
-      if (window.innerWidth < 768) {
-        setShowSidebar(false);
-      }
-      
-      // Marcar como visto
-      if (typeof marcarComoVisto === 'function') {
-        marcarComoVisto(conversacionFinal.room_name);
-      }
-      
-      // Scroll al final
-      setTimeout(() => {
-        if (mensajesRef.current) {
-          mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.room_name) {
+          // Recargar conversaciones para incluir la nueva
+          await cargarConversaciones();
+          
+          // Esperar un momento y luego buscar la nueva conversación
+          setTimeout(async () => {
+            // Recargar conversaciones una vez más para obtener la lista actualizada
+            await cargarConversaciones();
+            
+            // Buscar la nueva conversación después de recargar
+            // Usar un pequeño delay para asegurar que el estado se actualizó
+            setTimeout(async () => {
+              // Crear objeto de conversación con los datos disponibles
+              const conversacionTemporal = {
+                room_name: data.room_name,
+                other_user_id: parseInt(targetUserId),
+                other_user_name: targetUserName,
+                other_user_display_name: targetUserName,
+                other_user_role: 'modelo',
+                last_message: "",
+                last_message_time: new Date().toISOString(),
+                unread_count: 0
+              };
+              
+              // Agregar a la lista de conversaciones si no existe
+              setConversaciones(prev => {
+                const exists = prev.some(conv => 
+                  conv.room_name === conversacionTemporal.room_name ||
+                  conv.other_user_id === conversacionTemporal.other_user_id
+                );
+                if (!exists) {
+                  return [conversacionTemporal, ...prev];
+                }
+                return prev.map(conv => 
+                  conv.room_name === conversacionTemporal.room_name || 
+                  conv.other_user_id === conversacionTemporal.other_user_id
+                    ? conversacionTemporal
+                    : conv
+                );
+              });
+              
+              // Abrir la conversación
+              await abrirConversacion(conversacionTemporal);
+              
+              // Limpiar estado
+              setTimeout(() => {
+                navigate('/message', { replace: true, state: {} });
+              }, 500);
+            }, 300);
+          }, 500);
         }
-      }, 200);
+      } else {
+        // Si falla la creación, usar la conversación local
+        const conversacionLocal = {
+          ...openChatWith,
+          other_user_display_name: openChatWith.other_user_display_name || openChatWith.other_user_name || targetUserName,
+          createdLocally: true,
+          needsSync: true
+        };
+        
+        setConversaciones(prev => {
+          const exists = prev.some(conv => 
+            conv.room_name === conversacionLocal.room_name ||
+            conv.other_user_id === conversacionLocal.other_user_id
+          );
+          if (exists) {
+            return prev.map(conv => {
+              if (conv.room_name === conversacionLocal.room_name || conv.other_user_id === conversacionLocal.other_user_id) {
+                return { ...conversacionLocal, id: conv.id };
+              }
+              return conv;
+            });
+          }
+          return [conversacionLocal, ...prev];
+        });
+        
+        setTimeout(async () => {
+          await abrirConversacion(conversacionLocal);
+          setTimeout(() => {
+            navigate('/message', { replace: true, state: {} });
+          }, 500);
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error creando conversación:', error);
+      // En caso de error, usar conversación local
+      const conversacionLocal = {
+        ...openChatWith,
+        other_user_display_name: openChatWith.other_user_display_name || openChatWith.other_user_name || targetUserName,
+        createdLocally: true,
+        needsSync: true
+      };
       
-    }, 100);
-    
-    // 🔥 LIMPIAR STATE
-    setTimeout(() => {
-      navigate('/message', { replace: true, state: {} });
-    }, 2000);
-    
+      setConversaciones(prev => {
+        const exists = prev.some(conv => 
+          conv.room_name === conversacionLocal.room_name ||
+          conv.other_user_id === conversacionLocal.other_user_id
+        );
+        if (exists) {
+          return prev.map(conv => {
+            if (conv.room_name === conversacionLocal.room_name || conv.other_user_id === conversacionLocal.other_user_id) {
+              return { ...conversacionLocal, id: conv.id };
+            }
+            return conv;
+          });
+        }
+        return [conversacionLocal, ...prev];
+      });
+      
+      setTimeout(async () => {
+        await abrirConversacion(conversacionLocal);
+        setTimeout(() => {
+          navigate('/message', { replace: true, state: {} });
+        }, 500);
+      }, 100);
+    }
+  };
 
-  }
-  
-}, [openChatWith]);
+  procesarOpenChatWith();
+}, [openChatWith, usuario.id, conversaciones, loading, getAuthHeaders, cargarConversaciones, abrirConversacion, navigate]);
 
 // 🔥 useEffect para resetear flag
 useEffect(() => {
@@ -1138,12 +1262,110 @@ useEffect(() => {
   }
 }, [openChatWith]);
 
+// Nota: evitamos exponer userId en la URL. Si se navega con state, se abre el chat correcto.
+// Si llega solo con ?user=<alias>, intentar abrir una conversación existente por nombre
+useEffect(() => {
+  if (hasOpenedSpecificChat.current || !userParam) return;
+
+  const normalized = userParam.trim().toLowerCase();
+  const match = conversaciones.find(conv => {
+    const name = (conv.other_user_name || '').toLowerCase();
+    return name === normalized;
+  });
+
+  if (match?.room_name) {
+    hasOpenedSpecificChat.current = true;
+    setConversacionActiva(match.room_name);
+    if (window.innerWidth < 768) setShowSidebar(false);
+    if (typeof marcarComoVisto === 'function') {
+      marcarComoVisto(match.room_name);
+    }
+    setTimeout(() => {
+      if (mensajesRef.current) {
+        mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+      }
+    }, 200);
+    navigate('/message', { replace: true, state: {} });
+  }
+}, [userParam, conversaciones, marcarComoVisto, navigate]);
+
 
   // 🔥 FUNCIONES DE LLAMADAS SIMPLIFICADAS
+  // 🔥 FUNCIÓN PARA REPRODUCIR SONIDO DE LLAMADA SALIENTE
+  const playOutgoingCallSound = useCallback(async () => {
+    try {
+      // Detener cualquier sonido anterior
+      if (outgoingCallAudioRef.current) {
+        outgoingCallAudioRef.current.pause();
+        outgoingCallAudioRef.current.currentTime = 0;
+        outgoingCallAudioRef.current = null;
+      }
+
+      // Crear nuevo audio - usar el mismo sonido que las llamadas entrantes
+      const audio = new Audio('/sounds/incoming-call.mp3');
+      audio.loop = true;
+      audio.volume = 0.8;
+      audio.preload = 'auto';
+      
+      outgoingCallAudioRef.current = audio;
+      
+      try {
+        await audio.play();
+        logger.debug('Sonido de llamada saliente iniciado');
+      } catch (playError) {
+        if (playError.name === 'NotAllowedError') {
+          logger.warn('Permiso de audio no concedido');
+        }
+      }
+    } catch (error) {
+      logger.error('Error al reproducir sonido de llamada', error);
+    }
+  }, []);
+
+  // 🔥 FUNCIÓN PARA DETENER SONIDO DE LLAMADA SALIENTE
+  const stopOutgoingCallSound = useCallback(() => {
+    if (outgoingCallAudioRef.current) {
+      outgoingCallAudioRef.current.pause();
+      outgoingCallAudioRef.current.currentTime = 0;
+      outgoingCallAudioRef.current = null;
+      logger.debug('Sonido de llamada saliente detenido');
+    }
+  }, []);
+
   const iniciarLlamadaReal = useCallback(async (otherUserId, otherUserName) => {
     try {
+      logger.debug('Iniciando llamada', { otherUserName });
+      
+      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA
+      const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json();
+        logger.debug('Respuesta de balance', balanceData);
+        
+        // 🔥 VERIFICAR SI PUEDE INICIAR LLAMADA (puede venir como success.can_start_call o directamente can_start_call)
+        const canStartCall = balanceData.success?.can_start_call ?? balanceData.can_start_call ?? true;
+        
+        logger.debug('can_start_call', { canStartCall });
+        
+        if (!canStartCall) {
+          // ❌ NO TIENE SALDO SUFICIENTE - MOSTRAR MODAL DE COMPRA
+          logger.info('Saldo insuficiente detectado, mostrando modal', balanceData);
+          stopOutgoingCallSound();
+          setBalanceDetails(balanceData);
+          setShowNoBalanceModal(true);
+          return;
+        }
+      }
+      
       setCurrentCall({ id: otherUserId, name: otherUserName, status: 'initiating' });
       setIsCallActive(true);
+      
+      // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
+      await playOutgoingCallSound();
 
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
@@ -1151,31 +1373,160 @@ useEffect(() => {
         body: JSON.stringify({ receiver_id: otherUserId, call_type: 'video' })
       });
 
+      logger.debug('Estado de respuesta', { status: response.status, statusText: response.statusText });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error('Error HTTP', { status: response.status, errorText });
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText || 'Error al iniciar la llamada' };
+        }
+        
+        // 🔥 DETECTAR ERRORES DE SALDO
+        const errorMessage = errorData.message || errorData.error || '';
+        const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                               errorMessage.toLowerCase().includes('balance') ||
+                               errorMessage.toLowerCase().includes('insufficient') ||
+                               errorMessage.toLowerCase().includes('coins') ||
+                               response.status === 402; // Payment Required
+        
+        if (isBalanceError) {
+          // Redirigir a compra de minutos
+          stopOutgoingCallSound();
+          setIsCallActive(false);
+          setCurrentCall(null);
+          window.location.href = '/buy-minutes';
+          return;
+        }
+        
+        throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
       const data = await response.json();
-      if (data.success) {
+      logger.debug('Respuesta del servidor', data);
+      
+      // 🔥 VALIDACIÓN MÁS FLEXIBLE - aceptar diferentes formatos de respuesta
+      const callId = data.call_id || data.callId || data.id;
+      const roomName = data.room_name || data.roomName || data.room;
+      
+      if (callId) {
+        logger.info('Llamada iniciada correctamente', data);
         setCurrentCall({
           id: otherUserId,
           name: otherUserName,
-          callId: data.call_id,
-          roomName: data.room_name,
+          callId: callId,
+          roomName: roomName,
           status: 'calling'
         });
+        
+        // Iniciar polling para verificar estado
+        iniciarPollingLlamada(callId);
+      } else if (data.success === false || data.error) {
+        // Si explícitamente dice que falló
+        logger.error('Error al iniciar llamada', data);
+        const errorMessage = data.message || data.error || 'No se pudo iniciar la llamada';
+        
+        // 🔥 DETECTAR ERRORES DE SALDO
+        const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                               errorMessage.toLowerCase().includes('balance') ||
+                               errorMessage.toLowerCase().includes('insufficient') ||
+                               errorMessage.toLowerCase().includes('coins');
+        
+        if (isBalanceError) {
+          // Mostrar modal de compra
+          stopOutgoingCallSound();
+          setIsCallActive(false);
+          setCurrentCall(null);
+          
+          // Obtener balance para mostrar en el modal
+          const balanceCheck = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+            method: 'GET',
+            headers: getAuthHeaders()
+          });
+          if (balanceCheck.ok) {
+            const balanceInfo = await balanceCheck.json();
+            setBalanceDetails(balanceInfo);
+            setShowNoBalanceModal(true);
+          } else {
+            setShowNoBalanceModal(true);
+          }
+          return;
+        }
+        
+        alert(errorMessage);
+        stopOutgoingCallSound();
+        setIsCallActive(false);
+        setCurrentCall(null);
+      } else {
+        // Si no hay call_id pero tampoco hay error explícito, asumir que está pendiente
+        logger.warn('Respuesta sin call_id, pero sin error explícito', data);
+        setCurrentCall({
+          id: otherUserId,
+          name: otherUserName,
+          callId: null,
+          roomName: roomName,
+          status: 'initiating'
+        });
+        // Intentar polling con un ID temporal o esperar
+        logger.debug('Esperando confirmación de llamada');
       }
     } catch (error) {
-
+      logger.error('Error al iniciar llamada', error);
+      
+      // 🔥 DETECTAR ERRORES DE SALDO EN LA EXCEPCIÓN
+      const errorMessage = error.message || '';
+      const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                             errorMessage.toLowerCase().includes('balance') ||
+                             errorMessage.toLowerCase().includes('insufficient') ||
+                             errorMessage.toLowerCase().includes('coins');
+      
+      if (isBalanceError) {
+        // Mostrar modal de compra
+        stopOutgoingCallSound();
+        setIsCallActive(false);
+        setCurrentCall(null);
+        
+        // Obtener balance para mostrar en el modal
+        try {
+          const balanceCheck = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+            method: 'GET',
+            headers: getAuthHeaders()
+          });
+          if (balanceCheck.ok) {
+            const balanceInfo = await balanceCheck.json();
+            setBalanceDetails(balanceInfo);
+            setShowNoBalanceModal(true);
+          } else {
+            setShowNoBalanceModal(true);
+          }
+        } catch (e) {
+          setShowNoBalanceModal(true);
+        }
+        return;
+      }
+      
+      alert('Error de conexión al iniciar llamada. Por favor, intenta de nuevo.');
+      stopOutgoingCallSound();
       setIsCallActive(false);
       setCurrentCall(null);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, playOutgoingCallSound, stopOutgoingCallSound, iniciarPollingLlamada]);
 
   const cancelarLlamada = useCallback(() => {
+    // 🔥 DETENER SONIDO DE LLAMADA
+    stopOutgoingCallSound();
+    
     if (callPollingInterval) {
       clearInterval(callPollingInterval);
       setCallPollingInterval(null);
     }
     setIsCallActive(false);
     setCurrentCall(null);
-  }, [callPollingInterval]);
+    logger.debug('Llamada cancelada');
+  }, [callPollingInterval, stopOutgoingCallSound]);
   const buildCompleteImageUrl = (imagePath, baseUrl = API_BASE_URL) => {
     if (!imagePath) {
       return null;
@@ -1485,7 +1836,7 @@ useEffect(() => {
       
       const authToken = localStorage.getItem("token");
       
-      const response = await fetch(`${API_BASE_URL}/api/gifts/send-chat`, {
+      const response = await fetch(`${API_BASE_URL}/api/gifts/send-direct`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1495,9 +1846,7 @@ useEffect(() => {
           gift_id: giftId,
           recipient_id: recipientId,
           room_name: roomName,
-          message: message || '',
-          sender_type: 'cliente',
-          expected_cost: requiredGiftCoins
+          message: message || ''
         })
       });
 
@@ -1576,46 +1925,46 @@ useEffect(() => {
     const authToken = localStorage.getItem('token');
     if (!authToken) return;
 
-
-    
     // OBTENER BALANCE DE COINS (monedas generales)
     const coinsResponse = await fetch(`${API_BASE_URL}/api/client-balance/my-balance/quick`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (coinsResponse.ok) {
       const coinsData = await coinsResponse.json();
       if (coinsData.success) {
         setUserBalance(coinsData.total_coins || 0);
-
       }
     }
 
-    // OBTENER BALANCE DE GIFTS (regalos específicos) - 🔥 FIX AQUÍ
+    // OBTENER BALANCE DE GIFTS (regalos específicos) - Usar el mismo método que homecliente
     const giftsResponse = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (giftsResponse.ok) {
       const giftsData = await giftsResponse.json();
 
+      console.log('💰 Respuesta completa de gift balance:', giftsData);
       
       if (giftsData.success) {
         // 🔥 FIX: Acceder correctamente a los datos
-        const giftBalanceValue = giftsData.balance?.gift_balance || 0;
+        const giftBalanceValue = giftsData.balance?.gift_balance ?? 0;
+        console.log('💰 Gift Balance obtenido del API:', giftBalanceValue);
+        console.log('💰 Estructura de balance:', giftsData.balance);
         setGiftBalance(giftBalanceValue);
+      } else {
+        console.error('❌ Error en respuesta de gift balance:', giftsData.error);
       }
+    } else {
+      const errorText = await giftsResponse.text().catch(() => 'No se pudo leer el error');
+      console.error('❌ Error HTTP al obtener gift balance:', giftsResponse.status, errorText);
     }
 
   } catch (error) {
+    console.error('❌ Excepción al obtener gift balance:', error);
   }
   }, []);
 
@@ -1726,6 +2075,153 @@ useEffect(() => {
     }
   }, [nicknameTarget, nicknameValue, getAuthHeaders]);
 
+// 🔥 FUNCIÓN FALLBACK PARA TRADUCCIÓN
+const translateWithFallback = useCallback(async (text, targetLang) => {
+  try {
+    const cleanText = text.toLowerCase().trim();
+    
+    if (targetLang === 'en') {
+      const translations = {
+        'hola': 'hello',
+        'como estas': 'how are you',
+        'como estás': 'how are you',
+        'como estas?': 'how are you?',
+        'como estás?': 'how are you?',
+        'bien': 'good',
+        'mal': 'bad',
+        'gracias': 'thank you',
+        'por favor': 'please',
+        'si': 'yes',
+        'sí': 'yes',
+        'no': 'no',
+        'que tal': 'how are you',
+        'qué tal': 'how are you',
+        'buenas': 'hi',
+        'buenos dias': 'good morning',
+        'buenos días': 'good morning',
+        'buenas noches': 'good night',
+        'buenas tardes': 'good afternoon',
+        'te amo': 'I love you',
+        'te quiero': 'I love you',
+        'hermosa': 'beautiful',
+        'guapa': 'beautiful',
+        'bonita': 'pretty'
+      };
+      
+      return translations[cleanText] || `[EN] ${text}`;
+    }
+    
+    if (targetLang === 'es') {
+      const translations = {
+        'hello': 'hola',
+        'hi': 'hola',
+        'how are you': 'cómo estás',
+        'how are you?': 'cómo estás?',
+        'good': 'bien',
+        'bad': 'mal',
+        'thank you': 'gracias',
+        'thanks': 'gracias',
+        'please': 'por favor',
+        'yes': 'sí',
+        'no': 'no',
+        'good morning': 'buenos días',
+        'good night': 'buenas noches',
+        'good afternoon': 'buenas tardes',
+        'i love you': 'te amo',
+        'beautiful': 'hermosa',
+        'pretty': 'bonita'
+      };
+      
+      return translations[cleanText] || `[ES] ${text}`;
+    }
+    
+    return `[${targetLang.toUpperCase()}] ${text}`;
+  } catch (error) {
+    return `[ERROR-${targetLang.toUpperCase()}] ${text}`;
+  }
+}, []);
+
+  // 🔥 FUNCIÓN PRINCIPAL DE TRADUCCIÓN
+  const translateMessage = useCallback(async (message) => {
+    if (!localTranslationEnabled) return;
+    
+    // Generar ID si no existe (usando timestamp + texto como fallback)
+    const messageId = message.id || `${message.created_at || Date.now()}_${(message.text || message.message || '').substring(0, 10)}`;
+    
+    const originalText = message.text || message.message;
+    if (!originalText || originalText.trim() === '') return;
+
+    if (translations.has(messageId) || translatingIds.has(messageId)) return;
+
+    setTranslatingIds(prev => new Set(prev).add(messageId));
+
+    try {
+      let result = null;
+      
+      if (typeof translateGlobalText === 'function') {
+        try {
+          result = await translateGlobalText(originalText, messageId);
+          
+          if (!result || result === originalText) {
+            result = await translateWithFallback(originalText, currentLanguage);
+          }
+        } catch (error) {
+          result = await translateWithFallback(originalText, currentLanguage);
+        }
+      } else {
+        result = await translateWithFallback(originalText, currentLanguage);
+      }
+      
+      if (result && result !== originalText && result.trim() !== '' && result.toLowerCase() !== originalText.toLowerCase()) {
+        setTranslations(prev => new Map(prev).set(messageId, result));
+      } else {
+        setTranslations(prev => new Map(prev).set(messageId, null));
+      }
+    } catch (error) {
+      setTranslations(prev => new Map(prev).set(messageId, null));
+    } finally {
+      setTranslatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(messageId);
+        return newSet;
+      });
+    }
+  }, [localTranslationEnabled, translateGlobalText, currentLanguage, translateWithFallback, translations, translatingIds]);
+
+  // 🔥 FUNCIÓN PARA RENDERIZAR MENSAJE CON TRADUCCIÓN
+  const renderMessageWithTranslation = useCallback((message, isOwn = false) => {
+    const originalText = message.text || message.message;
+    // Generar ID si no existe (igual que en translateMessage)
+    const messageId = message.id || `${message.created_at || Date.now()}_${(message.text || message.message || '').substring(0, 10)}`;
+    const translatedText = translations.get(messageId);
+    const isTranslating = translatingIds.has(messageId);
+    
+    const hasTranslation = translatedText && translatedText !== originalText && translatedText.trim() !== '';
+
+    return (
+      <div className="space-y-1">
+        <div className="text-white">
+          {originalText}
+          {isTranslating && (
+            <span className="ml-2 inline-flex items-center">
+              <div className="animate-spin rounded-full h-3 w-3 border-b border-current opacity-50"></div>
+            </span>
+          )}
+        </div>
+
+        {hasTranslation && (
+          <div className={`text-xs italic border-l-2 pl-2 py-1 ${
+            isOwn 
+              ? 'border-blue-300 text-blue-200 bg-blue-500/10' 
+              : 'border-green-300 text-green-200 bg-green-500/10'
+          } rounded-r`}>
+          {translatedText}
+        </div>
+        )}
+      </div>
+    );
+  }, [translations, translatingIds, localTranslationEnabled]);
+
 // 🔥 SOLUCIÓN MÁS SIMPLE: Construir URL directamente en renderMensaje
 
 const renderMensaje = useCallback((mensaje) => {
@@ -1769,16 +2265,31 @@ const renderMensaje = useCallback((mensaje) => {
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         
         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          imageUrl = imagePath;
+          imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
         } else {
           const cleanPath = imagePath.replace(/\\/g, '');
+          let finalUrl;
+          let fileName;
           if (cleanPath.startsWith('storage/')) {
-            imageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
           } else if (cleanPath.startsWith('/')) {
-            imageUrl = `${cleanBaseUrl}${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
           } else {
-            imageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            fileName = cleanPath;
+            const encodedFileName = encodeURIComponent(cleanPath);
+            finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
+          // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+          imageUrl = `${finalUrl}?v=${version}`;
         }
       }
       
@@ -1798,6 +2309,9 @@ const renderMensaje = useCallback((mensaje) => {
                   src={imageUrl} 
                   alt={finalGiftData.gift_name || 'Regalo'}
                   className="w-12 h-12 object-contain"
+                  loading="lazy"
+                  decoding="async"
+                  key={`gift-request-mensajes-cliente-${finalGiftData.gift_name}-${imageUrl}`}
                   onError={(e) => {
                     e.target.style.display = 'none';
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -1995,35 +2509,26 @@ const renderMensaje = useCallback((mensaje) => {
       return <div className="text-2xl">{textoMensaje}</div>;
     
     default:
-      // Mensajes normales con traducción
-      if (translationSettings?.enabled && TranslatedMessage && textoMensaje?.trim()) {
-        const tipoMensaje = esUsuarioActual ? 'local' : 'remote';
-        const shouldShowTranslation = !esUsuarioActual || translationSettings.translateOutgoing;
-
-        if (shouldShowTranslation) {
-          return (
-            <TranslatedMessage
-              message={{
-                text: textoMensaje.trim(),
-                type: tipoMensaje,
-                id: mensaje.id,
-                timestamp: mensaje.created_at,
-                sender: mensaje.user_name,
-                senderRole: mensaje.user_role
-              }}
-              settings={translationSettings}
-              className="text-white"
-            />
-          );
-        }
+      // Mensajes normales con traducción automática
+      if (localTranslationEnabled && textoMensaje?.trim()) {
+        return renderMessageWithTranslation(mensaje, esUsuarioActual);
       }
       return <span className="text-white">{textoMensaje}</span>;
   }
-}, [usuario.id, translationSettings, TranslatedMessage]);
+}, [usuario.id, localTranslationEnabled, renderMessageWithTranslation]);
 
   const formatearTiempo = useCallback((timestamp) => {
-    const fecha = new Date(timestamp);
-    return fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    if (!timestamp) return '';
+    try {
+      const fecha = new Date(timestamp);
+      // Verificar si la fecha es válida
+      if (isNaN(fecha.getTime())) {
+        return '';
+      }
+      return fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      return '';
+    }
   }, []);
 
   // 🔥 EFECTOS SIMPLIFICADOS
@@ -2047,6 +2552,131 @@ const renderMensaje = useCallback((mensaje) => {
       loadGifts();
     }
   }, [usuario.id, usuario.rol, cargarEstadosIniciales]);
+
+  // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
+  useEffect(() => {
+    const handleLanguageChange = (lng) => {
+      if (lng && lng !== currentLanguage) {
+        // Actualizar estados locales
+        const shouldEnable = lng !== 'es';
+        setCurrentLanguage(lng);
+        setLocalTranslationEnabled(shouldEnable);
+        
+        // Actualizar configuración de traducción con el nuevo idioma
+        setTranslationSettings(prev => ({
+          ...prev,
+          targetLanguage: lng,
+          enabled: shouldEnable,
+          showOriginal: true, // Mostrar mensaje original
+          showOnlyTranslation: false, // Mostrar también la traducción debajo
+          autoDetect: true,
+          translateOutgoing: false
+        }));
+        
+        // Actualizar el contexto global también
+        if (typeof changeGlobalLanguage === 'function') {
+          try {
+            changeGlobalLanguage(lng);
+          } catch (error) {
+            console.warn('Error cambiando idioma global:', error);
+          }
+        }
+        
+        // Limpiar traducciones existentes para forzar retraducción
+        setTranslations(new Map());
+        setTranslatingIds(new Set());
+      }
+    };
+
+    // Escuchar cambios en el idioma de i18n
+    i18nInstance.on('languageChanged', handleLanguageChange);
+    
+    // También verificar el idioma inicial
+    const currentI18nLang = i18nInstance.language || 'es';
+    if (currentI18nLang && currentI18nLang !== currentLanguage) {
+      handleLanguageChange(currentI18nLang);
+    }
+
+    return () => {
+      i18nInstance.off('languageChanged', handleLanguageChange);
+    };
+  }, [currentLanguage, changeGlobalLanguage, i18nInstance, setTranslationSettings]);
+
+  // 🔥 EFECTO PARA INICIALIZAR TRADUCCIÓN AL MONTAR Y SINCRONIZAR
+  useEffect(() => {
+    const currentLang = i18nInstance.language || translationSettings?.targetLanguage || globalCurrentLanguage || 'es';
+    const shouldEnable = currentLang !== 'es' || translationSettings?.enabled || globalTranslationEnabled || false;
+    
+    // Actualizar si el idioma cambió
+    if (currentLang !== currentLanguage) {
+      setCurrentLanguage(currentLang);
+    }
+    
+    // Actualizar si el estado de traducción cambió
+    if (shouldEnable !== localTranslationEnabled) {
+      setLocalTranslationEnabled(shouldEnable);
+    }
+  }, [i18nInstance.language, translationSettings?.targetLanguage, globalCurrentLanguage, currentLanguage, localTranslationEnabled]); // Sincronizar con cambios de idioma
+
+  // 🔥 EFECTO PARA TRADUCIR MENSAJES AUTOMÁTICAMENTE
+  useEffect(() => {
+    if (!localTranslationEnabled) return;
+
+    const messagesToTranslate = mensajes.filter(message => {
+      // Generar ID si no existe (igual que en translateMessage)
+      const messageId = message.id || `${message.created_at || Date.now()}_${(message.text || message.message || '').substring(0, 10)}`;
+      
+      return (
+        message.type !== 'system' && 
+        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(message.type) &&
+        !translations.has(messageId) &&
+        !translatingIds.has(messageId) &&
+        (message.text || message.message) &&
+        (message.text || message.message).trim() !== ''
+      );
+    });
+
+    messagesToTranslate.forEach((message, index) => {
+      setTimeout(() => {
+        translateMessage(message);
+      }, index * 100);
+    });
+
+  }, [mensajes.length, localTranslationEnabled, translateMessage, translations, translatingIds]);
+
+  // Sincronizar refs con estados
+  useEffect(() => {
+    mensajesRefForTranslation.current = mensajes;
+  }, [mensajes]);
+
+  useEffect(() => {
+    translateMessageRef.current = translateMessage;
+  }, [translateMessage]);
+
+  // 🔥 EFECTO PARA RE-TRADUCIR CUANDO CAMBIA EL IDIOMA
+  useEffect(() => {
+    if (!localTranslationEnabled) return;
+
+    // Limpiar traducciones existentes
+    setTranslations(new Map());
+    setTranslatingIds(new Set());
+    
+    // Re-traducir todos los mensajes usando refs
+    const timeoutId = setTimeout(() => {
+      const currentMensajes = mensajesRefForTranslation.current;
+      const currentTranslateMessage = translateMessageRef.current;
+      
+      if (currentMensajes && currentTranslateMessage) {
+        currentMensajes.forEach((mensaje) => {
+          if (mensaje.text || mensaje.message) {
+            currentTranslateMessage(mensaje);
+          }
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [currentLanguage, localTranslationEnabled]); // Solo cuando cambia el idioma
   useEffect(() => {
   if (!usuario.id || usuario.rol !== 'cliente') return;
   
@@ -2191,6 +2821,85 @@ const renderMensaje = useCallback((mensaje) => {
     checkForNewMessages();
   }, [conversaciones, calculateUnreadCount, conversacionActiva]);
 
+  // 🔥 COMPONENTE MODAL SIN SALDO
+  const ModalSinSaldo = ({ isVisible, onClose, onGoToRecharge }) => {
+    if (!isVisible) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="bg-[#2b2d31] rounded-xl p-6 max-w-md mx-4 shadow-xl border border-[#ff007a]/20">
+          <div className="text-center">
+            {/* Icono animado */}
+            <div className="w-16 h-16 bg-[#ff007a]/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+              <svg className="w-8 h-8 text-[#ff007a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+              </svg>
+            </div>
+            
+            {/* Título */}
+            <h3 className="text-xl font-bold text-white mb-3">
+              {t('clientInterface.insufficientBalanceTitle')}
+            </h3>
+            
+            {/* Mensaje */}
+            <div className="text-white/70 mb-6 leading-relaxed">
+              <p className="mb-3">
+                {t('clientInterface.insufficientBalanceMessage')}
+              </p>
+              
+              {/* ✅ MOSTRAR DETALLES DEL SALDO SI ESTÁN DISPONIBLES */}
+              {balanceDetails && balanceDetails.balance && (
+                <div className="bg-[#1f2125] rounded-lg p-3 text-sm">
+                  <p className="text-white/50 mb-2">{t('clientInterface.currentStatus')}</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>{t('clientInterface.totalCoins')}</span>
+                      <span className="text-[#ff007a]">
+                        {balanceDetails.balance.total_coins || 0}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{t('clientInterface.minutes')}</span>
+                      <span className="text-[#ff007a]">
+                        {balanceDetails.balance.minutes_available || 0}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
+                      <span>{t('clientInterface.minimumRequired')}</span>
+                      <span className="text-yellow-400">
+                        {balanceDetails.balance.minimum_required || 30}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Botones */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={onGoToRecharge}
+                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                {t('clientInterface.rechargeNow')}
+              </button>
+              
+              <button
+                onClick={onClose}
+                className="w-full bg-transparent border border-white/20 hover:border-white/40 text-white/70 hover:text-white px-6 py-2 rounded-lg font-medium transition-colors"
+              >
+                {t('clientInterface.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Calcular y mostrar conteo global de notificaciones
   const totalUnreadCount = useMemo(() => {
     const total = conversaciones.reduce((count, conv) => {
@@ -2237,7 +2946,7 @@ const renderMensaje = useCallback((mensaje) => {
   }, [usuario.id, getAuthHeaders]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white p-6">
+    <div className="h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white overflow-hidden flex flex-col p-4 sm:p-6">
       <div className="relative">
         <Header />
         
@@ -2258,9 +2967,9 @@ const renderMensaje = useCallback((mensaje) => {
         )}
       </div>
 
-      <div className="p-2">
-        <div className={`flex rounded-xl overflow-hidden shadow-lg ${
-          isMobile ? 'h-[calc(100vh-80px)]' : 'h-[83vh]'
+      <div className="flex-1 min-h-0 flex flex-col p-2">
+        <div className={`flex rounded-xl overflow-hidden shadow-lg flex-1 min-h-0 ${
+          isMobile ? '' : ''
         } border border-[#ff007a]/10 relative`}>
           
           {/* Sidebar de conversaciones */}
@@ -2322,8 +3031,19 @@ const renderMensaje = useCallback((mensaje) => {
                     >
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                            {getInitial(getDisplayName(conv.other_user_id, conv.other_user_name))}
+                          {conv.avatar_url ? (
+                            <img 
+                              src={conv.avatar_url} 
+                              alt={conv.other_user_display_name || conv.other_user_name} 
+                              className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextElementSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conv.avatar_url ? 'hidden' : ''}`}>
+                            {getInitial(getDisplayName(conv.other_user_id, conv.other_user_display_name || conv.other_user_name))}
                           </div>
                           
                           {/* Indicador de estado: Online/Offline o Bloqueado */}
@@ -2336,9 +3056,13 @@ const renderMensaje = useCallback((mensaje) => {
                             } else if (blockStatus === 'mutuo') {
                               return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title="Bloqueo mutuo" />;
                             } else {
+                              // Usar is_online de la conversación si está disponible, sino verificar onlineUsers
+                              const userIsOnline = conv.is_online !== undefined 
+                                ? conv.is_online 
+                                : onlineUsers.has(conv.other_user_id);
                               return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
-                                isOnline ? 'bg-green-500' : 'bg-gray-500'
-                              }`} title={isOnline ? 'En línea' : 'Desconectado'} />;
+                                userIsOnline ? 'bg-green-500' : 'bg-gray-500'
+                              }`} title={userIsOnline ? 'En línea' : 'Desconectado'} />;
                             }
                           })()}
                           
@@ -2351,7 +3075,7 @@ const renderMensaje = useCallback((mensaje) => {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm truncate">
-                            {getDisplayName(conv.other_user_id, conv.other_user_name)}
+                            {getDisplayName(conv.other_user_id, conv.other_user_display_name || conv.other_user_name)}
                           </p>
                           <div className="text-xs text-white/60 truncate">
                             {conv.last_message_sender_id === usuario.id ? (
@@ -2363,9 +3087,11 @@ const renderMensaje = useCallback((mensaje) => {
                         </div>
 
                         <div className="text-right">
-                          <span className="text-xs text-white/40">
-                            {formatearTiempo(conv.last_message_time)}
-                          </span>
+                          {conv.last_message_time && formatearTiempo(conv.last_message_time) && (
+                            <span className="text-xs text-white/40">
+                              {formatearTiempo(conv.last_message_time)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2387,8 +3113,8 @@ const renderMensaje = useCallback((mensaje) => {
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
                     <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Selecciona una conversación</h3>
-                    <p className="text-white/60">Elige una conversación para ver los mensajes</p>
+                    <h3 className="text-xl font-semibold mb-2">{t('chat.selectConversation')}</h3>
+                    <p className="text-white/60">{t('chat.selectConversationDesc')}</p>
                   </div>
                 </div>
               )
@@ -2398,8 +3124,19 @@ const renderMensaje = useCallback((mensaje) => {
                 <div className="bg-[#2b2d31] px-5 py-3 flex justify-between items-center border-b border-[#ff007a]/20">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        {getInitial(conversacionSeleccionada?.other_user_name)}
+                      {conversacionSeleccionada?.avatar_url ? (
+                        <img 
+                          src={conversacionSeleccionada.avatar_url} 
+                          alt={conversacionSeleccionada.other_user_display_name || conversacionSeleccionada.other_user_name} 
+                          className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextElementSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conversacionSeleccionada?.avatar_url ? 'hidden' : ''}`}>
+                        {getInitial(getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name))}
                       </div>
                       {/* Indicador de estado en header */}
                       {(() => {
@@ -2419,7 +3156,7 @@ const renderMensaje = useCallback((mensaje) => {
                     </div>
                     <div>
                       <span className="font-semibold block">
-                        {getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_name)}
+                        {getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name)}
                       </span>
                       {/* Mostrar estado de bloqueo */}
                       {conversacionSeleccionada && (() => {
@@ -2452,6 +3189,58 @@ const renderMensaje = useCallback((mensaje) => {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* 🔥 BOTÓN DE VIDEOLLAMADA */}
+                    {conversacionSeleccionada && !isChatBlocked() && (
+                      <button
+                        onClick={() => {
+                          if (conversacionSeleccionada?.other_user_id) {
+                            iniciarLlamadaReal(
+                              conversacionSeleccionada.other_user_id,
+                              conversacionSeleccionada.other_user_name
+                            );
+                          }
+                        }}
+                        disabled={isCallActive || isReceivingCall || loadingActions}
+                        className={`text-white hover:text-[#ff007a] transition-colors p-2 hover:bg-[#3a3d44] rounded-lg ${
+                          isCallActive || isReceivingCall || loadingActions
+                            ? 'opacity-50 cursor-not-allowed'
+                            : ''
+                        }`}
+                        title={t('chat.videoCall', 'Videollamada')}
+                      >
+                        <Video size={20} />
+                      </button>
+                    )}
+
+                    {/* 🔥 BOTÓN DE FAVORITOS */}
+                    {conversacionSeleccionada && (
+                      <button
+                        onClick={() => {
+                          if (conversacionSeleccionada?.other_user_id) {
+                            toggleFavorito(
+                              conversacionSeleccionada.other_user_id,
+                              conversacionSeleccionada.other_user_name
+                            );
+                          }
+                        }}
+                        disabled={loadingActions}
+                        className={`transition-colors p-2 hover:bg-[#3a3d44] rounded-lg ${
+                          favoritos.has(conversacionSeleccionada?.other_user_id)
+                            ? 'text-[#ff007a] fill-[#ff007a]'
+                            : 'text-white hover:text-[#ff007a]'
+                        } ${loadingActions ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title={
+                          favoritos.has(conversacionSeleccionada?.other_user_id)
+                            ? t('chat.removeFromFavorites', 'Quitar de favoritos')
+                            : t('chat.addToFavorites', 'Agregar a favoritos')
+                        }
+                      >
+                        <Star 
+                          size={20} 
+                          className={favoritos.has(conversacionSeleccionada?.other_user_id) ? 'fill-current' : ''}
+                        />
+                      </button>
+                    )}
 
                     <div className="relative">
                       <button
@@ -2695,6 +3484,65 @@ const renderMensaje = useCallback((mensaje) => {
                     onKeyDown={(e) => e.key === "Enter" && !isChatBlocked() && enviarMensaje()}
                     disabled={isChatBlocked()}
                   />
+                  {/* Botón de regalos */}
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!conversacionSeleccionada) {
+                        alert("Selecciona una conversación para enviar regalos");
+                        return;
+                      }
+                      if (isChatBlocked()) {
+                        alert("No puedes enviar regalos (chat bloqueado)");
+                        return;
+                      }
+                      // Recargar regalos y balance antes de abrir el modal
+                      console.log('🔄 Recargando regalos y balance antes de abrir modal...');
+                      console.log('📦 Regalos ANTES de recargar:', gifts.length, gifts);
+                      console.log('💰 Gift Balance ANTES de recargar:', giftBalance);
+                      
+                      // Recargar regalos
+                      const giftsResult = await loadGifts();
+                      console.log('📦 Resultado de carga de regalos:', giftsResult);
+                      
+                      // Actualizar balance
+                      await updateBalance();
+                      
+                      // Esperar un momento para que los estados se actualicen
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                      
+                      console.log('📦 Regalos DESPUÉS de recargar:', gifts.length, gifts);
+                      console.log('💰 Gift Balance DESPUÉS de recargar:', giftBalance);
+                      setShowGiftsModal(true);
+                    }}
+                    className={`
+                      flex-shrink-0 px-4 py-2 rounded-full font-semibold transition-all duration-300 flex items-center gap-2 relative z-10
+                      ${!conversacionSeleccionada || !giftBalance || giftBalance <= 0 || isChatBlocked()
+                        ? 'bg-gray-800/50 text-gray-500 opacity-50'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white hover:scale-105 shadow-lg border border-amber-400/30'
+                      }
+                    `}
+                    title={
+                      !conversacionSeleccionada 
+                        ? "Selecciona una conversación para enviar regalos"
+                        : !giftBalance || giftBalance <= 0
+                          ? "Necesitas gift coins para enviar regalos"
+                          : isChatBlocked()
+                            ? "No puedes enviar regalos (chat bloqueado)"
+                            : "Enviar regalo"
+                    }
+                  >
+                    <Gift size={16} />
+                    {!isMobile && (
+                      <span className="hidden sm:inline">
+                        {!conversacionSeleccionada || !giftBalance || giftBalance <= 0 
+                          ? "" 
+                          : "Regalo"
+                        }
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => enviarMensaje()}
                     disabled={!nuevoMensaje.trim() || isChatBlocked()}
@@ -2825,8 +3673,7 @@ const renderMensaje = useCallback((mensaje) => {
           onRequestGift: handleRequestGift,  // Solo modelos
         } : {
           onSendGift: handleSendGift,       // Solo clientes
-          userBalance: userBalance,          // Balance de monedas normales
-          giftBalance: giftBalance,          // Balance de gift coins ← CRÍTICO
+          giftBalance: giftBalance,          // Balance de gift coins (para enviar regalos)
         })}
         loading={loadingGift}
       />
@@ -2843,6 +3690,23 @@ const renderMensaje = useCallback((mensaje) => {
         onAnswer={() => responderLlamada('accept')}
         onDecline={() => responderLlamada('reject')}
       />
+
+      {/* 🔥 MODAL DE SALDO INSUFICIENTE */}
+      <ModalSinSaldo
+        isVisible={showNoBalanceModal}
+        onClose={() => setShowNoBalanceModal(false)}
+        onGoToRecharge={() => {
+          setShowNoBalanceModal(false);
+          setShowBuyMinutes(true);
+        }}
+      />
+
+      {/* 🔥 MODAL DE COMPRA DE MINUTOS */}
+      {showBuyMinutes && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)' }}>
+          <UnifiedPaymentModal onClose={() => setShowBuyMinutes(false)} />
+        </div>
+      )}
     </div>
   );
 }

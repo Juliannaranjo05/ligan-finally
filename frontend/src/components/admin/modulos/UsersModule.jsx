@@ -144,7 +144,6 @@ const UsersModule = () => {
       }
 
     } catch (error) {
-      console.error('Error al cargar datos:', error);
       setError(adminUtils.manejarError(error));
     } finally {
       setLoading(false);
@@ -170,7 +169,6 @@ const UsersModule = () => {
       }
 
     } catch (error) {
-      console.error('Error al cargar usuarios:', error);
     } finally {
       setLoadingUsuarios(false);
     }
@@ -202,7 +200,6 @@ const UsersModule = () => {
         alert(`✅ Verificación de ${userName} aprobada correctamente`);
       }
     } catch (error) {
-      console.error('Error al aprobar:', error);
       alert(`❌ Error al aprobar: ${adminUtils.manejarError(error)}`);
     } finally {
       setProcesando(null);
@@ -234,7 +231,6 @@ const UsersModule = () => {
         alert(`🗑️ Verificación de ${userName} rechazada y eliminada`);
       }
     } catch (error) {
-      console.error('Error al rechazar:', error);
       alert(`❌ Error al rechazar: ${adminUtils.manejarError(error)}`);
     } finally {
       setProcesando(null);
@@ -260,7 +256,6 @@ const UsersModule = () => {
         }));
       }
     } catch (error) {
-      console.error('Error al cargar documento:', error);
       setModalDocumento(prev => ({
         ...prev,
         loading: false
@@ -327,7 +322,6 @@ const UsersModule = () => {
         }));
       }
     } catch (error) {
-      console.error('Error al cargar datos del usuario:', error);
       setModalEditar(prev => ({ ...prev, loading: false }));
       alert('❌ Error al cargar datos del usuario');
     }
@@ -352,7 +346,6 @@ const UsersModule = () => {
         alert(`❌ Error: ${response.message}`);
       }
     } catch (error) {
-      console.error('Error al actualizar usuario:', error);
       
       // Manejo específico de errores de validación
       if (error.response?.status === 422) {
@@ -460,7 +453,7 @@ const UsersModule = () => {
               <p className="text-red-400">❌ No se encontró token en ninguna ubicación</p>
             )}
             <p className="text-gray-300">
-              <span className="text-yellow-300 font-medium">🌐 API URL:</span> {import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}
+              <span className="text-yellow-300 font-medium">🌐 API URL:</span> {import.meta.env.VITE_API_URL || 'https://ligando.duckdns.org/api'}
             </p>
           </div>
           <div className="space-y-2">
@@ -480,12 +473,12 @@ const UsersModule = () => {
         <div className="mt-4 flex gap-2 flex-wrap text-xs sm:text-sm">
           <button 
             onClick={() => {
-              console.log('🔍 Verificando localStorage:', {
+              console.log('localStorage tokens:', {
                 admin_token: localStorage.getItem('admin_token'),
                 auth_token: localStorage.getItem('auth_token'),
                 token: localStorage.getItem('token')
               });
-              console.log('🔍 Verificando sessionStorage:', {
+              console.log('sessionStorage tokens:', {
                 admin_token: sessionStorage.getItem('admin_token'),
                 auth_token: sessionStorage.getItem('auth_token'),
                 token: sessionStorage.getItem('token')
@@ -529,7 +522,6 @@ const UsersModule = () => {
           
           <button 
             onClick={() => {
-              console.log('🔍 Información completa del token:', adminUtils.getTokenInfo());
               const tokenInfo = adminUtils.getTokenInfo();
               if (tokenInfo) {
                 alert(`Token encontrado:\n- Storage: ${tokenInfo.storage}\n- Key: ${tokenInfo.key}\n- Token: ${tokenInfo.token}`);

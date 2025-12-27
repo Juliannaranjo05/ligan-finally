@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Models\User;
 use App\Mail\SecurityVerificationCode;
+use App\Mail\PasswordSetupLink;
 
 class SecurityController extends Controller
 {
@@ -461,7 +462,8 @@ class SecurityController extends Controller
         );
 
         // Crear enlace de restablecimiento
-        $resetLink = 'https://ligando.online/reset-password?token=' . $token . '&email=' . urlencode($user->email);
+        $frontendUrl = config('app.frontend_url', env('APP_FRONTEND_URL', 'https://ligando.online'));
+        $resetLink = rtrim($frontendUrl, '/') . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
         // Enviar enlace por correo
         Mail::to($user->email)->send(new \App\Mail\PasswordResetLink($resetLink, $user->name));
 
@@ -594,6 +596,314 @@ public function resetPasswordWithToken(Request $request)
 
     } catch (\Exception $e) {
         Log::error('❌ Error restableciendo contraseña', [
+            'error' => $e->getMessage(),
+            'email' => $request->email ?? 'no proporcionado'
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
+
+// 🔐 SOLICITAR TOKEN PARA ESTABLECER CONTRASEÑA (USUARIOS GOOGLE)
+public function requestPasswordSetupToken(Request $request)
+{
+    Log::info('🔐 [ENTRADA] requestPasswordSetupToken llamado', [
+        'url' => $request->fullUrl(),
+        'method' => $request->method(),
+        'has_auth' => $request->user() ? 'yes' : 'no'
+    ]);
+    
+    try {
+        Log::info('🔐 Iniciando solicitud de token para establecer contraseña');
+        
+        $user = $request->user();
+        
+        if (!$user) {
+            Log::warning('⚠️ Usuario no autenticado al solicitar token de setup password');
+            return response()->json([
+                'success' => false,
+                'error' => 'Usuario no autenticado'
+            ], 401);
+        }
+        
+        Log::info('✅ Usuario autenticado', ['user_id' => $user->id, 'email' => $user->email]);
+        
+        // Validar que el usuario se registró con Google
+        if (!$user->google_id) {
+            Log::warning('⚠️ Usuario no es de Google', ['user_id' => $user->id]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Este método solo está disponible para usuarios que se registraron con Google'
+            ], 422);
+        }
+
+        // Validar que el usuario tenga email
+        if (!$user->email) {
+            Log::warning('⚠️ Usuario sin email', ['user_id' => $user->id]);
+            return response()->json([
+                'success' => false,
+                'error' => 'El usuario no tiene un email válido'
+            ], 422);
+        }
+
+        // Validar que el usuario tenga nombre
+        if (!$user->name) {
+            Log::warning('⚠️ Usuario sin nombre', ['user_id' => $user->id]);
+            return response()->json([
+                'success' => false,
+                'error' => 'El usuario no tiene un nombre válido'
+            ], 422);
+        }
+
+        Log::info('✅ Validaciones de usuario completadas', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'name' => $user->name
+        ]);
+
+        // Generar token aleatorio seguro (64 caracteres)
+        Log::info('🔑 Generando token seguro');
+        $token = bin2hex(random_bytes(32));
+        $expiration = Carbon::now()->addHours(24); // Expira en 24 horas
+        Log::info('✅ Token generado', ['token_length' => strlen($token), 'expires_at' => $expiration]);
+
+        // Guardar token en tabla security_codes
+        Log::info('💾 Guardando token en base de datos');
+        try {
+            DB::table('security_codes')->updateOrInsert(
+                ['user_id' => $user->id, 'action_type' => 'setup_password'],
+                [
+                    'code' => $token,
+                    'expires_at' => $expiration,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]
+            );
+            Log::info('✅ Token guardado en base de datos');
+        } catch (\Exception $dbException) {
+            Log::error('❌ Error guardando token en base de datos', [
+                'error' => $dbException->getMessage(),
+                'user_id' => $user->id
+            ]);
+            throw $dbException;
+        }
+
+        // Crear enlace para establecer contraseña
+        Log::info('🔗 Creando enlace de setup');
+        $frontendUrl = config('app.frontend_url', env('APP_FRONTEND_URL', 'https://ligando.online'));
+        $setupLink = rtrim($frontendUrl, '/') . '/setup-password?token=' . $token . '&email=' . urlencode($user->email);
+        Log::info('✅ Enlace creado', ['link_length' => strlen($setupLink), 'frontend_url' => $frontendUrl]);
+
+        // Validar configuración de correo
+        Log::info('📧 Validando configuración de correo');
+        $mailDriver = config('mail.default');
+        $mailHost = config('mail.mailers.smtp.host');
+        if (!$mailDriver || ($mailDriver === 'smtp' && !$mailHost)) {
+            Log::error('❌ Configuración de correo incompleta', [
+                'mail_driver' => $mailDriver,
+                'mail_host' => $mailHost
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Configuración de correo no disponible. Por favor, contacta al administrador.'
+            ], 500);
+        }
+        Log::info('✅ Configuración de correo válida', ['driver' => $mailDriver]);
+
+        // Validar instanciación de PasswordSetupLink
+        Log::info('📦 Validando instanciación de PasswordSetupLink');
+        try {
+            $mailInstance = new PasswordSetupLink($setupLink, $user->name);
+            Log::info('✅ PasswordSetupLink instanciado correctamente');
+        } catch (\Throwable $instantiationException) {
+            Log::error('❌ Error instanciando PasswordSetupLink', [
+                'error' => $instantiationException->getMessage(),
+                'trace' => $instantiationException->getTraceAsString(),
+                'file' => $instantiationException->getFile(),
+                'line' => $instantiationException->getLine()
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al preparar el correo electrónico. Por favor, contacta al soporte.'
+            ], 500);
+        }
+
+        // Validar variables del template
+        Log::info('🔍 Validando variables del template', [
+            'setupLink' => substr($setupLink, 0, 50) . '...',
+            'userName' => $user->name
+        ]);
+        if (empty($setupLink) || empty($user->name)) {
+            Log::error('❌ Variables del template inválidas', [
+                'setupLink_empty' => empty($setupLink),
+                'userName_empty' => empty($user->name)
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al preparar el contenido del correo. Por favor, intenta nuevamente.'
+            ], 500);
+        }
+
+        // Enviar enlace por correo usando la clase específica para setup password
+        Log::info('📨 Enviando correo electrónico', ['to' => $user->email]);
+        try {
+            Mail::to($user->email)->send($mailInstance);
+            Log::info("✅ Correo enviado exitosamente a {$user->email}");
+        } catch (\Swift_TransportException $transportException) {
+            $errorMessage = $transportException->getMessage();
+            Log::error('❌ Error de transporte SMTP al enviar email', [
+                'error' => $errorMessage,
+                'code' => $transportException->getCode(),
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'mail_host' => config('mail.mailers.smtp.host'),
+                'mail_driver' => config('mail.default')
+            ]);
+            
+            // Mensaje más específico según el tipo de error
+            $userFriendlyMessage = 'Error de conexión con el servidor de correo.';
+            if (strpos($errorMessage, 'getaddrinfo') !== false || strpos($errorMessage, 'name resolution') !== false) {
+                $userFriendlyMessage = 'El servidor de correo no está disponible. Por favor, contacta al administrador para configurar el servidor de correo correctamente.';
+            } elseif (strpos($errorMessage, 'Connection refused') !== false) {
+                $userFriendlyMessage = 'No se pudo conectar al servidor de correo. Verifica la configuración del servidor.';
+            } elseif (strpos($errorMessage, 'Authentication failed') !== false) {
+                $userFriendlyMessage = 'Error de autenticación con el servidor de correo. Verifica las credenciales.';
+            }
+            
+            return response()->json([
+                'success' => false,
+                'error' => $userFriendlyMessage
+            ], 500);
+        } catch (\Illuminate\View\ViewException $viewException) {
+            Log::error('❌ Error renderizando template de email', [
+                'error' => $viewException->getMessage(),
+                'trace' => $viewException->getTraceAsString(),
+                'user_id' => $user->id
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al generar el contenido del correo. Por favor, contacta al soporte.'
+            ], 500);
+        } catch (\Exception $mailException) {
+            Log::error('❌ Error enviando email para establecer contraseña', [
+                'error' => $mailException->getMessage(),
+                'error_class' => get_class($mailException),
+                'trace' => $mailException->getTraceAsString(),
+                'user_id' => $user->id,
+                'user_email' => $user->email
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al enviar el correo electrónico. Por favor, verifica la configuración del servidor de correo.'
+            ], 500);
+        }
+
+        Log::info("🔗 Enlace para establecer contraseña enviado a {$user->email} (usuario Google)");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Se ha enviado un enlace a tu correo electrónico para establecer tu contraseña'
+        ]);
+
+    } catch (\Throwable $e) {
+        // Capturar cualquier error incluyendo errores fatales y de autoloading
+        $errorMessage = $e->getMessage();
+        $errorClass = get_class($e);
+        
+        Log::error('❌ Error enviando enlace para establecer contraseña', [
+            'error' => $errorMessage,
+            'error_class' => $errorClass,
+            'trace' => $e->getTraceAsString(),
+            'user_id' => auth()->id(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+
+        // Mensaje más descriptivo para el usuario
+        $userFriendlyMessage = 'Error al procesar la solicitud. Por favor, intenta nuevamente.';
+        
+        // Si es un error de clase no encontrada, sugerir regenerar autoloader
+        if (strpos($errorMessage, 'Class') !== false && strpos($errorMessage, 'not found') !== false) {
+            $userFriendlyMessage = 'Error de configuración del servidor. Por favor, contacta al soporte.';
+            Log::error('⚠️ Posible problema de autoloading detectado', [
+                'sugerencia' => 'Ejecutar: composer dump-autoload'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => $userFriendlyMessage,
+            'message' => $userFriendlyMessage
+        ], 500);
+    }
+}
+
+// 🔑 ESTABLECER CONTRASEÑA CON TOKEN (USUARIOS GOOGLE)
+public function setupPasswordWithToken(Request $request)
+{
+    try {
+        $request->validate([
+            'token' => 'required|string|size:64',
+            'email' => 'required|email',
+            'new_password' => 'required|string|min:8|confirmed'
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Token inválido'
+            ], 422);
+        }
+
+        // Verificar que el usuario se registró con Google
+        if (!$user->google_id) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Este método solo está disponible para usuarios que se registraron con Google'
+            ], 422);
+        }
+
+        // Verificar token
+        $setupToken = DB::table('security_codes')
+            ->where('user_id', $user->id)
+            ->where('action_type', 'setup_password')
+            ->where('code', $request->token)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (!$setupToken) {
+            return response()->json([
+                'success' => false,
+                'error' => 'El enlace ha expirado o es inválido'
+            ], 422);
+        }
+
+        // Establecer contraseña
+        $user->password = Hash::make($request->new_password);
+        $user->save();
+
+        // Eliminar token usado y otros tokens de setup pendientes
+        DB::table('security_codes')
+            ->where('user_id', $user->id)
+            ->where('action_type', 'setup_password')
+            ->delete();
+
+        Log::info("🔐 Contraseña establecida exitosamente para {$user->email} (usuario Google)");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contraseña establecida exitosamente. Ya puedes iniciar sesión con tu email y contraseña, o seguir usando Google.'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error estableciendo contraseña', [
             'error' => $e->getMessage(),
             'email' => $request->email ?? 'no proporcionado'
         ]);

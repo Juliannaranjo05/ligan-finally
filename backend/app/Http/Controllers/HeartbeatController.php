@@ -28,66 +28,137 @@ class HeartbeatController extends Controller
                 'timestamp' => now()->toISOString()
             ]);
 
-            // 🔥 VALIDACIONES ESPECÍFICAS PARA VIDEOCHAT
+            // 🔥 VALIDACIONES ESPECÍFICAS PARA VIDEOCHAT (con manejo de errores)
             if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
-                if (!$roomName) {
-                    Log::warning('⚠️ Heartbeat de videochat sin room_name', [
-                        'user_id' => $user->id,
-                        'activity_type' => $activityType
+                try {
+                    if (!$roomName) {
+                        Log::warning('⚠️ Heartbeat de videochat sin room_name', [
+                            'user_id' => $user->id,
+                            'activity_type' => $activityType
+                        ]);
+                        // No fallar, solo cambiar a browsing
+                        $activityType = 'browsing';
+                        $roomName = null;
+                    } else {
+                        // Verificar que la sesión existe y el usuario pertenece a ella
+                        $session = ChatSession::where('room_name', $roomName)
+                            ->whereIn('status', ['active', 'waiting'])
+                            ->where(function($query) use ($user) {
+                                $query->where('cliente_id', $user->id)
+                                    ->orWhere('modelo_id', $user->id);
+                            })
+                            ->first();
+                            
+                        if (!$session) {
+                            Log::warning('⚠️ Usuario enviando heartbeat para sesión inexistente', [
+                                'user_id' => $user->id,
+                                'room_name' => $roomName,
+                                'activity_type' => $activityType
+                            ]);
+                            // No fallar, cambiar a browsing
+                            $activityType = 'browsing';
+                            $roomName = null;
+                        } else {
+                            // Actualizar timestamp de la sesión
+                            $session->touch();
+                        }
+                    }
+                } catch (\Exception $sessionError) {
+                    Log::warning('⚠️ Error validando sesión de videochat, continuando como browsing', [
+                        'error' => $sessionError->getMessage(),
+                        'user_id' => $user->id
                     ]);
-                    return response()->json(['success' => false, 'error' => 'Room name requerido para videochat'], 400);
+                    $activityType = 'browsing';
+                    $roomName = null;
                 }
-                
-                // Verificar que la sesión existe y el usuario pertenece a ella
-                $session = ChatSession::where('room_name', $roomName)
-                    ->whereIn('status', ['active', 'waiting'])
-                    ->where(function($query) use ($user) {
-                        $query->where('cliente_id', $user->id)
-                            ->orWhere('modelo_id', $user->id);
-                    })
-                    ->first();
-                    
-                if (!$session) {
-                    Log::warning('⚠️ Usuario enviando heartbeat para sesión inexistente', [
-                        'user_id' => $user->id,
-                        'room_name' => $roomName,
-                        'activity_type' => $activityType
-                    ]);
-                    
-                    return response()->json([
-                        'success' => false, 
-                        'error' => 'Sesión no encontrada',
-                        'action' => 'redirect_to_search'
-                    ], 404);
-                }
-                
-                // Actualizar timestamp de la sesión
-                $session->touch();
             }
 
-            // Actualizar o crear estado online
-            UserOnlineStatus::updateOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'is_online' => true,
-                    'last_seen' => now(),
-                    'activity_type' => $activityType,
-                    'current_room' => $roomName,
-                    'updated_at' => now()
-                ]
-            );
-
-            // 🔥 CLEANUP AUTOMÁTICO: Finalizar sesiones de usuarios inactivos
-            if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
-                $this->cleanupInactiveVideoSessions($roomName, $user->id);
+            // Actualizar o crear estado online - CON MANEJO DE ERRORES ROBUSTO
+            try {
+                // Validar activity_type antes de guardar
+                $validActivityTypes = ['browsing', 'searching', 'idle', 'videochat', 'videochat_model', 'videochat_client'];
+                if (!in_array($activityType, $validActivityTypes)) {
+                    $activityType = 'browsing';
+                }
+                
+                $userStatus = UserOnlineStatus::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'is_online' => true,
+                        'last_seen' => now(),
+                        'connected_at' => now(),
+                        'activity_type' => $activityType,
+                        'current_room' => $roomName ?: null,
+                    ]
+                );
+                
+                // Actualizar heartbeat de forma segura
+                if ($userStatus && method_exists($userStatus, 'updateHeartbeatSafe')) {
+                    $updateResult = $userStatus->updateHeartbeatSafe($roomName ?: null, $activityType);
+                    if (!$updateResult) {
+                        Log::warning('⚠️ updateHeartbeatSafe retornó false', [
+                            'user_id' => $user->id
+                        ]);
+                    }
+                } else {
+                    // Fallback si el método no existe
+                    $userStatus->update([
+                        'last_seen' => now(),
+                        'activity_type' => $activityType,
+                        'current_room' => $roomName ?: null,
+                        'is_online' => true
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $dbError) {
+                Log::error('❌ Error de base de datos actualizando UserOnlineStatus', [
+                    'user_id' => $user->id,
+                    'error' => $dbError->getMessage(),
+                    'sql' => $dbError->getSql() ?? 'N/A'
+                ]);
+                // Continuar sin lanzar excepción
+            } catch (\Exception $e) {
+                Log::error('❌ Error actualizando UserOnlineStatus en heartbeat', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                // No lanzar excepción, solo loggear - el heartbeat puede continuar
             }
 
+            // 🔥 CLEANUP AUTOMÁTICO: Finalizar sesiones de usuarios inactivos (con manejo de errores)
+            if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
+                try {
+                    $this->cleanupInactiveVideoSessions($roomName, $user->id);
+                } catch (\Exception $cleanupError) {
+                    // No fallar el heartbeat por errores en cleanup
+                    Log::warning('⚠️ Error en cleanup de sesiones inactivas', [
+                        'error' => $cleanupError->getMessage(),
+                        'user_id' => $user->id
+                    ]);
+                }
+            }
+
+            // 🔥 SIEMPRE DEVOLVER ÉXITO, incluso si hubo errores menores
             return response()->json([
                 'success' => true,
                 'timestamp' => now()->toISOString(),
                 'activity_type' => $activityType
             ]);
 
+        } catch (\Illuminate\Database\QueryException $dbError) {
+            Log::error('❌ Error de base de datos procesando heartbeat', [
+                'error' => $dbError->getMessage(),
+                'user_id' => auth()->id(),
+                'sql' => $dbError->getSql() ?? 'N/A'
+            ]);
+
+            // 🔥 IMPORTANTE: Devolver 200 con success=false para errores de BD
+            return response()->json([
+                'success' => false,
+                'error' => 'Error de base de datos',
+                'message' => 'El heartbeat no pudo ser procesado, pero la sesión sigue activa'
+            ], 200);
+            
         } catch (\Exception $e) {
             Log::error('❌ Error procesando heartbeat', [
                 'error' => $e->getMessage(),
@@ -95,10 +166,13 @@ class HeartbeatController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            // 🔥 IMPORTANTE: No devolver 500 para errores de heartbeat
+            // Devolver 200 con success=false para que no dispare modales de sesión cerrada
             return response()->json([
                 'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
+                'error' => 'Error procesando heartbeat',
+                'message' => 'El heartbeat no pudo ser procesado, pero la sesión sigue activa'
+            ], 200); // 🔥 CAMBIAR A 200 en lugar de 500
         }
     }
 

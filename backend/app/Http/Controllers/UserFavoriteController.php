@@ -106,8 +106,24 @@ class UserFavoriteController extends Controller
             ->join('users', 'user_favorites.favorite_user_id', '=', 'users.id')
             ->where('user_favorites.user_id', $user->id)
             ->where('user_favorites.is_active', true)
-            ->select('users.id', 'users.name', 'user_favorites.note', 'user_favorites.created_at')
-            ->get();
+            ->select(
+                'users.id',
+                'users.name',
+                'users.avatar',
+                'user_favorites.note',
+                'user_favorites.created_at'
+            )
+            ->get()
+            ->map(function ($fav) {
+                // Generar URL pública del avatar si existe
+                if (!empty($fav->avatar)) {
+                    $avatarName = basename($fav->avatar);
+                    $fav->avatar_url = url('/storage/avatars/' . $avatarName);
+                } else {
+                    $fav->avatar_url = null;
+                }
+                return $fav;
+            });
 
         return response()->json([
             'success' => true,

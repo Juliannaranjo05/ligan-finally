@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "./headercliente";
 import { useTranslation } from 'react-i18next';
+import { useSessionValidation } from '../hooks/useSessionValidation';
 
 // 🔥 IMPORTAR COMPONENTES DE LLAMADA (como en mensajes)
 import CallingSystem from '../CallingOverlay';
@@ -27,6 +28,9 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function Favoritos() {
+  // 🔥 VALIDACIÓN DE SESIÓN: Solo clientes pueden acceder
+  useSessionValidation('cliente');
+
   const [favoritas, setFavoritos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -216,31 +220,53 @@ export default function Favoritos() {
 
       
       // 🔥 VERIFICAR BLOQUEO ANTES DE INICIAR LLAMADA
-      const blockCheckResponse = await fetch(`${API_BASE_URL}/api/check-if-blocked-by`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          user_id: otherUserId
-        })
-      });
+      try {
+        const blockCheckResponse = await fetch(`${API_BASE_URL}/api/blocks/check-if-blocked-by`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            user_id: otherUserId
+          })
+        });
 
-      if (blockCheckResponse.ok) {
-        const blockData = await blockCheckResponse.json();
-        if (blockData.success && blockData.is_blocked_by_them) {
-          // Mostrar modal de bloqueo en lugar de console
-          setConfirmAction({
-            type: 'blocked',
-            title: t('favorites.calls.notAvailable'),
-            message: t('favorites.calls.userBlocked', { name: 'nombre' }),
-            confirmText: 'Entendido',
-            action: () => setShowConfirmModal(false)
-          });
-          setShowConfirmModal(true);
+        if (blockCheckResponse.ok) {
+          const blockData = await blockCheckResponse.json();
+          if (blockData.success && blockData.is_blocked_by_them) {
+            // Mostrar modal de bloqueo en lugar de console
+            setConfirmAction({
+              type: 'blocked',
+              title: t('favorites.calls.notAvailable'),
+              message: t('favorites.calls.userBlocked', { name: 'nombre' }),
+              confirmText: 'Entendido',
+              action: () => setShowConfirmModal(false)
+            });
+            setShowConfirmModal(true);
+            return;
+          }
+        }
+        // Si el endpoint no está disponible (404) o hay error, continuar normalmente
+      } catch (error) {
+        // Silenciar errores de red o del endpoint (endpoint puede no estar disponible)
+      }
+
+      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA
+      const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json();
+        if (balanceData.success && !balanceData.can_start_call) {
+          // ❌ NO TIENE SALDO SUFICIENTE - REDIRIGIR A COMPRA
+          setIsCallActive(false);
+          setCurrentCall(null);
+          window.location.href = '/buy-minutes';
           return;
         }
       }
-
-      // Si no está bloqueado, continuar con la llamada
+      
+      // Si no está bloqueado y tiene saldo, continuar con la llamada
       
       setCurrentCall({
         id: otherUserId,
@@ -270,6 +296,21 @@ export default function Favoritos() {
         });
         iniciarPollingLlamada(data.call_id);
       } else {
+        // 🔥 DETECTAR ERRORES ESPECÍFICOS
+        const errorMessage = data.error || data.message || '';
+        const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                               errorMessage.toLowerCase().includes('balance') ||
+                               errorMessage.toLowerCase().includes('insufficient') ||
+                               errorMessage.toLowerCase().includes('coins');
+        
+        if (isBalanceError) {
+          // Redirigir a compra de minutos
+          setIsCallActive(false);
+          setCurrentCall(null);
+          window.location.href = '/buy-minutes';
+          return;
+        }
+        
         // Verificar si el error es por bloqueo
         if (data.error && (data.error.includes('bloqueado') || data.error.includes('blocked'))) {
           setConfirmAction({
@@ -284,7 +325,7 @@ export default function Favoritos() {
           setConfirmAction({
             type: 'error',
             title: 'Error en llamada',
-            message: data.error || 'No se pudo iniciar la llamada',
+            message: errorMessage || 'No se pudo iniciar la llamada',
             confirmText: t('favorites.calls.understood'),
             action: () => setShowConfirmModal(false)
           });
@@ -295,8 +336,21 @@ export default function Favoritos() {
         setCurrentCall(null);
       }
     } catch (error) {
-            setIsCallActive(false);
+      setIsCallActive(false);
       setCurrentCall(null);
+      
+      // 🔥 DETECTAR ERRORES DE SALDO EN LA EXCEPCIÓN
+      const errorMessage = error.message || '';
+      const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                             errorMessage.toLowerCase().includes('balance') ||
+                             errorMessage.toLowerCase().includes('insufficient') ||
+                             errorMessage.toLowerCase().includes('coins');
+      
+      if (isBalanceError) {
+        // Redirigir a compra de minutos
+        window.location.href = '/buy-minutes';
+        return;
+      }
       
       setConfirmAction({
         type: 'error',
@@ -610,13 +664,15 @@ export default function Favoritos() {
     try {
       setProcessingAction(favoriteId);
       
-      // 🔥 IR A /mensajes CON EL PARÁMETRO
+      // 🔥 IR A /mensajes CON EL PARÁMETRO CORRECTO
       navigate('/mensajes', {
         state: {
           openChatWith: {
-            userId: favoriteId,
-            userName: nombre,
-            userRole: 'modelo' // Los favoritas de las modelos son clientes
+            other_user_id: favoriteId,
+            other_user_name: nombre,
+            other_user_display_name: nombre,
+            userRole: 'modelo',
+            room_name: null // Se generará automáticamente
           }
         }
       });
@@ -703,12 +759,14 @@ export default function Favoritos() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0d10] to-[#131418] text-white p-6">
+    <div className="h-screen bg-gradient-to-br from-[#0a0d10] to-[#131418] text-white overflow-hidden flex flex-col p-4 sm:p-6">
       {/* Header */}
-      <Header />
+      <Header className="flex-shrink-0" />
             
+      {/* Contenido principal con scroll */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
       {/* Título y estadísticas */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 sm:mb-6">
         <div>
           <h2 className="text-2xl font-bold text-[#ff007a] flex items-center gap-2">
             <Heart size={24} />
@@ -750,15 +808,15 @@ export default function Favoritos() {
           <h3 className="text-xl font-bold mb-2">{t('favorites.noFavorites')}</h3>
           <p className="text-gray-400 mb-6">{t('favorites.noFavoritesDesc')}</p>
           <button
-            onClick={() => navigate('/esperandocall')}
+            onClick={() => navigate('/homecliente')}
             className="bg-[#ff007a] hover:bg-[#e6006e] px-6 py-3 rounded-lg flex items-center gap-2 mx-auto"
           >
             <Users size={16} />
-            {t('favorites.searchUsers')}
+            Buscar modelos
           </button>
         </div>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid gap-4 sm:gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 pb-4">
           {favoritas.map((fav) => {
             const estadoConexion = obtenerEstadoConexion(fav.id);
             
@@ -771,8 +829,25 @@ export default function Favoritos() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <div className="w-12 h-12 bg-[#ff007a] rounded-full flex items-center justify-center font-bold text-black text-lg">
-                        {fav.name.charAt(0).toUpperCase()}
+                      {fav.avatar_url ? (
+                        <img
+                          src={fav.avatar_url}
+                          alt={fav.name}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-[#ff007a]"
+                          onError={(e) => {
+                            // Ocultar la imagen y mostrar el fallback
+                            e.target.style.display = 'none';
+                            const fallback = e.target.nextElementSibling;
+                            if (fallback) {
+                              fallback.style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <div 
+                        className={`w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold border-2 border-[#ff007a] ${fav.avatar_url ? 'hidden' : ''}`}
+                      >
+                        {fav.name ? fav.name.charAt(0).toUpperCase() : '?'}
                       </div>
                       {/* 🔥 INDICADOR DE ESTADO ONLINE MEJORADO */}
                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#1f2125] ${
@@ -882,6 +957,7 @@ export default function Favoritos() {
           })}
         </div>
       )}
+      </div>
 
       {/* 🔥 OVERLAYS DE LLAMADAS (igual que en mensajes) */}
       <CallingSystem

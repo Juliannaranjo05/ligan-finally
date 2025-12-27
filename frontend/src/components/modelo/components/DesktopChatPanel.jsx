@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react'
 import { Star, UserX, Gift, Send, Smile, Settings, Crown, MessageCircle, Globe, X } from 'lucide-react';
 import { GiftMessageComponent } from '../../GiftSystem/GiftMessageComponent';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../../i18n';
 
 const DesktopChatPanel = ({
   getDisplayName,
@@ -43,7 +45,6 @@ const DesktopChatPanel = ({
   });
   const [stableMessages, setStableMessages] = useState([]);
 
-
   // 🔥 ESTADO LOCAL PARA TRADUCCIÓN - CORREGIDO
   const [localTranslationEnabled, setLocalTranslationEnabled] = useState(() => {
     return localStorage.getItem('translationEnabled') === 'true';
@@ -52,6 +53,51 @@ const DesktopChatPanel = ({
   // 🔥 SOLUCIÓN DE TRADUCCIÓN SIMPLIFICADA - SIN COMPONENTE ANIDADO
   const [translations, setTranslations] = useState(new Map());
   const [translatingIds, setTranslatingIds] = useState(new Set());
+
+  // 🔥 OBTENER EL HOOK DE i18n PARA ESCUCHAR CAMBIOS
+  const { i18n: i18nInstance } = useTranslation();
+
+  // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
+  useEffect(() => {
+    const handleLanguageChange = (lng) => {
+      // Solo actualizar si el idioma realmente cambió
+      if (lng && lng !== currentLanguage) {
+        
+        setCurrentLanguage(lng);
+        localStorage.setItem('selectedLanguage', lng);
+        
+        // Habilitar traducción automáticamente si no es español
+        const shouldEnableTranslation = lng !== 'es';
+        setLocalTranslationEnabled(shouldEnableTranslation);
+        localStorage.setItem('translationEnabled', shouldEnableTranslation.toString());
+        
+        // Actualizar el contexto global también
+        if (typeof changeGlobalLanguage === 'function') {
+          try {
+            changeGlobalLanguage(lng);
+          } catch (error) {
+          }
+        }
+        
+        // Limpiar traducciones existentes para forzar retraducción
+        setTranslations(new Map());
+        setTranslatingIds(new Set());
+      }
+    };
+
+    // Escuchar cambios en el idioma de i18n
+    i18nInstance.on('languageChanged', handleLanguageChange);
+    
+    // También verificar el idioma inicial
+    const currentI18nLang = i18nInstance.language || i18n.language;
+    if (currentI18nLang && currentI18nLang !== currentLanguage) {
+      handleLanguageChange(currentI18nLang);
+    }
+
+    return () => {
+      i18nInstance.off('languageChanged', handleLanguageChange);
+    };
+  }, [currentLanguage, changeGlobalLanguage, i18nInstance]);
 
   // 🎵 SISTEMA DE SONIDOS DE REGALO - COPIADO DE CHATPRIVADO
 const playGiftReceivedSound = useCallback(async () => {
@@ -95,7 +141,6 @@ const playGiftReceivedSound = useCallback(async () => {
           };
           
           audio.onerror = (error) => {
-            console.warn(`⚠️ [SOUND] Error cargando ${soundUrl}:`, error);
             reject(error);
           };
           
@@ -106,7 +151,6 @@ const playGiftReceivedSound = useCallback(async () => {
         break; // Si llegamos aquí, el sonido se reprodujo
         
       } catch (audioError) {
-        console.warn(`❌ [SOUND] Falló ${soundUrl}:`, audioError);
         continue; // Probar el siguiente
       }
     }
@@ -279,7 +323,6 @@ const playAlternativeGiftSound = useCallback(async () => {
 
       // Ordenar cronológicamente
       const sortedMessages = uniqueMessages;
-
 
       // 🔥 DETECTAR NUEVOS REGALOS ANTES DE ACTUALIZAR
       if (stableMessages.length > 0) {
@@ -472,7 +515,6 @@ const playAlternativeGiftSound = useCallback(async () => {
                         result = await translateWithFallback(originalText, currentLanguage);
           }
         } catch (error) {
-          console.warn('❌ Error con translateGlobalText, usando fallback:', error);
           result = await translateWithFallback(originalText, currentLanguage);
         }
       } else {
@@ -587,7 +629,6 @@ const playAlternativeGiftSound = useCallback(async () => {
         const name = getDisplayName();
         return truncateName(name, 8);
       } catch (error) {
-        console.warn('Error calling getDisplayName:', error);
       }
     }
     
@@ -628,7 +669,6 @@ const playAlternativeGiftSound = useCallback(async () => {
       try {
         changeGlobalLanguage(languageCode);
               } catch (error) {
-        console.warn('❌ No se pudo cambiar idioma en contexto global:', error);
       }
     }
     
@@ -643,7 +683,7 @@ const playAlternativeGiftSound = useCallback(async () => {
   };
 
   return (
-    <div className="w-full lg:w-[300px] xl:w-[320px] bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden">
+    <div className="w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden" style={{ maxHeight: 'calc(100vh - 180px)', minHeight: 0 }}>
       {/* Línea superior fucsia */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#ff007a]"></div>
       
@@ -723,13 +763,14 @@ const playAlternativeGiftSound = useCallback(async () => {
       </div>
       
       {/* 🔥 ÁREA DE MENSAJES REDISEÑADA CON AUTO-SCROLL */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" style={{ minHeight: 0, maxHeight: 'calc(100vh - 280px)' }}>
         <div 
           ref={messagesContainerRef}
-          className="flex-1 max-h-[48vh] p-3 space-y-3 overflow-y-auto custom-scroll"
+          className="flex-1 p-3 space-y-3 overflow-y-auto custom-scroll flex flex-col"
+          style={{ maxHeight: 'calc(100vh - 280px)', minHeight: 0, height: '100%' }}
         >
           {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center flex-1 min-h-0">
               <div className="text-center py-8">
                 <div className="w-16 h-16 bg-[#ff007a]/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#ff007a]/20">
                   <MessageCircle size={32} className="text-[#ff007a]" />
@@ -746,7 +787,7 @@ const playAlternativeGiftSound = useCallback(async () => {
               </div>
             </div>
           ) : (
-            <>
+            <div className="flex flex-col">
             {stableMessages.slice().reverse().map((msg, index) => (
               <div key={msg.id} className="space-y-3">
                   {/* 🎁 RENDERIZAR MENSAJES DE REGALO SEGÚN TU CÓDIGO */}
@@ -781,16 +822,31 @@ const playAlternativeGiftSound = useCallback(async () => {
                           const cleanBaseUrl = baseUrl.replace(/\/$/, '');
                           
                           if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-                            imageUrl = imagePath;
+                            imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
                           } else {
                             const cleanPath = imagePath.replace(/\\/g, '');
+                            let finalUrl;
+                            let fileName;
                             if (cleanPath.startsWith('storage/')) {
-                              imageUrl = `${cleanBaseUrl}/${cleanPath}`;
+                              const pathParts = cleanPath.split('/');
+                              fileName = pathParts.pop();
+                              const directory = pathParts.join('/');
+                              const encodedFileName = encodeURIComponent(fileName);
+                              finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
                             } else if (cleanPath.startsWith('/')) {
-                              imageUrl = `${cleanBaseUrl}${cleanPath}`;
+                              const pathParts = cleanPath.split('/');
+                              fileName = pathParts.pop();
+                              const directory = pathParts.join('/');
+                              const encodedFileName = encodeURIComponent(fileName);
+                              finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
                             } else {
-                              imageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+                              fileName = cleanPath;
+                              const encodedFileName = encodeURIComponent(cleanPath);
+                              finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
                             }
+                            // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+                            const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+                            imageUrl = `${finalUrl}?v=${version}`;
                           }
                         }
                         
@@ -810,6 +866,9 @@ const playAlternativeGiftSound = useCallback(async () => {
                                     src={imageUrl}
                                     alt={finalGiftData.gift_name || 'Regalo'}
                                     className="w-12 h-12 object-contain"
+                                    loading="lazy"
+                                    decoding="async"
+                                    key={`gift-request-modelo-${finalGiftData.gift_name}-${imageUrl}`}
                                     onError={(e) => {
                                       e.target.style.display = 'none';
                                       const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -901,6 +960,9 @@ const playAlternativeGiftSound = useCallback(async () => {
                                     src={receivedImageUrl}
                                     alt={finalReceivedGiftData.gift_name || 'Regalo'}
                                     className="w-12 h-12 object-contain"
+                                    loading="lazy"
+                                    decoding="async"
+                                    key={`gift-received-modelo-${finalReceivedGiftData.gift_name}-${receivedImageUrl}`}
                                     onError={(e) => {
                                       e.target.style.display = 'none';
                                       const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -1009,7 +1071,7 @@ const playAlternativeGiftSound = useCallback(async () => {
               ))}
               {/* Elemento invisible para hacer scroll automático */}
               <div ref={messagesEndRef} />
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -1026,7 +1088,7 @@ const playAlternativeGiftSound = useCallback(async () => {
                 value={mensaje}
                 onChange={(e) => setMensaje(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={t?.('chat.respondToClient') || 'Responde al chico...'}
+                placeholder={typeof t === 'function' ? (t('chat.respondToClient') || 'Responde al chico...') : 'Responde al chico...'}
                 maxLength={200}
                 className="
                   w-full bg-gradient-to-r from-gray-800/60 to-slate-800/60 backdrop-blur-sm 

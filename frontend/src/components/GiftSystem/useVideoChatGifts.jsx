@@ -27,6 +27,38 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     };
   }, [roomName]);
 
+  // 🔥 FUNCIÓN PARA PRECARGAR IMÁGENES DE REGALOS
+  const preloadGiftImages = useCallback((giftsArray) => {
+    giftsArray.forEach((gift) => {
+      const imagePath = gift.image_path || gift.image || gift.image_url || gift.pic || gift.icon;
+      if (imagePath) {
+        const img = new Image();
+        // Construir URL completa
+        let imageUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://')
+          ? imagePath 
+          : `${API_BASE_URL.replace(/\/$/, '')}/${imagePath.replace(/^\/+/, '')}`;
+        
+        // 🔥 AGREGAR PARÁMETRO DE VERSIÓN BASADO EN EL NOMBRE DEL ARCHIVO PARA INVALIDAR CACHÉ
+        // Extraer nombre del archivo de la URL
+        const urlParts = imageUrl.split('/');
+        const fileName = urlParts[urlParts.length - 1].split('?')[0]; // Remover query params existentes
+        
+        // Crear hash simple del nombre del archivo para versión estable
+        // Si el nombre del archivo cambia, la versión cambiará
+        const fileHash = fileName ? btoa(fileName).substring(0, 8) : Date.now();
+        const separator = imageUrl.includes('?') ? '&' : '?';
+        imageUrl = `${imageUrl.split('?')[0]}${separator}v=${fileHash}&_preload=${Date.now()}`;
+        
+        img.src = imageUrl;
+        
+        // Opcional: manejar errores silenciosamente
+        img.onerror = () => {
+          // Imagen no disponible, se manejará cuando se renderice
+        };
+      }
+    });
+  }, [API_BASE_URL]);
+
   // 🎁 Cargar regalos disponibles
   const loadGifts = useCallback(async () => {
     if (loadingGiftsRef.current) return;
@@ -42,8 +74,15 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setGifts(data.gifts || []);
-          return { success: true, gifts: data.gifts };
+          const giftsArray = data.gifts || [];
+          setGifts(giftsArray);
+          
+          // 🔥 PRECARGAR IMÁGENES DE REGALOS PARA QUE ESTÉN LISTAS CUANDO SE ABRA EL MODAL
+          if (giftsArray.length > 0) {
+            preloadGiftImages(giftsArray);
+          }
+          
+          return { success: true, gifts: giftsArray };
         } else {
                     return { success: false, error: data.error };
         }
@@ -56,7 +95,7 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     } finally {
       loadingGiftsRef.current = false;
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, preloadGiftImages]);
 
   // 🙏 Solicitar regalo (solo modelos)
   const requestGift = useCallback(async (giftId, message = '') => {
@@ -69,7 +108,6 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     }
 
     if (requestingGift) {
-      console.warn('⚠️ [VIDEOCHAT] Ya hay una solicitud en proceso');
       return { success: false, error: 'Ya hay una solicitud en proceso' };
     }
 
@@ -185,7 +223,6 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     }
 
     if (processingRequest === requestId) {
-      console.warn('⚠️ [VIDEOCHAT] Solicitud ya siendo procesada');
       return { success: false, error: 'Solicitud ya siendo procesada' };
     }
 
@@ -258,27 +295,74 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     }
   }, [currentUser, getAuthHeaders, processingRequest]);
 
-
   // 💰 Cargar balance del usuario - AGREGAR ESTA FUNCIÓN
+// 🔥 REF PARA EVITAR MÚLTIPLAS LLAMADAS
+const loadUserBalanceCallRef = useRef(false);
+const lastLoadUserBalanceTimeRef = useRef(0);
+
 const loadUserBalance = useCallback(async () => {
+  // 🔥 PROTECCIÓN CONTRA MÚLTIPLAS EJECUCIONES SIMULTÁNEAS (pero permitir llamadas frecuentes)
+  if (loadUserBalanceCallRef.current) {
+    return { success: false, error: 'Ya hay una petición en curso' };
+  }
+  
+  // 🔥 REDUCIR TIEMPO MÍNIMO A 5 SEGUNDOS (más permisivo)
+  const now = Date.now();
+  if (now - lastLoadUserBalanceTimeRef.current < 5000) {
+    return { success: false, error: 'Demasiado pronto para cargar balance' };
+  }
+  
+  loadUserBalanceCallRef.current = true;
+  lastLoadUserBalanceTimeRef.current = now;
+  
   try {
-        
-    const response = await fetch(`${API_BASE_URL}/api/videochat/gifts/balance`, {
-      method: 'GET',
-      headers: getAuthHeaders()
-    });
+    console.log('🔄 [useVideoChatGifts] Iniciando carga de balance de regalos...');
+    const response = await Promise.race([
+      fetch(`${API_BASE_URL}/api/videochat/gifts/balance`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+    ]);
+    
+    console.log('📡 [useVideoChatGifts] Respuesta recibida, status:', response.status);
     
     if (response.ok) {
       const data = await response.json();
+      console.log('💰 [useVideoChatGifts] Respuesta completa del endpoint:', JSON.stringify(data, null, 2));
       if (data.success) {
-                setUserBalance(data.balance || 0);
-        return { success: true, balance: data.balance };
+        // 🔥 USAR gift_balance_coins (saldo real de regalos) SI ESTÁ DISPONIBLE
+        // gift_balance_coins es el saldo de regalos real del UserCoins
+        // gift_balance es el totalBalance (purchased + gift) para compatibilidad
+        const balance = data.gift_balance_coins !== undefined 
+          ? data.gift_balance_coins 
+          : (data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0));
+        setUserBalance(balance);
+        console.log('✅ [useVideoChatGifts] Balance de regalos procesado y actualizado:', {
+          gift_balance_coins: data.gift_balance_coins,
+          gift_balance: data.gift_balance,
+          balance: data.balance,
+          final_balance: balance,
+          user_role: data.user_role,
+          purchased_balance: data.purchased_balance
+        });
+        return { success: true, balance: balance };
+      } else {
+        console.warn('⚠️ [useVideoChatGifts] Respuesta no exitosa:', data);
       }
+    } else {
+      const errorText = await response.text();
+      console.error('❌ [useVideoChatGifts] Error en respuesta:', response.status, errorText);
     }
     
-        return { success: false, error: 'Error cargando balance' };
+    return { success: false, error: 'Error cargando balance' };
   } catch (error) {
-        return { success: false, error: 'Error de conexión' };
+    return { success: false, error: 'Error de conexión' };
+  } finally {
+    // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY MÁS CORTO
+    setTimeout(() => {
+      loadUserBalanceCallRef.current = false;
+    }, 5000); // 🔥 Reducido a 5 segundos
   }
 }, [getAuthHeaders]);
 
@@ -320,7 +404,6 @@ const loadUserBalance = useCallback(async () => {
     }
   }, [currentUser, getAuthHeaders]);
 
-
   // 📊 Obtener historial de regalos
   const loadGiftHistory = useCallback(async (limit = 20) => {
     try {
@@ -351,18 +434,62 @@ const loadUserBalance = useCallback(async () => {
     }
   }, [roomName, getAuthHeaders]);
 
+
+  // 🔥 REF PARA EVITAR MÚLTIPLAS LLAMADAS A loadGifts
+  const loadGiftsCallRef = useRef(false);
+  const lastLoadGiftsTimeRef = useRef(0);
+
   // 🚀 Inicializar al montar
   useEffect(() => {
-    if (roomName && currentUser) {
-      loadGifts();
-        loadUserBalance();  // ← AGREGAR ESTA LÍNEA
-
-      
-      if (currentUser.role === 'cliente') {
-        loadPendingRequests();
-      }
+    if (!roomName || !currentUser) return;
+    
+    // 🔥 PROTECCIÓN CONTRA MÚLTIPLAS EJECUCIONES
+    if (loadGiftsCallRef.current) {
+      return;
     }
-  }, [roomName, currentUser, loadGifts, loadUserBalance, loadPendingRequests]);
+    
+    // 🔥 MÍNIMO 60 SEGUNDOS ENTRE LLAMADAS
+    const now = Date.now();
+    if (now - lastLoadGiftsTimeRef.current < 60000) {
+      return;
+    }
+
+    loadGiftsCallRef.current = true;
+    lastLoadGiftsTimeRef.current = now;
+
+    loadGifts();
+    
+    if (currentUser.role === 'cliente') {
+      loadPendingRequests();
+    }
+
+    // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY
+    setTimeout(() => {
+      loadGiftsCallRef.current = false;
+    }, 60000);
+  }, [roomName, currentUser?.id]); // 🔥 Solo dependencias críticas, sin funciones
+
+  // 🔥 CARGAR BALANCE AUTOMÁTICAMENTE AL MONTAR Y PERIÓDICAMENTE (PARA AMBOS ROLES)
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    // Cargar balance inicial después de un pequeño delay
+    const timer = setTimeout(() => {
+      loadUserBalance();
+    }, 1000);
+    
+    // 🔥 ACTUALIZAR BALANCE CADA 30 SEGUNDOS (para ambos roles)
+    const interval = setInterval(() => {
+      if (!loadUserBalanceCallRef.current) {
+        loadUserBalance();
+      }
+    }, 30000);
+    
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [currentUser?.id, loadUserBalance]);
 
   // 🔄 Polling para solicitudes pendientes (solo clientes)
   useEffect(() => {

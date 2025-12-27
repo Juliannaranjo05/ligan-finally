@@ -5,6 +5,7 @@ return [
     'public_key' => env('WOMPI_PUBLIC_KEY'),
     'private_key' => env('WOMPI_PRIVATE_KEY'),
     'integrity_secret' => env('WOMPI_INTEGRITY_SECRET'),
+    'events_secret' => env('WOMPI_EVENTS_SECRET'),
     
     // URLs
     'api_url' => env('WOMPI_API_URL', 'https://production.wompi.co/v1'),
@@ -17,6 +18,9 @@ return [
     
     // Conversión USD a COP
     'usd_to_cop_rate' => env('WOMPI_USD_TO_COP_RATE', 4000),
+    
+    // Conversión USD a EUR
+    'usd_to_eur_rate' => env('WOMPI_USD_TO_EUR_RATE', 0.92),
     
     // Límites
     'limits' => [

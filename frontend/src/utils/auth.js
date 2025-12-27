@@ -2,7 +2,7 @@ import axios from "../api/axios";
 import userCache from "./userCache"; // 🔥 IMPORTAR CACHE GLOBAL
 import { useRateLimitHandler } from '../components/RateLimitLigand';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
 
 // ========================
 // SISTEMA DE HEARTBEAT
@@ -42,6 +42,42 @@ const sendHeartbeat = async () => {
       timeout: 5000 // reducir timeout
     });
       } catch (error) {
+    // 🔥 DETECTAR SESIÓN SUSPENDIDA O CERRADA POR OTRO DISPOSITIVO
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      const codigo = error.response?.data?.code || error.response?.data?.codigo || '';
+      
+      if (codigo === 'SESSION_SUSPENDED') {
+        // 🔥 VERIFICAR SI HAY UNA VIDEOLLAMADA ACTIVA - NO CERRAR SESIÓN DURANTE VIDEOLLAMADAS
+        const roomName = localStorage.getItem('roomName') || sessionStorage.getItem('roomName');
+        const inCall = localStorage.getItem('inCall') === 'true' || sessionStorage.getItem('inCall') === 'true';
+        const videochatActive = localStorage.getItem('videochatActive') === 'true' || sessionStorage.getItem('videochatActive') === 'true';
+        
+        if (roomName || inCall || videochatActive) {
+          console.warn('🎥 [Auth] Videollamada activa - IGNORANDO sesión suspendida para evitar desconexión');
+          return; // No hacer nada durante videollamadas
+        }
+        
+        console.warn('⏸️ [Auth] Sesión suspendida detectada - cerrando inmediatamente');
+        // 🔥 LIMPIAR TODO Y RECARGAR INMEDIATAMENTE
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch (storageError) {
+          // Ignorar errores
+        }
+        // 🔥 RECARGAR INMEDIATAMENTE
+        window.location.reload();
+      }
+      
+      if (codigo === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+        // Guardar flag en localStorage para persistencia (axios ya dispara el evento)
+        try {
+          localStorage.setItem('session_closed_by_other_device', 'true');
+        } catch (storageError) {
+          // Ignorar errores de localStorage
+        }
+      }
+    }
     // tu manejo de errores está bien
   }
 };
@@ -463,19 +499,26 @@ export const getUser = async (forceRefresh = false) => {
         return userData;
     
   } catch (error) {
+    const errorCode = error.response?.data?.code;
+    const status = error.response?.status;
         
     // 🆕 MANEJO ESPECÍFICO DE SESIÓN DUPLICADA
-    if (error.response?.status === 401 && error.response?.data?.code === 'SESSION_DUPLICATED') {
+    if (status === 401 && errorCode === 'SESSION_DUPLICATED') {
             throw error; // Dejar que VerificarSesionActiva maneje esto
     }
     
+    // 🆕 NO LIMPIAR TOKEN SI ES SESIÓN CERRADA POR OTRO DISPOSITIVO
+    if ((status === 401 || status === 403) && errorCode === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            throw error; // Dejar que SessionClosedAlert maneje esto
+    }
+    
     // 🔥 MANEJO DE RATE LIMITING
-    if (error.response?.status === 429) {
+    if (status === 429) {
             throw error; // Dejar que el cache manager maneje esto
     }
     
-    // Solo limpiar token en errores reales de auth
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // Solo limpiar token en errores reales de auth (NO SESSION_CLOSED_BY_OTHER_DEVICE)
+    if (status === 401 || status === 403) {
             stopHeartbeat();
       localStorage.removeItem("token");
       localStorage.removeItem("reclamando_sesion");

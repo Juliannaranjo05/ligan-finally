@@ -169,7 +169,17 @@
     "callRejected": "Kız aramayı reddetti",
     "callExpired": "Arama yanıtsız süresi doldu",
     "timeoutExpired": "Bekleme süresi doldu",
-    "errorStartingCall": "Arama başlatma hatası"
+    "errorStartingCall": "Arama başlatma hatası",
+    "lastPayment": "Son Ödeme:",
+    "loadingLastPurchase": "Son ödeme yükleniyor...",
+    "claimCoins": "Jetonları Talep Et",
+    "claiming": "Talep ediliyor...",
+    "coinsClaimedSuccess": "Jetonlar başarıyla talep edildi!",
+    "claimed": "Talep Edildi",
+    "coins": "Jetonlar",
+    "minutes": "Dakika",
+    "paymentProblemTitle": "Ödeme sorunu mu var?",
+    "paymentProblemMessage": "Ödeme yapılmadıysa veya jetonlar eklenmediyse, \"Jeton Satın Al\" bölümüne gidin ve işlemlerinizi kontrol edin. Bekleyen ödemeyi işleyin veya yardıma ihtiyacınız varsa destek ile iletişime geçin."
   },
   "storiesModal": {
     "loadingStories": "Hikayeler yükleniyor...",
@@ -326,7 +336,12 @@
       "yesterday": "Dün",
       "callEnded": "Arama sona erdi",
       "messageSent": "Mesaj gönderildi",
-      "addedToFavorites": "Sizi favorilere ekledi"
+      "addedToFavorites": "Sizi favorilere ekledi",
+      "callRejected": "Arama reddedildi",
+      "callCancelled": "Arama iptal edildi",
+      "noHistory": "Arama geçmişi yok",
+      "sendMessage": "Mesaj gönder",
+      "callAgain": "Tekrar ara"
     },
     "restrictions": {
       "pendingApproval": "Onay Bekleyen Hikaye",
@@ -364,11 +379,14 @@
     "title": "Favorileriniz",
     "count": "favori",
     "countPlural": "favori",
+    "singular": "favori",
+    "plural": "favori",
     "loading": "Favoriler yükleniyor...",
     "updating": "Güncelleniyor...",
     "refresh": "Yenile",
     "noFavorites": "Henüz favori yok",
     "noFavoritesDesc": "Kullanıcıları favori olarak eklediğinizde burada görünecekler",
+    "noFavoritesMessage": "Kullanıcıları favori olarak eklediğinizde burada görünecekler",
     "searchUsers": "Kullanıcı ara",
     "errorLoading": "Favoriler yüklenirken hata",
     "retry": "Tekrar dene",
@@ -476,22 +494,462 @@
     "takePhoto": "Fotoğraf çek",
     "deletePhoto": "Profil fotoğrafını sil",
     "editAlias": "Takma ad veya görünür adı düzenle",
+    "editAliasModal": {
+      "title": "Takma Adı Düzenle",
+      "customNickname": "Özel takma adınız",
+      "nicknamePlaceholder": "Takma adınızı girin",
+      "characters": "karakter",
+      "preview": "Önizleme:",
+      "nicknameInfo": "Takma adınız, diğer kullanıcıların sizi nasıl göreceğidir. Gerçek adınız",
+      "useRealName": "Gerçek adı kullan",
+      "cancel": "İptal",
+      "save": "Kaydet",
+      "saving": "Kaydediliyor...",
+      "deleting": "Siliniyor..."
+    },
     "language": "Tercih edilen dil",
+    "languageModal": {
+      "title": "Dil Seç",
+      "description": "Otomatik çeviriler için tercih ettiğiniz dili seçin",
+      "current": "Mevcut",
+      "cancel": "İptal",
+      "saveLanguage": "Dili kaydet",
+      "saving": "Kaydediliyor..."
+    },
+    "managePhotoModal": {
+      "uploadFromFile": "Dosyadan yükle",
+      "selectFile": "Dosya seç",
+      "fileFormats": "JPEG, PNG, WebP (maks. 5MB)",
+      "preview": "Önizleme",
+      "confirmUpload": "Yüklemeyi onayla",
+      "uploading": "Yükleniyor...",
+      "cancel": "İptal",
+      "or": "veya",
+      "takePhoto": "Fotoğraf çek",
+      "activateCamera": "Kamerayı etkinleştir",
+      "activating": "Etkinleştiriliyor...",
+      "loadingCamera": "Kamera yükleniyor...",
+      "capturePhoto": "Fotoğraf çek",
+      "processing": "İşleniyor...",
+      "deleteCurrentPhoto": "Mevcut fotoğrafı sil",
+      "deleting": "Siliniyor...",
+      "deletePhoto": "Fotoğrafı sil"
+    },
     "payments": "Abonelik ve Ödemeler",
     "managePaymentMethod": "Ödeme yöntemi ekle veya kaldır",
+    "configurePayoutAccount": "Ödemeler için hesap yapılandır",
+    "transactionHistory": "İşlem Geçmişi",
+    "paymentMethods": {
+      "title": "Ödeme Yöntemleri",
+      "addMethod": "Yöntem Ekle",
+      "addCard": "Kart Ekle",
+      "deleteMethod": "Sil",
+      "setDefault": "Varsayılan olarak ayarla",
+      "noMethods": "Kaydedilmiş kartınız yok",
+      "addFirst": "Referans olarak bir kart ekleyin",
+      "info": "Bu yöntemler yalnızca referans içindir. Ödemeler doğrudan Wompi üzerinden işlenir.",
+      "cardInfo": "Bu bilgiler yalnızca referans içindir. Ödemeler doğrudan Wompi üzerinden işlenir.",
+      "card": "Kart",
+      "pse": "PSE",
+      "nequi": "Nequi",
+      "bancolombia": "Bancolombia",
+      "lastUsed": "Son kullanım",
+      "default": "Varsayılan",
+      "suggestions": "Daha önce kullanılan kartlar",
+      "add": "Ekle",
+      "type": "Yöntem türü",
+      "lastFourDigits": "Son 4 rakam",
+      "lastFourDigitsHint": "Referans olarak kartınızın son 4 rakamını girin",
+      "bankName": "Banka",
+      "bankPlaceholder": "Banka adı",
+      "accountType": "Hesap türü",
+      "accountPlaceholder": "Örn: Tasarruf",
+      "setAsDefault": "Varsayılan olarak ayarla",
+      "save": "Kaydet",
+      "cancel": "İptal",
+      "confirmDelete": "Silme işlemini onayla",
+      "deleteMessage": "Bu ödeme yöntemini silmek istediğinizden emin misiniz?",
+      "delete": "Sil",
+      "errors": {
+        "loadFailed": "Ödeme yöntemleri yüklenirken hata",
+        "selectType": "Bir yöntem türü seçin",
+        "invalidDigits": "Kartınızın son 4 rakamını girin",
+        "addFailed": "Yöntem eklenirken hata",
+        "updateFailed": "Yöntem güncellenirken hata",
+        "deleteFailed": "Yöntem silinirken hata"
+      }
+    },
     "country": "İkamet ülkesi (vergi)",
     "minimumPayout": "Minimum ödeme belirle",
+    "payoutAccountModal": {
+      "currentConfiguration": "Mevcut Yapılandırma",
+      "country": "Ülke",
+      "changeConfiguration": "Yapılandırmayı değiştir",
+      "selectCountry": "Ülkenizi seçin",
+      "selectPaymentMethod": "Ödeme yöntemini seçin",
+      "localMethodsAvailable": "(Yerel yöntemler mevcut)",
+      "cryptoOnly": "(Sadece kripto paralar)",
+      "accountDetails": "Hesap detayları",
+      "walletAddress": "TRC-20 cüzdan adresi",
+      "accountHolderName": "Hesap sahibi adı",
+      "accountHolderPlaceholder": "Hesap sahibinin tam adı",
+      "verifyWalletWarning": "⚠️ Adresin doğru olduğunu doğrulayın. İşlemler geri alınamaz.",
+      "sendVerificationCode": "Doğrulama kodu gönder",
+      "sendingCode": "Kod gönderiliyor...",
+      "verified": "Doğrulandı",
+      "pendingVerification": "Doğrulama bekleniyor",
+      "confirmPaymentMethod": "Ödeme yönteminizi onaylayın",
+      "enterVerificationCode": "Ödeme yöntemi değişikliğini onaylamak için e-postanıza gönderilen 6 haneli kodu girin",
+      "codeValidFor": "Kod geçerli süre:",
+      "verificationCode": "Doğrulama kodu",
+      "back": "Geri",
+      "verifyCode": "Kodu doğrula",
+      "verifying": "Doğrulanıyor...",
+      "resendCode": "Kodu yeniden gönder",
+      "paymentMethodUpdated": "Ödeme yöntemi güncellendi!",
+      "paymentMethodUpdatedDescription": "Ödeme yönteminiz başarıyla doğrulandı ve güncellendi. Artık ödeme alabilirsiniz.",
+      "continue": "Devam et",
+      "close": "Kapat",
+      "success": {
+        "codeSent": "Doğrulama kodu e-postanıza gönderildi",
+        "verified": "Ödeme yöntemi başarıyla doğrulandı!"
+      },
+      "errors": {
+        "selectCountry": "Lütfen ülkenizi seçin",
+        "selectPaymentMethod": "Lütfen bir ödeme yöntemi seçin",
+        "enterAccountDetails": "Lütfen tüm alanları doldurun",
+        "enterAccountHolderName": "Lütfen hesap sahibi adını girin",
+        "enterVerificationCode": "Lütfen 6 haneli bir kod girin",
+        "invalidCode": "Geçersiz doğrulama kodu",
+        "codeExpired": "Kodun süresi doldu",
+        "codeExpiredMessage": "Doğrulama kodunun süresi doldu",
+        "connectionError": "Bağlantı hatası"
+      }
+    },
+    "minimumPayoutModal": {
+      "title": "Minimum Ödeme Yapılandır",
+      "description": "Ödemelerinizi almak için minimum tutarı belirleyin. Kazançlar bu tutara ulaşana kadar birikecektir.",
+      "currentConfiguration": "Mevcut Yapılandırma",
+      "selectNewMinimum": "Yeni minimum tutarı seçin:",
+      "recommended": "Önerilen",
+      "customPayout": "Özel ödeme",
+      "newAmountSelected": "Yeni tutar seçildi",
+      "newAmountDescription": "İle",
+      "asMinimum": "minimum olarak, birikmiş kazançlarınız bu tutara ulaştığında sadece ödeme alacaksınız.",
+      "moreEarningsNeeded": "Bu, ödeme almadan önce daha fazla kazanç gerektireceği anlamına gelir.",
+      "moreFrequentPayments": "Bu, daha sık ödeme alacağınız anlamına gelir.",
+      "cancel": "İptal",
+      "updateMinimum": "Minimumu Güncelle",
+      "updating": "Güncelleniyor...",
+      "loadingConfiguration": "Yapılandırma yükleniyor...",
+      "payoutOptions": {
+        "basic": "Temel minimum ödeme",
+        "recommended": "Önerilen minimum ödeme",
+        "medium": "Orta minimum ödeme",
+        "high": "Yüksek minimum ödeme",
+        "maximum": "Maksimum minimum ödeme"
+      },
+      "payoutInfo": "Bu tutara ulaştığınızda sadece ödeme alacaksınız",
+      "errors": {
+        "loadingError": "Mevcut yapılandırma yüklenirken hata",
+        "selectDifferentAmount": "Mevcut olandan farklı bir tutar seçin",
+        "updateError": "Minimum ödeme güncellenirken hata",
+        "connectionError": "Bağlantı hatası"
+      },
+      "success": {
+        "updated": "Minimum ödeme güncellendi"
+      }
+    },
     "others": "Diğer",
     "support": "Destek veya yardım",
     "terms": "Şartlar ve koşullar",
     "report": "Bir sorunu bildir",
-    "modalInstruction": "Burada {{item}} için ilgili formu veya içeriği uygulayabilirsiniz."
+    "modalInstruction": "Burada {{item}} için ilgili formu veya içeriği uygulayabilirsiniz.",
+    "modals": {
+      "transactionHistory": {
+        "title": "İşlem Geçmişi",
+        "description": "Tüm satın alımlarınızı, kredi yüklemelerinizi ve tamamlanan işlemlerinizi inceleyin.",
+        "loading": "Geçmiş yükleniyor...",
+        "retry": "Yeniden dene",
+        "searchPlaceholder": "ID, açıklama ile ara...",
+        "empty": "Kayıtlı işlem yok",
+        "emptyDesc": "İşlemleriniz burada görünecek",
+        "noResults": "Sonuç bulunamadı",
+        "noResultsDesc": "Arama filtrelerini ayarlamayı deneyin",
+        "filters": {
+          "all": "Tümü",
+          "purchase": "Satın alımlar",
+          "consumption": "Tüketim",
+          "gift": "Hediyeler"
+        },
+        "types": {
+          "purchase": "Satın alma",
+          "coinPurchase": "Jeton Satın Alma",
+          "coinGift": "Jeton Hediyesi",
+          "consumption": "Tüketim",
+          "giftSent": "Gönderilen hediye",
+          "giftReceived": "Alınan hediye"
+        },
+        "status": {
+          "completed": "Tamamlandı",
+          "pending": "Beklemede",
+          "failed": "Başarısız",
+          "cancelled": "İptal edildi"
+        },
+        "details": {
+          "title": "İşlem Detayları",
+          "description": "Açıklama",
+          "type": "Tür",
+          "amount": "Tutar",
+          "status": "Durum",
+          "date": "Tarih"
+        },
+        "errors": {
+          "title": "Geçmiş yüklenirken hata",
+          "loadFailed": "Geçmiş alınırken hata"
+        }
+      },
+      "notifications": {
+        "title": "Bildirim Ayarları",
+        "description": "Hangi bildirimleri almak istediğinizi özelleştirin",
+        "loading": "Tercihler yükleniyor...",
+        "saving": "Kaydediliyor...",
+        "save": "Tercihleri Kaydet",
+        "success": "Tercihler başarıyla kaydedildi",
+        "options": {
+          "messages": {
+            "label": "Mesaj Bildirimleri",
+            "description": "Yeni mesaj aldığınızda bildirim alın"
+          },
+          "calls": {
+            "label": "Arama Bildirimleri",
+            "description": "Arama veya video sohbet istekleri aldığınızda bildirim alın"
+          },
+          "gifts": {
+            "label": "Hediye Bildirimleri",
+            "description": "Hediye aldığınızda bildirim alın"
+          },
+          "favorites": {
+            "label": "Favori Modeller Çevrimiçi",
+            "description": "Favori modelleriniz çevrimiçi olduğunda bildirim alın"
+          }
+        },
+        "errors": {
+          "saveFailed": "Tercihler kaydedilirken hata"
+        }
+      },
+      "notificationsFull": {
+        "title": "Bildirim Ayarları",
+        "description": "Hangi bildirimleri almak istediğinizi özelleştirin: yeni mesajlar, çevrimiçi modeller, özel teklifler vb."
+      },
+      "privacy": {
+        "title": "Gizlilik Ayarları",
+        "description": "Kimlerin sizinle iletişim kurabileceğini kontrol edin ve engellemelerinizi yönetin",
+        "loading": "Gizlilik bilgileri yükleniyor...",
+        "confirmUnblock": "Bu kullanıcının engelini kaldırmak istediğinizden emin misiniz?",
+        "blockedUsers": {
+          "title": "Engellenen Kullanıcılar",
+          "empty": "Hiçbir kullanıcıyı engellemediniz",
+          "emptyDesc": "Engellediğiniz kullanıcılar size mesaj gönderemez veya sizinle iletişim kuramaz",
+          "blockedOn": "Engellendi",
+          "reason": "Sebep",
+          "unblock": "Engeli kaldır",
+          "unblocking": "Engel kaldırılıyor..."
+        },
+        "blockedByUsers": {
+          "title": "Sizi Engellemiş Kullanıcılar",
+          "empty": "Kimse sizi engellemedi",
+          "blockedOn": "Sizi engelledi",
+          "cannotContact": "Bu kullanıcıyla iletişim kuramazsınız"
+        },
+        "info": {
+          "title": "Gizlilik Bilgileri",
+          "point1": "Engellenen kullanıcılar size mesaj gönderemez veya sizi arayamaz",
+          "point2": "Kullanıcıların engelini istediğiniz zaman kaldırabilirsiniz",
+          "point3": "Biri sizi engellerse, onunla iletişim kuramazsınız",
+          "point4": "Engellemeler özeldir ve diğer kullanıcı bilgilendirilmez"
+        },
+        "errors": {
+          "loadFailed": "Engelleme durumu alınırken hata",
+          "unblockFailed": "Kullanıcı engeli kaldırılırken hata"
+        }
+      },
+      "privacyFull": {
+        "title": "Gizlilik Ayarları",
+        "description": "Kimlerin sizi çevrimiçi görebileceğini, özel mesaj gönderebileceğini ve profilinizi görüntüleyebileceğini kontrol edin."
+      },
+      "favorites": {
+        "title": "Favori Modeller",
+        "description": "Favori modeller listenizi yönetin"
+      },
+      "favoritesFull": {
+        "title": "Favori Modeller",
+        "description": "Favori modeller listenizi yönetin ve çevrimiçi olduklarında bildirim alın."
+      },
+      "paymentMethods": {
+        "title": "Ödeme yöntemi ekle veya kaldır",
+        "description": "Platformda alışveriş yapmak için ödeme yöntemlerinizi yönetin."
+      },
+      "support": {
+        "title": "Destek veya yardım",
+        "description": "Sorular, teknik sorunlar veya hesabınızla ilgili yardım için support@ligando.online adresine yazın ve ekibimiz en kısa sürede size yanıt verecektir.",
+        "contactButton": "E-posta ile destekle iletişime geç"
+      },
+      "report": {
+        "title": "Bir sorunu bildir",
+        "description": "Hangi sorunu yaşadığınızı bize söyleyin. Bu bilgileri platformu iyileştirmek için kullanacağız.",
+        "problemType": "Sorun türü",
+        "problemTechnical": "Teknik sorun",
+        "problemPayment": "Ödemeler / jetonlarla ilgili sorun",
+        "problemInappropriate": "Uygunsuz davranış",
+        "problemOther": "Diğer",
+        "describeProblem": "Ne olduğunu açıklayın",
+        "describePlaceholder": "Mümkün olduğunca fazla detay ekleyin: ne yapıyordunuz, hangi ekranda, herhangi bir hata mesajı gördünüz mü, yaklaşık saat vb.",
+        "sendReport": "E-posta ile rapor gönder"
+      },
+      "close": "Kapat"
+    },
+    "googlePasswordSetup": {
+      "title": "Şifre Belirle",
+      "description": "Google ile kayıt olduğunuz için bir şifreniz yok. Size e-posta ile bir bağlantı göndereceğiz, böylece bir şifre belirleyebilirsiniz.",
+      "info": "Şifrenizi belirledikten sonra hem Google ile hem de e-posta ve şifrenizle giriş yapabileceksiniz.",
+      "sendEmailButton": "E-posta ile bağlantı gönder",
+      "emailSent": "Bağlantı gönderildi",
+      "emailSentDescription": "{{email}} adresine bir bağlantı gönderildi. Şifrenizi belirlemek için e-postadaki bağlantıya tıklayın.",
+      "emailSentTip": "Bağlantı 24 saat içinde sona erecek. E-postayı almazsanız, spam klasörünüzü kontrol edin.",
+      "sending": "Gönderiliyor..."
+    },
+    "changePasswordModal": {
+      "title": "Şifre Değiştir",
+      "verifyIdentity": "Şifrenizi değiştirmek için kimliğinizi doğrulamamız gerekiyor.",
+      "currentPassword": "Mevcut şifre",
+      "newPassword": "Yeni şifre (min. 8 karakter)",
+      "confirmPassword": "Yeni şifreyi onayla",
+      "codeSent": "Kod gönderildi",
+      "codeSentDescription": "E-postanıza 6 haneli bir kod gönderdik.",
+      "codePlaceholder": "6 haneli kod",
+      "resendCode": "Kodu almadınız mı? Yeniden gönder",
+      "successTitle": "Şifre değiştirildi!",
+      "successMessage": "Şifreniz başarıyla güncellendi.",
+      "autoClose": "Bu modal otomatik olarak kapanacak...",
+      "processing": "İşleniyor...",
+      "sendCode": "Kod gönder",
+      "changePassword": "Şifre değiştir",
+      "cancel": "İptal",
+      "errors": {
+        "enterCurrentPassword": "Mevcut şifrenizi girin",
+        "passwordMinLength": "Yeni şifre en az 8 karakter olmalıdır",
+        "passwordsDontMatch": "Yeni şifreler eşleşmiyor",
+        "enterCode": "6 haneli kodu girin",
+        "codeSent": "Kod e-postanıza gönderildi",
+        "errorRequestingCode": "Kod istenirken hata",
+        "connectionError": "Bağlantı hatası",
+        "passwordChanged": "🎉 Şifre başarıyla değiştirildi!",
+        "errorChangingPassword": "Şifre değiştirilirken hata"
+      }
+    },
+    "logoutAllModal": {
+      "title": "Tüm Oturumları Kapat",
+      "whatWillHappen": "Ne olacak?",
+      "willCloseAll": "Tüm aktif oturumlarınız kapatılacak",
+      "willNeedLogin": "Diğer cihazlarda tekrar giriş yapmanız gerekecek",
+      "currentStays": "Mevcut oturumunuz aktif kalacak",
+      "sendCodeDescription": "Devam etmek için e-postanıza bir doğrulama kodu göndereceğiz.",
+      "codeSent": "Kod gönderildi",
+      "codeSentDescription": "E-postanıza bir doğrulama kodu gönderdik.",
+      "codePlaceholder": "6 haneli kod",
+      "resendCode": "Kodu almadınız mı? Yeniden gönder",
+      "successTitle": "Oturumlar kapatıldı!",
+      "successMessage": "Tüm oturumlarınız başarıyla kapatıldı.",
+      "autoClose": "Bu modal otomatik olarak kapanacak...",
+      "processing": "İşleniyor...",
+      "sendCode": "Kod gönder",
+      "closeSessions": "Oturumları kapat",
+      "cancel": "İptal",
+      "errors": {
+        "enterCode": "6 haneli kodu girin",
+        "codeSent": "Kod e-postanıza gönderildi",
+        "errorRequestingCode": "Kod istenirken hata",
+        "connectionError": "Bağlantı hatası",
+        "sessionsClosed": "🎉 Tüm oturumlar başarıyla kapatıldı!",
+        "errorClosingSessions": "Oturumlar kapatılırken hata"
+      }
+    },
+    "deleteAccountModal": {
+      "title": "Hesabı Sil",
+      "warning": "UYARI",
+      "warningPermanent": "Bu işlem KALICI ve GERİ ALINAMAZ",
+      "warningDeleteData": "Tüm verileriniz ve konuşmalarınız silinecek",
+      "warningNoRecovery": "Hesabınızı kurtaramayacaksınız",
+      "warningLoseAccess": "Tüm işlevlere erişimi kaybedeceksiniz",
+      "confirmPassword": "Devam etmek için şifrenizi onaylayın:",
+      "currentPassword": "Mevcut şifreniz",
+      "finalVerification": "Son doğrulama",
+      "finalVerificationDescription": "Size bir doğrulama kodu gönderdik. Bu iptal etmek için son şansınız.",
+      "confirmText": "Onaylamak için \"SİL\" yazın:",
+      "confirmPlaceholder": "SİL",
+      "codePlaceholder": "6 haneli kod",
+      "resendCode": "Kodu almadınız mı? Yeniden gönder",
+      "successTitle": "Hesap silindi",
+      "successMessage": "Hesabınız kalıcı olarak silindi.",
+      "redirecting": "Ana sayfaya yönlendiriliyor...",
+      "processing": "İşleniyor...",
+      "sendCode": "Kod gönder",
+      "deleteAccount": "HESABI SİL",
+      "cancel": "İptal",
+      "errors": {
+        "enterPassword": "Şifrenizi girin",
+        "enterCode": "6 haneli kodu girin",
+        "mustWriteDelete": "Onaylamak için \"SİL\" yazmalısınız",
+        "codeSent": "Kod e-postanıza gönderildi",
+        "errorRequestingCode": "Kod istenirken hata",
+        "connectionError": "Bağlantı hatası",
+        "accountDeleted": "🗑️ Hesap başarıyla silindi. Yönlendiriliyor...",
+        "errorDeletingAccount": "Hesap silinirken hata",
+        "sessionExpired": "Oturum süresi doldu. Lütfen tekrar giriş yapın."
+      }
+    },
+    "setupPassword": {
+      "title": "Şifre Belirle",
+      "description": "Hesabınız için bir şifre belirleyin. Hem Google ile hem de e-posta ve şifrenizle giriş yapabileceksiniz.",
+      "newPassword": "Yeni Şifre",
+      "newPasswordPlaceholder": "Yeni şifrenizi girin",
+      "confirmPassword": "Şifreyi Onayla",
+      "confirmPasswordPlaceholder": "Yeni şifrenizi onaylayın",
+      "setupButton": "Şifre Belirle",
+      "settingUp": "Ayarlanıyor...",
+      "successTitle": "Şifre Belirlendi!",
+      "successMessage": "Şifreniz başarıyla belirlendi. Artık e-posta ve şifrenizle giriş yapabilir veya Google'ı kullanmaya devam edebilirsiniz.",
+      "redirecting": "Girişe yönlendiriliyor...",
+      "invalidLink": "Geçersiz Bağlantı",
+      "invalidLinkDescription": "Şifre belirleme bağlantısı geçersiz veya eksik.",
+      "passwordsMismatch": "Şifreler eşleşmiyor",
+      "passwordTooShort": "Şifre en az 8 karakter olmalıdır",
+      "error": "Şifre belirleme hatası",
+      "connectionError": "Bağlantı hatası. Lütfen tekrar deneyin.",
+      "backToHome": "Ana Sayfaya Dön",
+      "requirementsTitle": "Güvenlik gereksinimleri:",
+      "minimumCharacters": "En az 8 karakter",
+      "canUseGoogle": "Giriş yapmak için Google'ı kullanmaya devam edebilirsiniz",
+      "canUseEmail": "Veya e-posta ve şifrenizi kullanın"
+    }
   },
   "subirHistoria": {
     "titulo": "Hikavenizi yükleyin veya kaydedin",
+    "tituloNoDisponible": "Hikaye mevcut değil",
     "grabar": "Hikaye kaydet",
+    "noDisponible": "Mevcut değil",
     "subir": "Cihazınızdan yükle",
     "publicar": "Hikaye yayınla",
+    "subiendo": "Yükleniyor...",
+    "verHistoria": "Hikayeyi Görüntüle",
+    "eliminar": "Sil",
+    "eliminarYCrearNueva": "Sil ve Yeni Oluştur",
+    "seleccionaCamara": "Kameranızı seçin",
+    "consejo": "İpucu",
+    "informacion": "Bilgi",
+    "consejoAprobacion": "Hikayeler yayınlanmadan önce onaydan geçer. Videolar 15 saniyeden uzun olamaz.",
+    "informacionRestriccion": "Aynı anda yalnızca bir aktif hikayeniz olabilir. Her hikaye onayından itibaren 24 saat sürer.",
     "alerta_grabacion": "Kayıt işlevi geliştirme aşamasında veya video yakalamak için getUserMedia entegre edin."
   },
   "esperandoVerificacion": {
@@ -548,7 +1006,19 @@
     "sessionEnded": "Oturum sona erdi!",
     "connecting": "Bağlanıyor...",
     "redirectingIn": "{{seconds}} saniye içinde yönlendiriliyor...",
-    "dontWorry": "Endişelenme, sizi başka bir erkekle bağlayacağız"
+    "dontWorry": "Endişelenme, sizi başka bir erkekle bağlayacağız",
+    "chat": {
+      "title": "Sohbet",
+      "notReady": "Sohbet henüz hazır değil. Tekrar deneyin.",
+      "startConversation": "İlginç bir sohbet başlatın ve sohbetin tadını çıkarın",
+      "chatWith": "{{name}} ile sohbet edin",
+      "waitingModel": "Model bekleniyor...",
+      "modelWillConnect": "Bir model yakında sizinle sohbet etmek için bağlanacak"
+    },
+    "gifts": "Hediyeler",
+    "minutes": "Dakika",
+    "connected": "Bağlı",
+    "connectionEstablished": "Video araması başarıyla kuruldu"
   },
   "time": {
     "callDuration": "Süre"
@@ -676,10 +1146,15 @@
   "earnings": {
     "title": "Ödeme Sistemi",
     "subtitle": "Kazançlar ve haftalık ödemeler",
+    "unifiedPaymentSystem": "Birleşik Ödeme Sistemi",
+    "earningsByTimeAndGifts": "Zaman ve hediyelerden kazançlar",
     "loading": "Yükleniyor...",
     "error": "Hata",
     "retry": "Tekrar dene",
     "tabs": {
+      "all": "Tümü",
+      "sessions": "Oturumlar",
+      "gifts": "Hediyeler",
       "thisWeek": "Bu Hafta",
       "pending": "Beklemede",
       "paid": "Ödendi"
@@ -694,6 +1169,14 @@
       "chatSessions": "Sohbet oturumları",
       "giftsReceived": "Alınan hediyeler",
       "sessions": "oturum",
+      "regalos": "hediyeler",
+      "time": "Zaman",
+      "thisWeek": "Bu Hafta",
+      "unprocessed": "İşlenmemiş",
+      "received": "Alındı",
+      "mixed": "Karışık",
+      "timeOnly": "Sadece Zaman",
+      "giftOnly": "Sadece Hediyeler",
       "totalHistoric": "Toplam Tarihsel Kazanç",
       "lastEarning": "Son Kazanç",
       "none": "Hiçbiri",
@@ -1148,25 +1631,54 @@
       "invalidRecipientId": "Hata: Geçersiz alıcı ID'si", 
       "insufficientBalance": "Yetersiz jeton. {{required}} gerekli ama {{current}} var.",
       "processingError": "Hediye işlenirken hata"
-    },"disconnect": {
-      "modelSkippedYou": "Model bir sonrakine geçti",
-      "searchedOtherClient": "Başka bir müşteri aradı",
-      "modelDisconnected": "Model bağlantıyı kesti",
-      "endedVideoCall": "Görüntülü aramayı sonlandırdı",
-      "modelLeft": "Model odayı terk etti",
-      "leftSession": "Oturumdan ayrıldı",
-      "balanceExhausted": "Bakiye tükendi",
-      "ranOutOfCoins": "Jetolarınız bitti",
-      "sessionEnded": "Oturum sona erdi",
-      "connectionLost": "Bağlantı kesildi",
-      "details": "Detaylar",
-      "dontWorryClient": "Merak etme!",
-      "connectingWithOther": "Başka bir modelle bağlantı kuruluyor...",
-      "inSeconds": "{{seconds}} saniye içinde",
-      "connecting": "Bağlanıyor...",
-      "keepSufficientCoins": "Yeterli jeton bulundur",
-      "beRespectful": "Her zaman saygılı ol",
-      "eachConnectionUnique": "Her bağlantı benzersizdir"
-    }
+    },
+  "disconnect": {
+    "modelSkippedYou": "Model bir sonrakine geçti",
+    "searchedOtherClient": "Başka bir müşteri aradı",
+    "modelDisconnected": "Model bağlantıyı kesti",
+    "endedVideoCall": "Görüntülü aramayı sonlandırdı",
+    "modelLeft": "Model odayı terk etti",
+    "leftSession": "Oturumdan ayrıldı",
+    "balanceExhausted": "Bakiye tükendi",
+    "ranOutOfCoins": "Jetolarınız bitti",
+    "sessionEnded": "Oturum sona erdi",
+    "connectionLost": "Bağlantı kesildi",
+    "details": "Detaylar",
+    "dontWorryClient": "Merak etme!",
+    "connectingWithOther": "Başka bir modelle bağlantı kuruluyor...",
+    "inSeconds": "{{seconds}} saniye içinde",
+    "connecting": "Bağlanıyor...",
+    "keepSufficientCoins": "Yeterli jeton bulundur",
+    "beRespectful": "Her zaman saygılı ol",
+    "eachConnectionUnique": "Her bağlantı benzersizdir"
+  },
+  "sessionClosed": {
+    "title": "Oturum kapatıldı",
+    "message": "Oturumunuz kapatıldı çünkü hesap başka bir cihazda açıldı.",
+    "continueSession": "Mevcut oturumla devam et",
+    "reclaiming": "Geri alınıyor...",
+    "successTitle": "Oturum geri alındı",
+    "successMessage": "Oturumunuz başarıyla geri alındı. Yeniden yükleniyor...",
+    "noToken": "Token mevcut değil",
+    "invalidResponse": "Geçersiz sunucu yanıtı",
+    "reclaimError": "Oturum geri alınırken hata",
+    "networkError": "Bağlantı hatası. Lütfen tekrar deneyin."
+  },
+  "roulette": {
+    "titulo": "Video Ruleti",
+    "estado": "Bağlanmaya hazır",
+    "camera_label": "Kamera",
+    "mic_label": "Mikrofon",
+    "start_button": "Aramayı Başlat",
+    "random_user_notice": "Rastgele bir kullanıcıyla bağlanacaksınız",
+    "default_camera": "Kamera {{number}}",
+    "default_microphone": "Mikrofon {{number}}"
+  },
+  "mirror": {
+    "label": "Ayna modu",
+    "enable": "Aynayı etkinleştir",
+    "disable": "Aynayı devre dışı bırak",
+    "active": "Ayna aktif",
+    "description": "Görüntümü aynada olduğu gibi gör"
   }
-  
+}

@@ -7,7 +7,6 @@ try {
   const translationModule = require('../contexts/GlobalTranslationContext');
   useGlobalTranslation = translationModule.useGlobalTranslation;
 } catch (e) {
-  console.warn("Global translation context not found, using fallback");
   useGlobalTranslation = () => ({
     translateGlobalText: null,
     isEnabled: false,
@@ -243,7 +242,6 @@ export const useTranslation = (userId = null) => {
             result = await translateWithFallback(originalText, currentLanguage);
           }
         } catch (error) {
-          console.warn('❌ [TRANSLATION] Error con translateGlobalText:', error);
           result = await translateWithFallback(originalText, currentLanguage);
         }
       } else {
@@ -283,7 +281,6 @@ export const useTranslation = (userId = null) => {
       try {
         changeGlobalLanguage(languageCode);
               } catch (error) {
-        console.warn('❌ [TRANSLATION] No se pudo cambiar idioma en contexto global:', error);
       }
     }
     
@@ -311,7 +308,6 @@ export const useTranslation = (userId = null) => {
         try {
           changeGlobalLanguage(finalLanguage);
         } catch (error) {
-          console.warn('❌ [TRANSLATION] Error inicial con contexto global:', error);
         }
       }
     }

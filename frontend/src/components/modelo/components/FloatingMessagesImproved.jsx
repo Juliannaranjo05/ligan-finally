@@ -662,16 +662,31 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         
         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          imageUrl = imagePath;
+          imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
         } else {
           const cleanPath = imagePath.replace(/\\/g, '');
+          let finalUrl;
+          let fileName;
           if (cleanPath.startsWith('storage/')) {
-            imageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
           } else if (cleanPath.startsWith('/')) {
-            imageUrl = `${cleanBaseUrl}${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
           } else {
-            imageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            fileName = cleanPath;
+            const encodedFileName = encodeURIComponent(cleanPath);
+            finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
+          // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+          imageUrl = `${finalUrl}?v=${version}`;
         }
       }
       
@@ -691,6 +706,9 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
                   src={imageUrl}
                   alt={finalGiftData.gift_name || 'Regalo'}
                   className="w-10 h-10 object-contain"
+                  loading="lazy"
+                  decoding="async"
+                  key={`gift-floating-${finalGiftData.gift_name}-${imageUrl}`}
                   onError={(e) => {
                     e.target.style.display = 'none';
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');

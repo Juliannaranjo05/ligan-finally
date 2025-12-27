@@ -1,3 +1,6 @@
+import { createLogger } from "./logger";
+
+const logger = createLogger("API");
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const apiCall = async (endpoint, options = {}) => {
@@ -24,7 +27,7 @@ export const apiCall = async (endpoint, options = {}) => {
     
     return await response.json();
   } catch (error) {
-    console.error(`❌ API Error ${endpoint}:`, error);
+    logger.error(`API Error ${endpoint}`, error);
     throw error;
   }
 };

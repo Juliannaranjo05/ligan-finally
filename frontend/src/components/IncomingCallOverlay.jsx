@@ -15,6 +15,32 @@ const IncomingCallOverlay = ({
     return name ? name.charAt(0).toUpperCase() : '?';
   };
 
+  // 🔥 RESETEAR ESTADO CUANDO LA LLAMADA DESAPARECE O CAMBIA
+  useEffect(() => {
+    if (!isVisible || !callData) {
+      setIsResponding(false);
+      setCallDuration(0);
+      return;
+    }
+    
+    // Si la llamada cambia (nueva llamada), resetear el estado de respuesta
+    setIsResponding(false);
+  }, [isVisible, callData?.id]);
+  
+  // 🔥 TIMEOUT DE SEGURIDAD: Resetear estado si se queda atascado después de 10 segundos
+  useEffect(() => {
+    if (!isVisible || !isResponding) return;
+    
+    const safetyTimeout = setTimeout(() => {
+      console.warn('⚠️ [IncomingCall] Estado isResponding atascado, reseteando...');
+      setIsResponding(false);
+    }, 10000);
+    
+    return () => {
+      clearTimeout(safetyTimeout);
+    };
+  }, [isVisible, isResponding]);
+
   // Timer para duración de llamada entrante
   useEffect(() => {
     let interval;
@@ -43,8 +69,15 @@ const IncomingCallOverlay = ({
         
     try {
       await onAnswer();
+      // Si la respuesta es exitosa, el componente se ocultará automáticamente
+      // pero por si acaso, resetear después de un tiempo
+      setTimeout(() => {
+        setIsResponding(false);
+      }, 2000);
     } catch (error) {
-            setIsResponding(false);
+      console.error('Error aceptando llamada:', error);
+      // Resetear estado en caso de error
+      setIsResponding(false);
     }
   };
 
@@ -56,8 +89,14 @@ const IncomingCallOverlay = ({
         
     try {
       await onDecline();
+      // Si el rechazo es exitoso, el componente se ocultará automáticamente
+      // pero por si acaso, resetear después de un tiempo
+      setTimeout(() => {
+        setIsResponding(false);
+      }, 2000);
     } catch (error) {
-          } finally {
+      console.error('Error rechazando llamada:', error);
+      // Resetear estado en caso de error
       setIsResponding(false);
     }
   };
@@ -66,6 +105,12 @@ const IncomingCallOverlay = ({
   const formatTime = (seconds) => {
     return `${seconds}s`;
   };
+
+  // 🔥 DEBUG: Ver qué datos estamos recibiendo (DEBE estar antes del return condicional)
+  useEffect(() => {
+    if (isVisible && callData) {
+    }
+  }, [isVisible, callData]);
 
   if (!isVisible || !callData) return null;
 
@@ -88,28 +133,31 @@ const IncomingCallOverlay = ({
         </div>
 
         {/* Avatar del caller */}
-        <div className="relative mb-6">
-          <div className="w-32 h-32 mx-auto rounded-full flex items-center justify-center text-4xl font-bold bg-gradient-to-br from-[#ff007a] to-[#cc0062] text-white shadow-2xl">
-            {callData.caller?.avatar ? (
-              <img 
-                src={callData.caller.avatar} 
-                alt={callData.caller.name} 
-                className="w-full h-full rounded-full object-cover" 
-              />
-            ) : (
-              getInitial(callData.caller?.name)
-            )}
+        <div className="relative mb-6 flex items-center justify-center">
+          {callData.caller?.avatar_url ? (
+            <img
+              src={callData.caller.avatar_url}
+              alt={callData.caller?.display_name || callData.caller?.name}
+              className="w-32 h-32 rounded-full object-cover border-4 border-[#ff007a] shadow-2xl relative z-10"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextElementSibling.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div className={`w-32 h-32 rounded-full flex items-center justify-center text-4xl font-bold bg-gradient-to-br from-[#ff007a] to-[#cc0062] text-white shadow-2xl relative z-10 ${callData.caller?.avatar_url ? 'hidden' : ''}`}>
+            {getInitial(callData.caller?.display_name || callData.caller?.name)}
           </div>
           
           {/* Anillo de animación */}
-          <div className="absolute inset-0 rounded-full border-4 border-[#ff007a]/50 animate-ping"></div>
-          <div className="absolute inset-2 rounded-full border-2 border-[#ff007a]/30 animate-pulse"></div>
+          <div className="absolute w-32 h-32 rounded-full border-4 border-[#ff007a]/50 animate-ping"></div>
+          <div className="absolute w-28 h-28 rounded-full border-2 border-[#ff007a]/30 animate-pulse"></div>
         </div>
         
         {/* Nombre del caller */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
-            {callData.caller?.name || 'Usuario desconocido'}
+            {callData.caller?.display_name || callData.caller?.name || 'Usuario desconocido'}
           </h2>
           
           {/* Duración de la llamada */}

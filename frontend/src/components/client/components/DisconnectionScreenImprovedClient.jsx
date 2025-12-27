@@ -127,7 +127,9 @@ const DisconnectionScreenImprovedClient = ({
                 </h3>
               </div>
               <p className="text-[#ff007a] text-sm">
-                Conectando con otra modelo...
+                {disconnectionType === 'next' 
+                  ? (t?.('disconnect.connectingWithOther') || 'Conectando con otra modelo...')
+                  : (t?.('disconnect.returningHome') || 'Regresando al inicio...')}
               </p>
             </div>
             

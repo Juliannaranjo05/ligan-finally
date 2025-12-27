@@ -60,7 +60,6 @@ export default function CoinsBalanceWidget({
         throw new Error(data.error || 'Error desconocido');
       }
     } catch (error) {
-      console.error('Error obteniendo balance:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -86,7 +85,6 @@ export default function CoinsBalanceWidget({
         }
       }
     } catch (error) {
-      console.error('Error obteniendo historial:', error);
     }
   };
 

@@ -48,7 +48,10 @@ import RateLimitWait from "./components/RateLimitWait";
 import { SearchingProvider } from './contexts/SearchingContext.jsx';
 import { GlobalTranslationProvider } from './contexts/GlobalTranslationContext.jsx';
 import { NotificationProvider } from './contexts/NotificationContext.jsx';
+import { GlobalCallProvider } from './contexts/GlobalCallContext.jsx';
 import GoogleCallback from './components/auth/GoogleCallback.jsx';
+import ProfileChatRedirect from './components/ProfileChatRedirect.jsx';
+import VideoChatClient from "./components/client/videochatclient";
 
 
 function App() {
@@ -61,10 +64,11 @@ function App() {
       <RateLimitProvider>
         <SearchingProvider>
           <GlobalTranslationProvider>
-            <NotificationProvider>
+            <GlobalCallProvider>
+              <NotificationProvider>
 
-            <ToastContainer />
-            <VerificarSesionActiva /> 
+              <ToastContainer />
+              <VerificarSesionActiva /> 
 
               
             <Routes>
@@ -75,6 +79,7 @@ function App() {
               <Route path="/rate-limit-wait" element={<RateLimitWait />} />
               <Route path="/auth/google/callback" element={<GoogleCallback />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/chat/:slug" element={<ProfileChatRedirect />} />
 
 
 
@@ -257,7 +262,7 @@ function App() {
                       path="/videochat" 
                       element={
                         <ProtectedPage>
-                          <Videochat />
+                          <VideoChatClient />
                         </ProtectedPage>
                       } 
                     />
@@ -303,8 +308,8 @@ function App() {
                 </RouteGuard>
               } />
             </Routes>
-      </NotificationProvider>
-
+              </NotificationProvider>
+            </GlobalCallProvider>
           </GlobalTranslationProvider>
         </SearchingProvider>
       </RateLimitProvider>

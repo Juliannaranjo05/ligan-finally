@@ -54,7 +54,6 @@ const translateText = async (text, targetLang = 'es') => {
     
     return null;
   } catch (error) {
-    console.warn('Error en traducción:', error);
     return null;
   }
 };
@@ -117,12 +116,10 @@ export const GlobalTranslationProvider = ({ children }) => {
     
     // Buscar en cache primero
     if (globalTranslations[cacheKey]) {
-      console.log('🔄 Usando traducción del cache global:', globalTranslations[cacheKey].translated);
       return globalTranslations[cacheKey].translated;
     }
 
     try {
-      console.log('🌍 Traduciendo globalmente:', text, 'a', globalSettings.targetLanguage);
       
       const result = await translateText(cleanText, globalSettings.targetLanguage);
       
@@ -142,20 +139,17 @@ export const GlobalTranslationProvider = ({ children }) => {
           [cacheKey]: translationData
         }));
 
-        console.log('✅ Traducción guardada globalmente:', result.translated);
         return result.translated;
       }
       
       return text;
     } catch (error) {
-      console.warn('❌ Error en traducción global:', error);
       return text;
     }
   };
 
   // 🎛️ CAMBIAR IDIOMA GLOBALMENTE
   const changeGlobalLanguage = async (newLanguage) => {
-    console.log('🔄 Cambiando idioma global a:', newLanguage);
     
     const newSettings = {
       ...globalSettings,
@@ -178,7 +172,6 @@ export const GlobalTranslationProvider = ({ children }) => {
   const clearGlobalCache = () => {
     setGlobalTranslations({});
     localStorage.removeItem(STORAGE_KEYS.TRANSLATIONS);
-    console.log('🧹 Cache global limpiado');
   };
 
   // 📊 OBTENER ESTADÍSTICAS
@@ -267,7 +260,6 @@ export const GlobalTranslatedText = ({
         const result = await translateGlobalText(children, messageId);
         setTranslatedText(result);
       } catch (error) {
-        console.warn('Error traduciendo texto:', error);
         setTranslatedText(fallback || children);
       } finally {
         setIsTranslating(false);

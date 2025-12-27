@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, DollarSign, Clock, User, Calendar, ChevronDown, ChevronRight, ChevronLeft, CreditCard, CheckCircle, Loader2, AlertCircle, Gift, Video, MessageSquare } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 const WeeklyEarnings = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const [weeklyData, setWeeklyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedDays, setExpandedDays] = useState({});
@@ -47,7 +50,6 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('📊 [UNIFICADO] Datos recibidos:', data);
         setWeeklyData(data.current_week);
         
         const initializePages = (earningsList) => {
@@ -63,10 +65,30 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
           setDayPages(initializePages(data.current_week.earnings_list));
         }
       } else {
-        setError('Error al cargar las ganancias semanales');
+        // Leer el mensaje de error del JSON
+        let errorMessage = 'Error al cargar las ganancias semanales';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          
+          // Si es un error de autenticación, disparar evento para SessionClosedAlert
+          if ((response.status === 401 || response.status === 403) && errorData.code === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            window.dispatchEvent(new CustomEvent('sessionClosed', {
+              detail: {
+                status: response.status,
+                code: errorData.code,
+                message: errorData.message
+              }
+            }));
+            return; // No establecer error, SessionClosedAlert lo manejará
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el JSON, usar el mensaje por defecto
+        }
+        setError(errorMessage);
       }
     } catch (error) {
-            setError('Error de conexión');
+      setError('Error de conexión');
     } finally {
       setLoading(false);
     }
@@ -85,12 +107,30 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('💰 [UNIFICADO] Balance data:', data);
         setBalanceData(data);
       } else {
+        // Leer el mensaje de error del JSON
+        try {
+          const errorData = await response.json();
+          
+          // Si es un error de autenticación, disparar evento para SessionClosedAlert
+          if ((response.status === 401 || response.status === 403) && errorData.code === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            window.dispatchEvent(new CustomEvent('sessionClosed', {
+              detail: {
+                status: response.status,
+                code: errorData.code,
+                message: errorData.message
               }
+            }));
+            return; // No establecer error, SessionClosedAlert lo manejará
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el JSON, ignorar
+        }
+      }
     } catch (error) {
-          } finally {
+      // Error de conexión, ignorar silenciosamente
+    } finally {
       setBalanceLoading(false);
     }
   };
@@ -111,10 +151,30 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
         const data = await response.json();
         setPendingPayments(data.pending_payments || []);
       } else {
-        setPaymentsError('Error al cargar pagos pendientes');
+        // Leer el mensaje de error del JSON
+        let errorMessage = 'Error al cargar pagos pendientes';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          
+          // Si es un error de autenticación, disparar evento para SessionClosedAlert
+          if ((response.status === 401 || response.status === 403) && errorData.code === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            window.dispatchEvent(new CustomEvent('sessionClosed', {
+              detail: {
+                status: response.status,
+                code: errorData.code,
+                message: errorData.message
+              }
+            }));
+            return; // No establecer error, SessionClosedAlert lo manejará
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el JSON, usar el mensaje por defecto
+        }
+        setPaymentsError(errorMessage);
       }
     } catch (error) {
-            setPaymentsError('Error de conexión');
+      setPaymentsError('Error de conexión');
     } finally {
       setPaymentsLoading(false);
     }
@@ -136,10 +196,30 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
         const data = await response.json();
         setPaymentHistory(data.payment_history || []);
       } else {
-        setPaymentsError('Error al cargar historial de pagos');
+        // Leer el mensaje de error del JSON
+        let errorMessage = 'Error al cargar historial de pagos';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          
+          // Si es un error de autenticación, disparar evento para SessionClosedAlert
+          if ((response.status === 401 || response.status === 403) && errorData.code === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+            window.dispatchEvent(new CustomEvent('sessionClosed', {
+              detail: {
+                status: response.status,
+                code: errorData.code,
+                message: errorData.message
+              }
+            }));
+            return; // No establecer error, SessionClosedAlert lo manejará
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el JSON, usar el mensaje por defecto
+        }
+        setPaymentsError(errorMessage);
       }
     } catch (error) {
-            setPaymentsError('Error de conexión');
+      setPaymentsError('Error de conexión');
     } finally {
       setPaymentsLoading(false);
     }
@@ -162,10 +242,25 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
   const groupEarningsByDay = (earnings) => {
     const filteredEarnings = getFilteredEarnings(earnings);
     
+    // Obtener el idioma actual para formatear fechas
+    const currentLang = i18n.language || 'es';
+    const localeMap = {
+      'es': 'es-ES',
+      'en': 'en-US',
+      'pt': 'pt-BR',
+      'fr': 'fr-FR',
+      'de': 'de-DE',
+      'ru': 'ru-RU',
+      'tr': 'tr-TR',
+      'hi': 'hi-IN',
+      'it': 'it-IT'
+    };
+    const locale = localeMap[currentLang] || 'es-ES';
+    
     return filteredEarnings.reduce((groups, earning) => {
       const date = new Date(earning.created_at);
       const dayKey = date.toISOString().split('T')[0];
-      const dayName = date.toLocaleDateString('es-ES', { 
+      const dayName = date.toLocaleDateString(locale, { 
         weekday: 'long',
         day: '2-digit',
         month: '2-digit'
@@ -197,7 +292,20 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
   };
 
   const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('es-ES', {
+    const currentLang = i18n.language || 'es';
+    const localeMap = {
+      'es': 'es-ES',
+      'en': 'en-US',
+      'pt': 'pt-BR',
+      'fr': 'fr-FR',
+      'de': 'de-DE',
+      'ru': 'ru-RU',
+      'tr': 'tr-TR',
+      'hi': 'hi-IN',
+      'it': 'it-IT'
+    };
+    const locale = localeMap[currentLang] || 'es-ES';
+    return new Date(dateString).toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit'
     });
@@ -219,13 +327,13 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
   const getSourceLabel = (sourceType) => {
     switch (sourceType) {
       case 'video_session':
-        return 'Videochat';
+        return t('earnings.sourceTypes.video_session');
       case 'direct_gift':
-        return 'Regalo Directo';
+        return t('earnings.sourceTypes.direct_gift');
       case 'chat_gift':
-        return 'Regalo en Chat';
+        return t('earnings.sourceTypes.chat_gift');
       default:
-        return 'Sesión';
+        return t('earnings.sourceTypes.session');
     }
   };
 
@@ -259,7 +367,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
       {paymentsLoading ? (
         <div className="text-center py-8">
           <Loader2 className="animate-spin h-8 w-8 text-[#ff007a] mx-auto" />
-          <p className="text-gray-400 mt-2">Cargando pagos pendientes...</p>
+          <p className="text-gray-400 mt-2">{t('earnings.pendingPayments.loading')}</p>
         </div>
       ) : paymentsError ? (
         <div className="text-center py-8">
@@ -269,22 +377,22 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             onClick={fetchPendingPayments}
             className="mt-2 px-4 py-2 bg-[#ff007a] text-white rounded-lg hover:bg-[#ff007a]/80 transition"
           >
-            Reintentar
+            {t('earnings.pendingPayments.retry')}
           </button>
         </div>
       ) : pendingPayments.length === 0 ? (
         <div className="text-center py-8">
           <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
-          <p className="text-white text-lg">¡Todo al día!</p>
-          <p className="text-gray-400">No tienes pagos pendientes</p>
+          <p className="text-white text-lg">{t('earnings.pendingPayments.allClear')}</p>
+          <p className="text-gray-400">{t('earnings.pendingPayments.noPendingPayments')}</p>
         </div>
       ) : (
         <div className="space-y-4">
           <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-white font-medium">Total Pendiente</h3>
-                <p className="text-gray-400 text-sm">{pendingPayments.length} pago(s) esperando</p>
+                <h3 className="text-white font-medium">{t('earnings.pendingPayments.totalPending')}</h3>
+                <p className="text-gray-400 text-sm">{pendingPayments.length} {t('earnings.pendingPayments.paymentsWaiting')}</p>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-yellow-400">
@@ -292,7 +400,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                 </p>
                 <div className="flex items-center gap-1 text-xs text-yellow-400">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Procesando...
+                  {t('earnings.pendingPayments.processing')}
                 </div>
               </div>
             </div>
@@ -304,27 +412,27 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <Calendar className="text-yellow-400" size={16} />
-                    <span className="text-white font-medium">Semana {payment.week_range}</span>
-                    <span className="bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs">Pendiente</span>
+                    <span className="text-white font-medium">{t('earnings.pendingPayments.week')} {payment.week_range}</span>
+                    <span className="bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs">{t('earnings.pendingPayments.pending')}</span>
                   </div>
                   
                   <div className="flex items-center gap-4 text-sm text-gray-400 mb-2">
-                    <div>{payment.total_sessions || 0} sesiones</div>
-                    <div>Procesado: {payment.processed_at}</div>
+                    <div>{payment.total_sessions || 0} {t('earnings.pendingPayments.sessions')}</div>
+                    <div>{t('earnings.pendingPayments.processed')} {payment.processed_at}</div>
                     <div className="flex items-center gap-1">
                       <Clock size={12} />
-                      {payment.days_pending || 0} día(s) esperando
+                      {payment.days_pending || 0} {t('earnings.pendingPayments.daysWaiting')}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <div className="flex items-center gap-1">
                       <Video size={12} className="text-blue-400" />
-                      Tiempo: ${(payment.time_earnings || 0).toFixed(2)}
+                      {t('earnings.balance.time')}: ${(payment.time_earnings || 0).toFixed(2)}
                     </div>
                     <div className="flex items-center gap-1">
                       <Gift size={12} className="text-purple-400" />
-                      Regalos: ${(payment.gift_earnings || 0).toFixed(2)}
+                      {t('earnings.tabs.gifts')}: ${(payment.gift_earnings || 0).toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -335,7 +443,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                   </p>
                   <div className="flex items-center gap-1 text-xs text-yellow-400 mt-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    En proceso
+                    {t('earnings.pendingPayments.inProcess')}
                   </div>
                 </div>
               </div>
@@ -343,7 +451,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
           ))}
 
           <div className="bg-[#36393f]/50 rounded-lg p-4 text-center">
-            <p className="text-gray-400 text-sm">💡 Los pagos se procesan semanalmente. Tu dinero llegará pronto.</p>
+            <p className="text-gray-400 text-sm">{t('earnings.pendingPayments.weeklyProcessingInfo')}</p>
           </div>
         </div>
       )}
@@ -356,7 +464,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
       {paymentsLoading ? (
         <div className="text-center py-8">
           <Loader2 className="animate-spin h-8 w-8 text-[#ff007a] mx-auto" />
-          <p className="text-gray-400 mt-2">Cargando historial...</p>
+          <p className="text-gray-400 mt-2">{t('earnings.history.loadingHistory')}</p>
         </div>
       ) : paymentsError ? (
         <div className="text-center py-8">
@@ -366,22 +474,22 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             onClick={fetchPaymentHistory}
             className="mt-2 px-4 py-2 bg-[#ff007a] text-white rounded-lg hover:bg-[#ff007a]/80 transition"
           >
-            Reintentar
+            {t('earnings.weekly.retry')}
           </button>
         </div>
       ) : paymentHistory.length === 0 ? (
         <div className="text-center py-8">
           <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-white text-lg">Sin historial</p>
-          <p className="text-gray-400">Aún no tienes pagos realizados</p>
+          <p className="text-white text-lg">{t('earnings.history.noHistory')}</p>
+          <p className="text-gray-400">{t('earnings.history.noPayments')}</p>
         </div>
       ) : (
         <div className="space-y-4">
           <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-white font-medium">Total Pagado</h3>
-                <p className="text-gray-400 text-sm">{paymentHistory.length} pago(s) completado(s)</p>
+                <h3 className="text-white font-medium">{t('earnings.history.title')}</h3>
+                <p className="text-gray-400 text-sm">{paymentHistory.length} {t('earnings.history.subtitle')}</p>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-green-400">
@@ -401,33 +509,33 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <Calendar className="text-green-400" size={16} />
-                    <span className="text-white font-medium">Semana {payment.week_range}</span>
+                    <span className="text-white font-medium">{t('earnings.history.week')} {payment.week_range}</span>
                     <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs flex items-center gap-1">
                       <CheckCircle size={12} />
-                      Pagado
+                      {t('earnings.history.paid')}
                     </span>
                   </div>
                   
                   <div className="flex items-center gap-4 text-sm text-gray-400 mb-2">
-                    <div>{payment.total_sessions || 0} sesiones</div>
-                    <div>Pagado: {payment.paid_at}</div>
+                    <div>{payment.total_sessions || 0} {t('earnings.pendingPayments.sessions')}</div>
+                    <div>{t('earnings.history.paidOn')} {payment.paid_at}</div>
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-gray-500 mb-2">
                     <div className="flex items-center gap-1">
                       <Video size={12} className="text-blue-400" />
-                      Tiempo: ${(payment.time_earnings || 0).toFixed(2)}
+                      {t('earnings.balance.time')}: ${(payment.time_earnings || 0).toFixed(2)}
                     </div>
                     <div className="flex items-center gap-1">
                       <Gift size={12} className="text-purple-400" />
-                      Regalos: ${(payment.gift_earnings || 0).toFixed(2)}
+                      {t('earnings.tabs.gifts')}: ${(payment.gift_earnings || 0).toFixed(2)}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-gray-500">
-                    <div>Método: {payment.payment_method}</div>
-                    {payment.payment_reference && <div>Ref: {payment.payment_reference}</div>}
-                    <div>Por: {payment.paid_by}</div>
+                    <div>{t('earnings.history.method')} {payment.payment_method}</div>
+                    {payment.payment_reference && <div>{t('earnings.history.reference')} {payment.payment_reference}</div>}
+                    <div>{t('earnings.history.by')} {payment.paid_by}</div>
                   </div>
                 </div>
                 
@@ -437,7 +545,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                   </p>
                   <div className="flex items-center gap-1 text-xs text-green-400 mt-1">
                     <CheckCircle className="h-3 w-3" />
-                    Recibido
+                    {t('earnings.balance.received')}
                   </div>
                 </div>
               </div>
@@ -458,8 +566,8 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-3">
             <DollarSign className="text-[#ff007a]" size={24} />
             <div>
-              <h2 className="text-xl font-bold text-white">Sistema de Pagos Unificado</h2>
-              <p className="text-sm text-gray-400">Ganancias por tiempo y regalos</p>
+              <h2 className="text-xl font-bold text-white">{t('earnings.unifiedPaymentSystem')}</h2>
+              <p className="text-sm text-gray-400">{t('earnings.earningsByTimeAndGifts')}</p>
             </div>
           </div>
           <button 
@@ -481,7 +589,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             }`}
           >
             <DollarSign size={16} />
-            Todo
+            {t('earnings.tabs.all')}
           </button>
           <button
             onClick={() => setActiveTab('sessions')}
@@ -492,7 +600,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             }`}
           >
             <Video size={16} />
-            Sesiones
+            {t('earnings.tabs.sessions')}
           </button>
           <button
             onClick={() => setActiveTab('gifts')}
@@ -503,7 +611,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             }`}
           >
             <Gift size={16} />
-            Regalos
+            {t('earnings.tabs.gifts')}
           </button>
           <button
             onClick={() => setActiveTab('pending')}
@@ -514,7 +622,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             }`}
           >
             <Loader2 size={16} className={activeTab === 'pending' ? 'animate-spin' : ''} />
-            Pendientes
+            {t('earnings.tabs.pending')}
             {pendingPayments.length > 0 && (
               <span className="bg-yellow-500 text-black text-xs px-2 py-0.5 rounded-full">
                 {pendingPayments.length}
@@ -530,7 +638,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
             }`}
           >
             <CheckCircle size={16} />
-            Pagados
+            {t('earnings.tabs.paid')}
           </button>
         </div>
 
@@ -545,18 +653,18 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                     <div className="bg-[#2b2d31] rounded-lg p-6 border border-[#ff007a]/20 text-center min-w-80">
                       <div className="flex items-center justify-center gap-2 mb-3">
                         <DollarSign className="text-[#ff007a]" size={28} />
-                        <h3 className="text-white font-medium text-xl">Saldo General</h3>
+                        <h3 className="text-white font-medium text-xl">{t('earnings.balance.general')}</h3>
                       </div>
                       <p className="text-4xl font-bold text-[#ff007a] mb-2">
                         ${balanceData.balance?.current_balance?.toFixed(2) || '0.00'}
                       </p>
-                      <p className="text-sm text-gray-400">Balance disponible total</p>
+                      <p className="text-sm text-gray-400">{t('earnings.balance.available')}</p>
                       
                       <div className="grid grid-cols-2 gap-3 mt-4">
                         <div className="bg-[#36393f]/50 rounded-lg p-2">
                           <div className="flex items-center justify-center gap-1 mb-1">
                             <Video className="text-blue-400" size={14} />
-                            <span className="text-blue-400 text-xs">Sesiones</span>
+                            <span className="text-blue-400 text-xs">{t('earnings.tabs.sessions')}</span>
                           </div>
                           <p className="text-lg font-bold text-blue-400">
                             ${balanceData.balance?.time_earnings?.toFixed(2) || '0.00'}
@@ -565,7 +673,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                         <div className="bg-[#36393f]/50 rounded-lg p-2">
                           <div className="flex items-center justify-center gap-1 mb-1">
                             <Gift className="text-purple-400" size={14} />
-                            <span className="text-purple-400 text-xs">Regalos</span>
+                            <span className="text-purple-400 text-xs">{t('earnings.tabs.gifts')}</span>
                           </div>
                           <p className="text-lg font-bold text-purple-400">
                             ${balanceData.balance?.gift_earnings?.toFixed(2) || '0.00'}
@@ -578,64 +686,77 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                   {/* Desglose Semanal */}
                   <div className="bg-[#36393f]/50 rounded-lg p-4 mb-4">
                     <h4 className="text-white font-medium text-center mb-3">
-                      📊 Esta Semana ({balanceData.weekly_breakdown?.week_range})
+                      📊 {t('earnings.balance.thisWeek')} ({balanceData.weekly_breakdown?.week_range})
                     </h4>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                       <div className="bg-[#2b2d31] rounded-lg p-3 border border-blue-500/20">
                         <div className="flex items-center justify-center gap-2 mb-1">
                           <Video className="text-blue-400" size={16} />
-                          <span className="text-blue-400 text-sm font-medium">Tiempo</span>
+                          <span className="text-blue-400 text-sm font-medium">{t('earnings.balance.time')}</span>
                         </div>
                         <p className="text-xl font-bold text-blue-400">
                           ${balanceData.weekly_breakdown?.time_earnings?.toFixed(2) || '0.00'}
                         </p>
-                        <p className="text-xs text-gray-500">{balanceData.weekly_breakdown?.sessions_count || 0} sesiones</p>
+                        <p className="text-xs text-gray-500">{balanceData.weekly_breakdown?.sessions_count || 0} {t('earnings.balance.sessions')}</p>
                       </div>
 
                       <div className="bg-[#2b2d31] rounded-lg p-3 border border-purple-500/20">
                         <div className="flex items-center justify-center gap-2 mb-1">
                           <Gift className="text-purple-400" size={16} />
-                          <span className="text-purple-400 text-sm font-medium">Regalos</span>
+                          <span className="text-purple-400 text-sm font-medium">{t('earnings.tabs.gifts')}</span>
                         </div>
                         <p className="text-xl font-bold text-purple-400">
                           ${balanceData.weekly_breakdown?.gift_earnings?.toFixed(2) || '0.00'}
                         </p>
-                        <p className="text-xs text-gray-500">{balanceData.weekly_breakdown?.gifts_count || 0} regalos</p>
+                        <p className="text-xs text-gray-500">{balanceData.weekly_breakdown?.gifts_count || 0} {t('earnings.balance.regalos')}</p>
                       </div>
 
                       <div className="bg-[#2b2d31] rounded-lg p-3 border border-[#ff007a]/20">
                         <div className="flex items-center justify-center gap-2 mb-1">
                           <CheckCircle className="text-[#ff007a]" size={16} />
-                          <span className="text-[#ff007a] text-sm font-medium">Total Semanal</span>
+                          <span className="text-[#ff007a] text-sm font-medium">{t('earnings.balance.totalWeekly')}</span>
                         </div>
                         <p className="text-xl font-bold text-[#ff007a]">
                           ${balanceData.weekly_breakdown?.total_weekly?.toFixed(2) || '0.00'}
                         </p>
-                        <p className="text-xs text-gray-500">Sin procesar</p>
+                        <p className="text-xs text-gray-500">{t('earnings.balance.unprocessed')}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center text-sm">
                     <div>
-                      <p className="text-gray-400">Total Histórico Ganado</p>
+                      <p className="text-gray-400">{t('earnings.balance.totalHistoric')}</p>
                       <p className="text-lg font-bold text-green-400">
                         ${balanceData.balance?.total_earned?.toFixed(2) || '0.00'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Última Ganancia</p>
+                      <p className="text-gray-400">{t('earnings.balance.lastEarning')}</p>
                       <p className="text-lg font-bold text-white">
                         {balanceData.balance?.last_earning_at 
-                          ? new Date(balanceData.balance.last_earning_at).toLocaleDateString('es-ES', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })
-                          : 'Ninguna'
-                        }
+                          ? (() => {
+                              const currentLang = i18n.language || 'es';
+                              const localeMap = {
+                                'es': 'es-ES',
+                                'en': 'en-US',
+                                'pt': 'pt-BR',
+                                'fr': 'fr-FR',
+                                'de': 'de-DE',
+                                'ru': 'ru-RU',
+                                'tr': 'tr-TR',
+                                'hi': 'hi-IN',
+                                'it': 'it-IT'
+                              };
+                              const locale = localeMap[currentLang] || 'es-ES';
+                              return new Date(balanceData.balance.last_earning_at).toLocaleDateString(locale, {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              });
+                            })()
+                          : t('earnings.balance.none')}
                       </p>
                     </div>
                   </div>
@@ -647,7 +768,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                 {loading ? (
                   <div className="text-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ff007a] mx-auto"></div>
-                    <p className="text-gray-400 mt-2">Cargando ganancias...</p>
+                    <p className="text-gray-400 mt-2">{t('earnings.weekly.loadingEarnings')}</p>
                   </div>
                 ) : error ? (
                   <div className="text-center py-8">
@@ -656,30 +777,30 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                       onClick={fetchWeeklyEarnings}
                       className="mt-2 px-4 py-2 bg-[#ff007a] text-white rounded-lg hover:bg-[#ff007a]/80 transition"
                     >
-                      Reintentar
+                      {t('earnings.weekly.retry')}
                     </button>
                   </div>
                 ) : !weeklyData?.earnings_list?.length ? (
                   <div className="text-center py-8">
-                    <p className="text-gray-400">No tienes ganancias registradas esta semana</p>
+                    <p className="text-gray-400">{t('earnings.weekly.noEarnings')}</p>
                   </div>
                 ) : getFilteredEarnings(weeklyData.earnings_list).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-400">
-                      {activeTab === 'sessions' && 'No tienes ganancias por sesiones esta semana'}
-                      {activeTab === 'gifts' && 'No tienes ganancias por regalos esta semana'}
+                      {activeTab === 'sessions' && t('earnings.weekly.noSessionEarnings')}
+                      {activeTab === 'gifts' && t('earnings.weekly.noGiftEarnings')}
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-white font-medium">
-                        📅 Detalle por día
-                        {activeTab === 'sessions' && ' - Solo Sesiones'}
-                        {activeTab === 'gifts' && ' - Solo Regalos'}
+                        📅 {t('earnings.weekly.dailyDetail')}
+                        {activeTab === 'sessions' && ` - ${t('earnings.weekly.onlySessions')}`}
+                        {activeTab === 'gifts' && ` - ${t('earnings.weekly.onlyGifts')}`}
                       </h3>
                       <div className="text-sm text-gray-400">
-                        {getFilteredEarnings(weeklyData.earnings_list).length} registros
+                        {getFilteredEarnings(weeklyData.earnings_list).length} {t('earnings.weekly.records')}
                       </div>
                     </div>
                     
@@ -701,7 +822,7 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                                 {isExpanded ? <ChevronDown size={20} className="text-gray-400" /> : <ChevronRight size={20} className="text-gray-400" />}
                                 <div>
                                   <h3 className="text-white font-medium capitalize">{dayData.dayName}</h3>
-                                  <p className="text-sm text-gray-400">{dayData.earnings.length} registros</p>
+                                  <p className="text-sm text-gray-400">{dayData.earnings.length} {t('earnings.weekly.records')}</p>
                                 </div>
                               </div>
                               <div className="text-right">
@@ -788,9 +909,9 @@ const WeeklyEarnings = ({ isOpen, onClose }) => {
                                             ${earning.earning_amount_gross.toFixed(2)}
                                           </p>
                                           <div className="text-xs text-gray-400">
-                                            {earning.is_mixed && 'Mixto'}
-                                            {earning.is_time_only && 'Solo Tiempo'}
-                                            {earning.is_gift_only && 'Solo Regalos'}
+                                            {earning.is_mixed && t('earnings.balance.mixed')}
+                                            {earning.is_time_only && t('earnings.balance.timeOnly')}
+                                            {earning.is_gift_only && t('earnings.balance.giftOnly')}
                                           </div>
                                         </div>
                                       </div>

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 class ProfileSettingsController extends Controller
 {
     // 🔥 FUNCIÓN PARA GENERAR URL CON TOKEN
-    private function generateAvatarUrl($filename)
+    public function generateAvatarUrl($filename)
     {
         if (!$filename) return null;
         
@@ -346,7 +346,7 @@ class ProfileSettingsController extends Controller
                 ], 400);
             }
             
-            // Crear o actualizar apodo
+            // Crear o actualizar apodo en tabla user_nicknames
             $userNickname = UserNickname::updateOrCreate(
                 [
                     'user_id' => $user->id,
@@ -358,10 +358,18 @@ class ProfileSettingsController extends Controller
                 ]
             );
             
+            // 🔥 ACTUALIZAR TAMBIÉN EL CAMPO name EN LA TABLA users
+            // Esto hace que el apodo sea el nombre oficial visible en todos lados
+            $user->update([
+                'name' => $nickname,
+                'updated_at' => now()
+            ]);
+            
             Log::info('Apodo actualizado', [
                 'user_id' => $user->id,
-                'old_display_name' => $user->name,
-                'new_nickname' => $nickname
+                'old_name' => $user->getOriginal('name'),
+                'new_name' => $nickname,
+                'nickname_record' => $userNickname->nickname
             ]);
 
             return response()->json([
@@ -369,7 +377,8 @@ class ProfileSettingsController extends Controller
                 'message' => 'Apodo actualizado exitosamente',
                 'nickname' => $nickname,
                 'display_name' => $nickname,
-                'real_name' => $user->name
+                'name' => $nickname,
+                'real_name' => $user->getOriginal('name') // Mantener el nombre original si lo necesitas
             ]);
 
         } catch (\Exception $e) {
@@ -464,7 +473,7 @@ class ProfileSettingsController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'language' => 'required|string|in:es,en,fr,de,it,pt,ru,ja,ko,zh'
+                'language' => 'required|string|in:es,en,fr,de,it,pt,ru,tr,hi'
             ]);
 
             if ($validator->fails()) {
@@ -492,9 +501,8 @@ class ProfileSettingsController extends Controller
                 'it' => 'Italiano',
                 'pt' => 'Português',
                 'ru' => 'Русский',
-                'ja' => '日本語',
-                'ko' => '한국어',
-                'zh' => '中文'
+                'tr' => 'Türkçe',
+                'hi' => 'हिन्दी'
             ];
             
             Log::info('Idioma preferido actualizado', [
@@ -534,6 +542,24 @@ class ProfileSettingsController extends Controller
                 ->where('target_user_id', $user->id)
                 ->first();
             
+            // 🔒 PRIVACIDAD: Clientes solo muestran foto si la subieron manualmente (no de Google)
+            // Modelos pueden mostrar cualquier foto (incluyendo Google)
+            $avatar = $user->avatar;
+            $avatarUrl = null;
+            
+            if ($user->rol === 'modelo') {
+                // Modelo: mostrar cualquier foto
+                $avatarUrl = $this->generateAvatarUrl($avatar);
+            } else if ($user->rol === 'cliente') {
+                // Cliente: solo mostrar foto si NO es de Google
+                if ($avatar && !$this->isGoogleAvatar($avatar)) {
+                    $avatarUrl = $this->generateAvatarUrl($avatar);
+                }
+            } else {
+                // Otros roles: mostrar cualquier foto
+                $avatarUrl = $this->generateAvatarUrl($avatar);
+            }
+            
             return response()->json([
                 'success' => true,
                 'user' => [
@@ -542,8 +568,8 @@ class ProfileSettingsController extends Controller
                     'nickname' => $nickname ? $nickname->nickname : null,
                     'display_name' => $nickname ? $nickname->nickname : $user->name,
                     'email' => $user->email,
-                    'avatar' => $user->avatar,
-                    'avatar_url' => $this->generateAvatarUrl($user->avatar), // 🔥 URL CON TOKEN
+                    'avatar' => $avatar,
+                    'avatar_url' => $avatarUrl,
                     'preferred_language' => $user->preferred_language ?? 'es',
                     'rol' => $user->rol,
                     'created_at' => $user->created_at,
@@ -558,5 +584,17 @@ class ProfileSettingsController extends Controller
                 'error' => 'Error interno del servidor'
             ], 500);
         }
+    }
+    
+    /**
+     * Verificar si el avatar es de Google
+     */
+    private function isGoogleAvatar($filename)
+    {
+        if (!$filename) return false;
+        
+        return str_contains($filename, 'googleusercontent.com') || 
+               str_contains($filename, 'googleapis.com') ||
+               str_contains($filename, 'google.com');
     }
 }

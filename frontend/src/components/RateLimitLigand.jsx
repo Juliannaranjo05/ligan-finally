@@ -38,7 +38,6 @@ const RateLimitLigand = ({
       
       if (onClose) onClose();
     } catch (error) {
-      console.error('Error al validar usuario:', error);
       navigate("/home", { replace: true });
       if (onClose) onClose();
     } finally {
@@ -180,7 +179,6 @@ export const useRateLimitHandler = () => {
       setRetryAfter(retryTime);
       setShowRateLimit(true);
       
-      console.log(`🚦 Rate limited. Retry after: ${retryTime} seconds`);
       return true;
     }
     return false;

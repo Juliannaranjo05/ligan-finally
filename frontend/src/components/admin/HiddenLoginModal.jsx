@@ -28,7 +28,7 @@ export const HiddenLoginModal = () => {
     }
 
     try {
-        const res = await fetch("http://localhost:8000/api/admin/login", {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org'}/api/admin/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -43,8 +43,6 @@ export const HiddenLoginModal = () => {
         throw new Error(data.message || "Error al iniciar sesión");
         }
 
-        console.log("✅ Login exitoso:", data);
-
         // Guarda el admin_id en localStorage o estado global
         localStorage.setItem("ligand_admin_id", data.admin_id);
 
@@ -52,7 +50,6 @@ export const HiddenLoginModal = () => {
         navigate("/AdminCodeVerification");
 
     } catch (err) {
-        console.error("❌ Error en login:", err.message);
         setShake(true);
         setTimeout(() => setShake(false), 300);
         alert(err.message); // opcional: mostrar con un toast bonito

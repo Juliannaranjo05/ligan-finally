@@ -169,7 +169,17 @@
     "callRejected": "La ragazza ha rifiutato la chiamata",
     "callExpired": "La chiamata è scaduta senza risposta",
     "timeoutExpired": "Tempo di attesa scaduto",
-    "errorStartingCall": "Errore nell'avvio della chiamata"
+    "errorStartingCall": "Errore nell'avvio della chiamata",
+    "lastPayment": "Ultimo Pagamento:",
+    "loadingLastPurchase": "Caricamento ultimo pagamento...",
+    "claimCoins": "Richiedi Monete",
+    "claiming": "Richiesta in corso...",
+    "coinsClaimedSuccess": "Monete richieste con successo!",
+    "claimed": "Richiesto",
+    "coins": "Monete",
+    "minutes": "Minuti",
+    "paymentProblemTitle": "Problema con il pagamento?",
+    "paymentProblemMessage": "Se il pagamento non è stato effettuato o le monete non sono state aggiunte, vai su \"Acquista Monete\" e controlla le tue transazioni. Elabora il pagamento in sospeso o contatta il supporto se hai bisogno di aiuto."
   },
   "storiesModal": {
     "loadingStories": "Caricamento storie...",
@@ -327,7 +337,12 @@
       "yesterday": "Ieri",
       "callEnded": "Chiamata terminata",
       "messageSent": "Messaggio inviato",
-      "addedToFavorites": "Ti ha aggiunto ai preferiti"
+      "addedToFavorites": "Ti ha aggiunto ai preferiti",
+      "callRejected": "Chiamata rifiutata",
+      "callCancelled": "Chiamata annullata",
+      "noHistory": "Nessuna cronologia chiamate",
+      "sendMessage": "Invia messaggio",
+      "callAgain": "Chiama di nuovo"
     },
     "restrictions": {
       "pendingApproval": "Storia in Attesa di Approvazione",
@@ -365,11 +380,14 @@
     "title": "I Tuoi Preferiti",
     "count": "preferito",
     "countPlural": "preferiti",
+    "singular": "preferito",
+    "plural": "preferiti",
     "loading": "Caricamento preferiti...",
     "updating": "Aggiornando...",
     "refresh": "Aggiorna",
     "noFavorites": "Non hai ancora preferiti",
     "noFavoritesDesc": "Quando aggiungi utenti come preferiti, appariranno qui",
+    "noFavoritesMessage": "Quando aggiungi utenti come preferiti, appariranno qui",
     "searchUsers": "Cerca utenti",
     "errorLoading": "Errore caricamento preferiti",
     "retry": "Riprova",
@@ -477,22 +495,462 @@
     "takePhoto": "Scatta foto",
     "deletePhoto": "Elimina foto profilo",
     "editAlias": "Modifica alias o nome visibile",
+    "editAliasModal": {
+      "title": "Modifica soprannome",
+      "customNickname": "Il tuo soprannome personalizzato",
+      "nicknamePlaceholder": "Inserisci il tuo soprannome",
+      "characters": "caratteri",
+      "preview": "Anteprima:",
+      "nicknameInfo": "Il tuo soprannome è come gli altri utenti ti vedranno. Il tuo nome reale rimarrà",
+      "useRealName": "Usa nome reale",
+      "cancel": "Annulla",
+      "save": "Salva",
+      "saving": "Salvataggio...",
+      "deleting": "Eliminazione..."
+    },
     "language": "Lingua preferita",
+    "languageModal": {
+      "title": "Seleziona lingua",
+      "description": "Seleziona la tua lingua preferita per le traduzioni automatiche",
+      "current": "Attuale",
+      "cancel": "Annulla",
+      "saveLanguage": "Salva lingua",
+      "saving": "Salvataggio..."
+    },
+    "managePhotoModal": {
+      "uploadFromFile": "Carica da file",
+      "selectFile": "Seleziona file",
+      "fileFormats": "JPEG, PNG, WebP (max. 5MB)",
+      "preview": "Anteprima",
+      "confirmUpload": "Conferma caricamento",
+      "uploading": "Caricamento...",
+      "cancel": "Annulla",
+      "or": "o",
+      "takePhoto": "Scatta foto",
+      "activateCamera": "Attiva fotocamera",
+      "activating": "Attivazione...",
+      "loadingCamera": "Caricamento fotocamera...",
+      "capturePhoto": "Scatta foto",
+      "processing": "Elaborazione...",
+      "deleteCurrentPhoto": "Elimina foto attuale",
+      "deleting": "Eliminazione...",
+      "deletePhoto": "Elimina foto"
+    },
     "payments": "Abbonamento e Pagamenti",
     "managePaymentMethod": "Aggiungi o rimuovi metodo di pagamento",
+    "configurePayoutAccount": "Configura account per pagamenti",
+    "transactionHistory": "Cronologia transazioni",
+    "paymentMethods": {
+      "title": "Metodi di pagamento",
+      "addMethod": "Aggiungi metodo",
+      "addCard": "Aggiungi carta",
+      "deleteMethod": "Elimina",
+      "setDefault": "Imposta come predefinito",
+      "noMethods": "Non hai carte salvate",
+      "addFirst": "Aggiungi una carta come riferimento",
+      "info": "Questi metodi sono solo per riferimento. I pagamenti vengono elaborati direttamente tramite Wompi.",
+      "cardInfo": "Queste informazioni sono solo per riferimento. I pagamenti vengono elaborati direttamente tramite Wompi.",
+      "card": "Carta",
+      "pse": "PSE",
+      "nequi": "Nequi",
+      "bancolombia": "Bancolombia",
+      "lastUsed": "Ultimo utilizzo",
+      "default": "Predefinito",
+      "suggestions": "Carte utilizzate in precedenza",
+      "add": "Aggiungi",
+      "type": "Tipo di metodo",
+      "lastFourDigits": "Ultime 4 cifre",
+      "lastFourDigitsHint": "Inserisci le ultime 4 cifre della tua carta come riferimento",
+      "bankName": "Banca",
+      "bankPlaceholder": "Nome della banca",
+      "accountType": "Tipo di conto",
+      "accountPlaceholder": "Es: Risparmio",
+      "setAsDefault": "Imposta come predefinito",
+      "save": "Salva",
+      "cancel": "Annulla",
+      "confirmDelete": "Conferma eliminazione",
+      "deleteMessage": "Sei sicuro di voler eliminare questo metodo di pagamento?",
+      "delete": "Elimina",
+      "errors": {
+        "loadFailed": "Errore nel caricamento dei metodi di pagamento",
+        "selectType": "Seleziona un tipo di metodo",
+        "invalidDigits": "Inserisci le ultime 4 cifre della tua carta",
+        "addFailed": "Errore nell'aggiunta del metodo",
+        "updateFailed": "Errore nell'aggiornamento del metodo",
+        "deleteFailed": "Errore nell'eliminazione del metodo"
+      }
+    },
     "country": "Paese di residenza (fiscale)",
     "minimumPayout": "Definisci pagamento minimo",
+    "payoutAccountModal": {
+      "currentConfiguration": "Configurazione Attuale",
+      "country": "Paese",
+      "changeConfiguration": "Modifica configurazione",
+      "selectCountry": "Seleziona il tuo paese",
+      "selectPaymentMethod": "Seleziona metodo di pagamento",
+      "localMethodsAvailable": "(Metodi locali disponibili)",
+      "cryptoOnly": "(Solo criptovalute)",
+      "accountDetails": "Dettagli account",
+      "walletAddress": "Indirizzo wallet TRC-20",
+      "accountHolderName": "Nome intestatario",
+      "accountHolderPlaceholder": "Nome completo dell'intestatario dell'account",
+      "verifyWalletWarning": "⚠️ Verifica che l'indirizzo sia corretto. Le transazioni sono irreversibili.",
+      "sendVerificationCode": "Invia codice di verifica",
+      "sendingCode": "Invio codice...",
+      "verified": "Verificato",
+      "pendingVerification": "In attesa di verifica",
+      "confirmPaymentMethod": "Conferma il tuo metodo di pagamento",
+      "enterVerificationCode": "Inserisci il codice a 6 cifre inviato alla tua email per confermare la modifica del metodo di pagamento",
+      "codeValidFor": "Codice valido per:",
+      "verificationCode": "Codice di verifica",
+      "back": "Indietro",
+      "verifyCode": "Verifica codice",
+      "verifying": "Verifica in corso...",
+      "resendCode": "Invia di nuovo il codice",
+      "paymentMethodUpdated": "Metodo di pagamento aggiornato!",
+      "paymentMethodUpdatedDescription": "Il tuo metodo di pagamento è stato verificato e aggiornato con successo. Ora puoi ricevere pagamenti.",
+      "continue": "Continua",
+      "close": "Chiudi",
+      "success": {
+        "codeSent": "Codice di verifica inviato alla tua email",
+        "verified": "Metodo di pagamento verificato con successo!"
+      },
+      "errors": {
+        "selectCountry": "Seleziona il tuo paese",
+        "selectPaymentMethod": "Seleziona un metodo di pagamento",
+        "enterAccountDetails": "Compila tutti i campi",
+        "enterAccountHolderName": "Inserisci il nome dell'intestatario",
+        "enterVerificationCode": "Inserisci un codice a 6 cifre",
+        "invalidCode": "Codice di verifica non valido",
+        "codeExpired": "Il codice è scaduto",
+        "codeExpiredMessage": "Il codice di verifica è scaduto",
+        "connectionError": "Errore di connessione"
+      }
+    },
+    "minimumPayoutModal": {
+      "title": "Configura Pagamento Minimo",
+      "description": "Imposta l'importo minimo per ricevere i tuoi pagamenti. I guadagni si accumuleranno fino a raggiungere questo importo.",
+      "currentConfiguration": "Configurazione Attuale",
+      "selectNewMinimum": "Seleziona nuovo importo minimo:",
+      "recommended": "Consigliato",
+      "customPayout": "Pagamento personalizzato",
+      "newAmountSelected": "Nuovo importo selezionato",
+      "newAmountDescription": "Con",
+      "asMinimum": "come minimo, riceverai pagamenti solo quando i tuoi guadagni accumulati raggiungeranno questo importo.",
+      "moreEarningsNeeded": "Ciò significa che avrai bisogno di più guadagni prima di ricevere un pagamento.",
+      "moreFrequentPayments": "Ciò significa che riceverai pagamenti più frequentemente.",
+      "cancel": "Annulla",
+      "updateMinimum": "Aggiorna Minimo",
+      "updating": "Aggiornamento...",
+      "loadingConfiguration": "Caricamento configurazione...",
+      "payoutOptions": {
+        "basic": "Pagamento minimo base",
+        "recommended": "Pagamento minimo consigliato",
+        "medium": "Pagamento minimo medio",
+        "high": "Pagamento minimo alto",
+        "maximum": "Pagamento minimo massimo"
+      },
+      "payoutInfo": "Riceverai pagamenti solo quando raggiungerai questo importo",
+      "errors": {
+        "loadingError": "Errore nel caricamento della configurazione attuale",
+        "selectDifferentAmount": "Seleziona un importo diverso da quello attuale",
+        "updateError": "Errore nell'aggiornamento del pagamento minimo",
+        "connectionError": "Errore di connessione"
+      },
+      "success": {
+        "updated": "Pagamento minimo aggiornato a"
+      }
+    },
     "others": "Altri",
     "support": "Supporto o aiuto",
     "terms": "Termini e condizioni",
     "report": "Segnala un problema",
-    "modalInstruction": "Qui puoi implementare il modulo o contenuto corrispondente per {{item}}."
+    "modalInstruction": "Qui puoi implementare il modulo o contenuto corrispondente per {{item}}.",
+    "modals": {
+      "transactionHistory": {
+        "title": "Cronologia transazioni",
+        "description": "Rivedi tutti i tuoi acquisti, ricariche di credito e transazioni completate.",
+        "loading": "Caricamento cronologia...",
+        "retry": "Riprova",
+        "searchPlaceholder": "Cerca per ID, descrizione...",
+        "empty": "Nessuna transazione registrata",
+        "emptyDesc": "Le tue transazioni appariranno qui",
+        "noResults": "Nessun risultato trovato",
+        "noResultsDesc": "Prova ad aggiustare i filtri di ricerca",
+        "filters": {
+          "all": "Tutte",
+          "purchase": "Acquisti",
+          "consumption": "Consumo",
+          "gift": "Regali"
+        },
+        "types": {
+          "purchase": "Acquisto",
+          "coinPurchase": "Acquisto monete",
+          "coinGift": "Regalo monete",
+          "consumption": "Consumo",
+          "giftSent": "Regalo inviato",
+          "giftReceived": "Regalo ricevuto"
+        },
+        "status": {
+          "completed": "Completato",
+          "pending": "In attesa",
+          "failed": "Fallito",
+          "cancelled": "Annullato"
+        },
+        "details": {
+          "title": "Dettagli transazione",
+          "description": "Descrizione",
+          "type": "Tipo",
+          "amount": "Importo",
+          "status": "Stato",
+          "date": "Data"
+        },
+        "errors": {
+          "title": "Errore nel caricamento della cronologia",
+          "loadFailed": "Errore nell'ottenere la cronologia"
+        }
+      },
+      "notifications": {
+        "title": "Impostazioni notifiche",
+        "description": "Personalizza quali notifiche vuoi ricevere",
+        "loading": "Caricamento preferenze...",
+        "saving": "Salvataggio...",
+        "save": "Salva preferenze",
+        "success": "Preferenze salvate con successo",
+        "options": {
+          "messages": {
+            "label": "Notifiche messaggi",
+            "description": "Essere notificato quando ricevi nuovi messaggi"
+          },
+          "calls": {
+            "label": "Notifiche chiamate",
+            "description": "Essere notificato quando ricevi chiamate o richieste di videochat"
+          },
+          "gifts": {
+            "label": "Notifiche regali",
+            "description": "Essere notificato quando ricevi regali"
+          },
+          "favorites": {
+            "label": "Modelli preferiti online",
+            "description": "Essere notificato quando i tuoi modelli preferiti sono online"
+          }
+        },
+        "errors": {
+          "saveFailed": "Errore nel salvataggio delle preferenze"
+        }
+      },
+      "notificationsFull": {
+        "title": "Impostazioni notifiche",
+        "description": "Personalizza quali notifiche vuoi ricevere: nuovi messaggi, modelli online, offerte speciali, ecc."
+      },
+      "privacy": {
+        "title": "Impostazioni privacy",
+        "description": "Controlla chi può contattarti e gestisci i tuoi blocchi",
+        "loading": "Caricamento informazioni privacy...",
+        "confirmUnblock": "Sei sicuro di voler sbloccare questo utente?",
+        "blockedUsers": {
+          "title": "Utenti bloccati",
+          "empty": "Non hai bloccato nessun utente",
+          "emptyDesc": "Gli utenti che blocchi non potranno inviarti messaggi o contattarti",
+          "blockedOn": "Bloccato il",
+          "reason": "Motivo",
+          "unblock": "Sblocca",
+          "unblocking": "Sbloccando..."
+        },
+        "blockedByUsers": {
+          "title": "Utenti che ti hanno bloccato",
+          "empty": "Nessuno ti ha bloccato",
+          "blockedOn": "Ti ha bloccato il",
+          "cannotContact": "Non puoi contattare questo utente"
+        },
+        "info": {
+          "title": "Informazioni sulla privacy",
+          "point1": "Gli utenti bloccati non possono inviarti messaggi o chiamarti",
+          "point2": "Puoi sbloccare gli utenti in qualsiasi momento",
+          "point3": "Se qualcuno ti blocca, non potrai contattarlo",
+          "point4": "I blocchi sono privati e l'altro utente non sarà notificato"
+        },
+        "errors": {
+          "loadFailed": "Errore nell'ottenere lo stato dei blocchi",
+          "unblockFailed": "Errore nello sblocco dell'utente"
+        }
+      },
+      "privacyFull": {
+        "title": "Impostazioni privacy",
+        "description": "Controlla chi può vederti online, inviare messaggi privati e vedere il tuo profilo."
+      },
+      "favorites": {
+        "title": "Modelli preferiti",
+        "description": "Gestisci la tua lista di modelli preferiti"
+      },
+      "favoritesFull": {
+        "title": "Modelli preferiti",
+        "description": "Gestisci la tua lista di modelli preferiti e ricevi notifiche quando sono online."
+      },
+      "paymentMethods": {
+        "title": "Aggiungi o rimuovi metodo di pagamento",
+        "description": "Gestisci i tuoi metodi di pagamento per effettuare acquisti sulla piattaforma."
+      },
+      "support": {
+        "title": "Supporto o aiuto",
+        "description": "Per domande, problemi tecnici o aiuto con il tuo account, scrivici a support@ligando.online e il nostro team ti risponderà il prima possibile.",
+        "contactButton": "Contatta il supporto via email"
+      },
+      "report": {
+        "title": "Segnala un problema",
+        "description": "Raccontaci quale problema hai avuto. Useremo queste informazioni per migliorare la piattaforma.",
+        "problemType": "Tipo di problema",
+        "problemTechnical": "Problema tecnico",
+        "problemPayment": "Problema con pagamenti / monete",
+        "problemInappropriate": "Comportamento inappropriato",
+        "problemOther": "Altro",
+        "describeProblem": "Descrivi cosa è successo",
+        "describePlaceholder": "Includi il maggior numero di dettagli possibile: cosa stavi facendo, su quale schermo, se hai visto un messaggio di errore, ora approssimativa, ecc.",
+        "sendReport": "Invia report via email"
+      },
+      "close": "Chiudi"
+    },
+    "googlePasswordSetup": {
+      "title": "Imposta password",
+      "description": "Poiché ti sei registrato con Google, non hai una password impostata. Ti invieremo un link via email per impostare una password.",
+      "info": "Dopo aver impostato la password, potrai accedere sia con Google che con la tua email e password.",
+      "sendEmailButton": "Invia link via email",
+      "emailSent": "Link inviato",
+      "emailSentDescription": "È stato inviato un link a {{email}}. Clicca sul link nell'email per impostare la tua password.",
+      "emailSentTip": "Il link scadrà tra 24 ore. Se non ricevi l'email, controlla la cartella spam.",
+      "sending": "Invio in corso..."
+    },
+    "changePasswordModal": {
+      "title": "Cambia password",
+      "verifyIdentity": "Per cambiare la password, dobbiamo verificare la tua identità.",
+      "currentPassword": "Password attuale",
+      "newPassword": "Nuova password (min. 8 caratteri)",
+      "confirmPassword": "Conferma nuova password",
+      "codeSent": "Codice inviato",
+      "codeSentDescription": "Abbiamo inviato un codice a 6 cifre alla tua email.",
+      "codePlaceholder": "Codice a 6 cifre",
+      "resendCode": "Non hai ricevuto il codice? Reinvia",
+      "successTitle": "Password cambiata!",
+      "successMessage": "La tua password è stata aggiornata con successo.",
+      "autoClose": "Questo modal si chiuderà automaticamente...",
+      "processing": "Elaborazione...",
+      "sendCode": "Invia codice",
+      "changePassword": "Cambia password",
+      "cancel": "Annulla",
+      "errors": {
+        "enterCurrentPassword": "Inserisci la tua password attuale",
+        "passwordMinLength": "La nuova password deve contenere almeno 8 caratteri",
+        "passwordsDontMatch": "Le nuove password non corrispondono",
+        "enterCode": "Inserisci il codice a 6 cifre",
+        "codeSent": "Codice inviato alla tua email",
+        "errorRequestingCode": "Errore nella richiesta del codice",
+        "connectionError": "Errore di connessione",
+        "passwordChanged": "🎉 Password cambiata con successo!",
+        "errorChangingPassword": "Errore nel cambiare la password"
+      }
+    },
+    "logoutAllModal": {
+      "title": "Chiudi tutte le sessioni",
+      "whatWillHappen": "Cosa succederà?",
+      "willCloseAll": "Tutte le tue sessioni attive verranno chiuse",
+      "willNeedLogin": "Dovrai accedere di nuovo su altri dispositivi",
+      "currentStays": "La tua sessione attuale rimarrà attiva",
+      "sendCodeDescription": "Per continuare, ti invieremo un codice di verifica alla tua email.",
+      "codeSent": "Codice inviato",
+      "codeSentDescription": "Abbiamo inviato un codice di verifica alla tua email.",
+      "codePlaceholder": "Codice a 6 cifre",
+      "resendCode": "Non hai ricevuto il codice? Reinvia",
+      "successTitle": "Sessioni chiuse!",
+      "successMessage": "Tutte le tue sessioni sono state chiuse con successo.",
+      "autoClose": "Questo modal si chiuderà automaticamente...",
+      "processing": "Elaborazione...",
+      "sendCode": "Invia codice",
+      "closeSessions": "Chiudi sessioni",
+      "cancel": "Annulla",
+      "errors": {
+        "enterCode": "Inserisci il codice a 6 cifre",
+        "codeSent": "Codice inviato alla tua email",
+        "errorRequestingCode": "Errore nella richiesta del codice",
+        "connectionError": "Errore di connessione",
+        "sessionsClosed": "🎉 Tutte le sessioni sono state chiuse con successo!",
+        "errorClosingSessions": "Errore nella chiusura delle sessioni"
+      }
+    },
+    "deleteAccountModal": {
+      "title": "Elimina account",
+      "warning": "AVVISO",
+      "warningPermanent": "Questa azione è PERMANENTE e IRREVERSIBILE",
+      "warningDeleteData": "Tutti i tuoi dati e conversazioni saranno eliminati",
+      "warningNoRecovery": "Non potrai recuperare il tuo account",
+      "warningLoseAccess": "Perderai l'accesso a tutte le funzioni",
+      "confirmPassword": "Per continuare, conferma la tua password:",
+      "currentPassword": "La tua password attuale",
+      "finalVerification": "Verifica finale",
+      "finalVerificationDescription": "Ti abbiamo inviato un codice di verifica. Questa è la tua ultima possibilità di annullare.",
+      "confirmText": "Per confermare, digita \"ELIMINA\":",
+      "confirmPlaceholder": "ELIMINA",
+      "codePlaceholder": "Codice a 6 cifre",
+      "resendCode": "Non hai ricevuto il codice? Reinvia",
+      "successTitle": "Account eliminato",
+      "successMessage": "Il tuo account è stato eliminato permanentemente.",
+      "redirecting": "Reindirizzamento alla home...",
+      "processing": "Elaborazione...",
+      "sendCode": "Invia codice",
+      "deleteAccount": "ELIMINA ACCOUNT",
+      "cancel": "Annulla",
+      "errors": {
+        "enterPassword": "Inserisci la tua password",
+        "enterCode": "Inserisci il codice a 6 cifre",
+        "mustWriteDelete": "Devi digitare \"ELIMINA\" per confermare",
+        "codeSent": "Codice inviato alla tua email",
+        "errorRequestingCode": "Errore nella richiesta del codice",
+        "connectionError": "Errore di connessione",
+        "accountDeleted": "🗑️ Account eliminato con successo. Reindirizzamento...",
+        "errorDeletingAccount": "Errore nell'eliminazione dell'account",
+        "sessionExpired": "Sessione scaduta. Per favore, accedi di nuovo."
+      }
+    },
+    "setupPassword": {
+      "title": "Imposta password",
+      "description": "Imposta una password per il tuo account. Potrai accedere sia con Google che con la tua email e password.",
+      "newPassword": "Nuova password",
+      "newPasswordPlaceholder": "Inserisci la tua nuova password",
+      "confirmPassword": "Conferma password",
+      "confirmPasswordPlaceholder": "Conferma la tua nuova password",
+      "setupButton": "Imposta password",
+      "settingUp": "Impostazione in corso...",
+      "successTitle": "Password impostata!",
+      "successMessage": "La tua password è stata impostata con successo. Ora puoi accedere con la tua email e password, o continuare a usare Google.",
+      "redirecting": "Reindirizzamento al login...",
+      "invalidLink": "Link non valido",
+      "invalidLinkDescription": "Il link per l'impostazione della password non è valido o incompleto.",
+      "passwordsMismatch": "Le password non corrispondono",
+      "passwordTooShort": "La password deve contenere almeno 8 caratteri",
+      "error": "Errore nell'impostazione della password",
+      "connectionError": "Errore di connessione. Riprova.",
+      "backToHome": "Torna alla home",
+      "requirementsTitle": "Requisiti di sicurezza:",
+      "minimumCharacters": "Minimo 8 caratteri",
+      "canUseGoogle": "Puoi continuare a usare Google per accedere",
+      "canUseEmail": "O usare la tua email e password"
+    }
   },
   "subirHistoria": {
     "titulo": "Carica o registra la tua storia",
+    "tituloNoDisponible": "Storia non disponibile",
     "grabar": "Registra storia",
+    "noDisponible": "Non disponibile",
     "subir": "Carica dal tuo dispositivo",
     "publicar": "Pubblica storia",
+    "subiendo": "Caricamento...",
+    "verHistoria": "Visualizza Storia",
+    "eliminar": "Elimina",
+    "eliminarYCrearNueva": "Elimina e Crea Nuova",
+    "seleccionaCamara": "Seleziona la tua fotocamera",
+    "consejo": "Suggerimento",
+    "informacion": "Informazione",
+    "consejoAprobacion": "Le storie passano attraverso l'approvazione prima di essere pubbliche. I video non possono durare più di 15 secondi.",
+    "informacionRestriccion": "Puoi avere solo una storia attiva alla volta. Ogni storia dura 24 ore dalla sua approvazione.",
     "alerta_grabacion": "Funzione di registrazione in sviluppo o integra getUserMedia per catturare video."
   },
   "esperandoVerificacion": {
@@ -549,7 +1007,19 @@
     "sessionEnded": "Sessione terminata!",
     "connecting": "Connettendo...",
     "redirectingIn": "Reindirizzando in {{seconds}}s...",
-    "dontWorry": "Non preoccuparti, ti connetteremo con un altro ragazzo"
+    "dontWorry": "Non preoccuparti, ti connetteremo con un altro ragazzo",
+    "chat": {
+      "title": "Chat",
+      "notReady": "La chat non è ancora pronta. Riprova.",
+      "startConversation": "Inizia una conversazione interessante e goditi la chat",
+      "chatWith": "Chatta con {{name}}",
+      "waitingModel": "In attesa del modello...",
+      "modelWillConnect": "Un modello si collegherà presto per chattare con te"
+    },
+    "gifts": "Regali",
+    "minutes": "Minuti",
+    "connected": "Connesso",
+    "connectionEstablished": "Videochiamata stabilita con successo"
   },
   "time": {
     "callDuration": "Tempo"
@@ -1057,5 +1527,150 @@
       "keepSufficientCoins": "Mantieni monete sufficienti",
       "beRespectful": "Sii sempre rispettoso",
       "eachConnectionUnique": "Ogni connessione è unica"
+    },
+    "sessionSuspended": {
+      "title": "È stata aperta una nuova sessione su un altro dispositivo",
+      "message": "La tua sessione corrente è stata sospesa perché è stata aperta una nuova sessione su un altro dispositivo. Puoi continuare con questa sessione cliccando sul pulsante qui sotto.",
+      "continueSession": "Continua con questa sessione",
+      "reactivating": "Riattivazione sessione...",
+      "noToken": "Nessun token disponibile",
+      "reactivateError": "Errore durante la riattivazione della sessione",
+      "networkError": "Errore di connessione. Per favore, riprova."
+    },
+    "sessionClosed": {
+      "title": "Il tuo account è stato aperto su un altro dispositivo",
+      "message": "Il tuo account è stato aperto su un altro dispositivo. Puoi continuare con questa sessione cliccando sul pulsante qui sotto.",
+      "continueSession": "Continua con questa sessione",
+      "reclaiming": "Recupero...",
+      "successTitle": "Sessione recuperata",
+      "successMessage": "La tua sessione è stata recuperata con successo. Ricaricamento...",
+      "noToken": "Nessun token disponibile",
+      "invalidResponse": "Risposta del server non valida",
+      "reclaimError": "Errore nel recupero della sessione",
+      "networkError": "Errore di connessione. Riprova."
+    },
+  "earnings": {
+    "title": "Sistema di Pagamento",
+    "subtitle": "Guadagni e pagamenti settimanali",
+    "unifiedPaymentSystem": "Sistema di Pagamento Unificato",
+    "earningsByTimeAndGifts": "Guadagni per tempo e regali",
+    "loading": "Caricamento...",
+    "error": "Errore",
+    "retry": "Riprova",
+    "tabs": {
+      "all": "Tutto",
+      "sessions": "Sessioni",
+      "gifts": "Regali",
+      "thisWeek": "Questa Settimana",
+      "pending": "In Attesa",
+      "paid": "Pagato"
+    },
+    "balance": {
+      "general": "Saldo Generale",
+      "available": "Saldo totale disponibile",
+      "weeklyBreakdown": "Riepilogo Questa Settimana",
+      "timeEarnings": "Per Tempo",
+      "giftEarnings": "Per Regali",
+      "totalWeekly": "Totale Settimanale",
+      "chatSessions": "Sessioni di chat",
+      "giftsReceived": "Regali ricevuti",
+      "sessions": "sessioni",
+      "regalos": "regali",
+      "time": "Tempo",
+      "thisWeek": "Questa Settimana",
+      "unprocessed": "Non elaborato",
+      "received": "Ricevuto",
+      "mixed": "Misto",
+      "timeOnly": "Solo Tempo",
+      "giftOnly": "Solo Regali",
+      "totalHistoric": "Totale Storico Guadagnato",
+      "lastEarning": "Ultimo Guadagno",
+      "none": "Nessuno",
+      "loadingBalance": "Caricamento saldo..."
+    },
+    "weekly": {
+      "noEarnings": "Nessun guadagno registrato questa settimana",
+      "dailyDetail": "Dettaglio giornaliero",
+      "dayEarnings": "guadagno del giorno",
+      "valid": "Valido",
+      "tooShort": "Troppo Corto",
+      "earningPercentage": "60% guadagno",
+      "page": "Pagina",
+      "of": "di",
+      "previous": "Precedente",
+      "next": "Successivo",
+      "loadingEarnings": "Caricamento guadagni...",
+      "errorLoadingEarnings": "Errore nel caricamento dei guadagni settimanali",
+      "connectionError": "Errore di connessione",
+      "records": "record",
+      "retry": "Riprova",
+      "onlySessions": "Solo Sessioni",
+      "onlyGifts": "Solo Regali",
+      "noSessionEarnings": "Non hai guadagni da sessioni questa settimana",
+      "noGiftEarnings": "Non hai guadagni da regali questa settimana"
+    },
+    "pending": {
+      "title": "Totale In Attesa",
+      "subtitle": "pagamento(i) in attesa",
+      "processing": "Elaborazione...",
+      "loadingPending": "Caricamento pagamenti in attesa...",
+      "errorLoadingPending": "Errore nel caricamento dei pagamenti in attesa",
+      "allClear": "Tutto aggiornato!",
+      "noPendingPayments": "Non hai pagamenti in attesa",
+      "week": "Settimana",
+      "pending": "In Attesa",
+      "sessions": "sessioni",
+      "processed": "Elaborato:",
+      "daysWaiting": "giorno(i) di attesa",
+      "inProcess": "In elaborazione",
+      "weeklyProcessing": "I pagamenti vengono elaborati settimanalmente. I tuoi soldi arriveranno presto."
+    },
+    "history": {
+      "title": "Totale Pagato",
+      "subtitle": "pagamento(i) completato(i)",
+      "completed": "Completato",
+      "loadingHistory": "Caricamento cronologia...",
+      "errorLoadingHistory": "Errore nel caricamento della cronologia dei pagamenti",
+      "noHistory": "Nessuna cronologia",
+      "noPayments": "Nessun pagamento effettuato ancora",
+      "week": "Settimana",
+      "paid": "Pagato",
+      "paidOn": "Pagato il:",
+      "method": "Metodo:",
+      "reference": "Rif.:",
+      "by": "Da:",
+      "received": "Ricevuto"
+    },
+    "duration": {
+      "lessThanMinute": "< 1 min",
+      "hours": "h",
+      "minutes": "m"
+    },
+    "weekdays": {
+      "monday": "lunedì",
+      "tuesday": "martedì",
+      "wednesday": "mercoledì",
+      "thursday": "giovedì",
+      "friday": "venerdì",
+      "saturday": "sabato",
+      "sunday": "domenica"
     }
+  },
+  "roulette": {
+    "titulo": "Roulette Video",
+    "estado": "Pronto per connettersi",
+    "camera_label": "Fotocamera",
+    "mic_label": "Microfono",
+    "start_button": "Avvia Ricerca",
+    "random_user_notice": "Sarai connesso con un utente casuale",
+    "default_camera": "Fotocamera {{number}}",
+    "default_microphone": "Microfono {{number}}"
+  },
+  "mirror": {
+    "label": "Modalità specchio",
+    "enable": "Attiva specchio",
+    "disable": "Disattiva specchio",
+    "active": "Specchio attivo",
+    "description": "Vedi la mia immagine come in uno specchio"
+  }
 }

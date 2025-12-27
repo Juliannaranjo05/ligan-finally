@@ -16,7 +16,6 @@ export const useSessionCleanup = (roomName, isConnected = false) => {
     hasCleanedUp.current = true;
     
     try {
-      console.log('🛑 Finalizando sesión:', { roomName, reason });
       
       const authToken = localStorage.getItem('token');
       const data = {
@@ -48,12 +47,10 @@ export const useSessionCleanup = (roomName, isConnected = false) => {
         });
 
         if (response.ok) {
-          console.log('✅ Sesión finalizada correctamente');
           navigate('/esperarcall');
         }
       }
     } catch (error) {
-      console.error('❌ Error finalizando sesión:', error);
     } finally {
       // Limpiar localStorage
       limpiarDatosSession();
@@ -75,9 +72,7 @@ export const useSessionCleanup = (roomName, isConnected = false) => {
         USER_CACHE.clear();
       }
       
-      console.log('🧹 Datos de sesión limpiados');
     } catch (error) {
-      console.error('Error limpiando localStorage:', error);
     }
   };
 
@@ -117,8 +112,6 @@ export const useSessionCleanup = (roomName, isConnected = false) => {
 
     const handleVisibilityChange = () => {
       if (document.hidden && isConnected && roomName) {
-        console.log('👁️ Página oculta - NO finalizando automáticamente');
-        console.log('🎥 Videochat continúa en segundo plano');
         
         // 🔥 COMENTADO: NO finalizar automáticamente por cambio de pestaña
         // timeoutId = setTimeout(() => {
@@ -129,7 +122,6 @@ export const useSessionCleanup = (roomName, isConnected = false) => {
         // }, 60000);
         
       } else if (!document.hidden) {
-        console.log('👁️ Página visible - continuando normalmente');
         
         // Si regresa, cancelar el timeout (aunque ya no existe)
         if (timeoutId) {

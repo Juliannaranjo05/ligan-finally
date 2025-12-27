@@ -53,7 +53,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
           fetchPurchaseHistory()
         ]);
       } catch (error) {
-        console.error('Error inicializando Coinbase Commerce:', error);
         showNotification('Error de configuración. Intenta más tarde.', 'error');
       } finally {
         setLoading(false);
@@ -84,7 +83,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
         setCoinbaseConfig(data);
       }
     } catch (error) {
-      console.error('Error obteniendo configuración Coinbase:', error);
     }
   };
 
@@ -125,7 +123,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
 
       setBalance(combinedBalance);
     } catch (error) {
-      console.error('Error obteniendo balance:', error);
     }
   };
 
@@ -139,7 +136,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
         setPackages(data.packages);
       }
     } catch (error) {
-      console.error('Error obteniendo paquetes:', error);
     }
   };
 
@@ -153,7 +149,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
         setPurchaseHistory((data.purchases.data || []).slice(0, 3));
       }
     } catch (error) {
-      console.error('Error obteniendo historial:', error);
     }
   };
 
@@ -182,7 +177,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
         ? '/api/coinbase-commerce/sandbox-purchase'  // 🧪 Sandbox
         : '/api/coinbase-commerce/create-payment';   // 💰 Real
       
-      console.log(`Modo: ${config.sandbox ? 'SANDBOX' : 'PRODUCCIÓN'}`);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
@@ -232,7 +226,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
       }
 
     } catch (error) {
-      console.error('Error creando pago:', error);
       showNotification('Error de conexión. Intenta nuevamente.', 'error');
     } finally {
       setProcessing(false);
@@ -274,7 +267,6 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
       }
 
     } catch (error) {
-      console.error('Error verificando estado:', error);
     } finally {
       setCheckingStatus(false);
     }

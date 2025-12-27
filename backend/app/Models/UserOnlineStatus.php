@@ -56,7 +56,7 @@ class UserOnlineStatus extends Model
     public function scopeAvailableForChat($query)
     {
         return $query->where('is_online', true)
-                    ->where('last_seen', '>', now()->subSeconds(30)) // Más estricto
+                    ->where('last_seen', '>', now()->subMinutes(2)) // 🔥 AUMENTAR A 2 MINUTOS para dar más margen
                     ->whereIn('activity_type', ['browsing', 'searching', 'idle'])
                     ->whereNotIn('activity_type', ['videochat', 'videochat_model', 'videochat_client']);
     }
@@ -231,7 +231,7 @@ class UserOnlineStatus extends Model
         ]);
 
         $query = self::online()
-            ->recentlyActive(1) // Solo últimos 1 minuto para mayor precisión
+            ->recentlyActive(2) // 🔥 AUMENTAR A 2 MINUTOS para dar más margen al heartbeat
             ->whereHas('user', function($userQuery) use ($role) {
                 $userQuery->where('rol', $role);
             })
@@ -255,7 +255,7 @@ class UserOnlineStatus extends Model
         try {
             $userStatus = self::where('user_id', $userId)
                 ->where('is_online', true)
-                ->where('last_seen', '>', now()->subSeconds(30)) // Últimos 30 segundos
+                ->where('last_seen', '>', now()->subMinutes(2)) // 🔥 AUMENTAR A 2 MINUTOS para dar más margen
                 ->whereIn('activity_type', ['browsing', 'searching', 'idle'])
                 ->first();
 

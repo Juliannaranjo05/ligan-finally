@@ -3,10 +3,13 @@ import { useNavigate } from "react-router-dom";
 import Header from "./header";
 import { useTranslation } from "react-i18next";
 import { useSearching } from '../../contexts/SearchingContext.jsx';
+import { useSessionValidation } from '../hooks/useSessionValidation';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function PreCallLobbyModelo() {
+  // 🔥 VALIDACIÓN DE SESIÓN: Solo modelos pueden acceder
+  useSessionValidation('modelo');
   const { t, i18n } = useTranslation();
   
   useEffect(() => {
@@ -304,7 +307,7 @@ export default function PreCallLobbyModelo() {
               >
                 {cameras.map((cam) => (
                   <option key={cam.deviceId} value={cam.deviceId}>
-                    {cam.label || `Cámara ${cameras.indexOf(cam) + 1}`}
+                    {cam.label || t("roulette.default_camera", { number: cameras.indexOf(cam) + 1 }) || `Cámara ${cameras.indexOf(cam) + 1}`}
                   </option>
                 ))}
               </select>
@@ -320,7 +323,7 @@ export default function PreCallLobbyModelo() {
               >
                 {microphones.map((mic) => (
                   <option key={mic.deviceId} value={mic.deviceId}>
-                    {mic.label || `Micrófono ${microphones.indexOf(mic) + 1}`}
+                    {mic.label || t("roulette.default_microphone", { number: microphones.indexOf(mic) + 1 }) || `Micrófono ${microphones.indexOf(mic) + 1}`}
                   </option>
                 ))}
               </select>

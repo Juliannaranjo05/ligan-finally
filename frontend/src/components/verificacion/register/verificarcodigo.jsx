@@ -31,7 +31,6 @@ export default function EmailVerification() {
       localStorage.removeItem("token");
       navigate("/home");
     } catch (error) {
-      console.error("❌ Error al salir:", error);
       setMessage("No se pudo cerrar sesión correctamente.");
     }
   };
@@ -105,11 +104,9 @@ export default function EmailVerification() {
     try {
       setResending(true);
       setMessage("Reenviando código...");
-      console.log("📧 Enviando email:", email);
       await reenviarCodigo(email);
       setMessage("📧 Código reenviado al correo.");
     } catch (error) {
-      console.error("Error al reenviar código:", error);
       setTimeout(() => {
         navigate("/home");
       }, 3000);

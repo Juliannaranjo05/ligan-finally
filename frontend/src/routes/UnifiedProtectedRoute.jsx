@@ -65,6 +65,17 @@ export default function UnifiedProtectedRoute({ children }) {
 
       } catch (error) {
         console.error("❌ Error:", error);
+        const errorCode = error.response?.data?.code;
+        const status = error.response?.status;
+        
+        // 🆕 NO REDIRIGIR SI ES SESIÓN CERRADA POR OTRO DISPOSITIVO
+        // Dejar que SessionClosedAlert maneje esto
+        if ((status === 401 || status === 403) && errorCode === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
+          // No redirigir, dejar que el componente SessionClosedAlert muestre el aviso
+          setLoading(false);
+          return;
+        }
+        
         setRedirectTo("/home");
       } finally {
         setLoading(false);

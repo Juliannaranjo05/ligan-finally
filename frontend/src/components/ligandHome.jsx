@@ -12,6 +12,7 @@ import LanguageSelector from "../components/languageSelector";
 import { useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HiddenLoginModal } from "../components/admin/HiddenLoginModal.jsx";
+import SessionSuspendedModal from "./SessionSuspendedModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -28,8 +29,14 @@ const MobileLanguageSelector = () => {
   ];
 
   const handleLanguageChange = (langCode) => {
-    i18n.changeLanguage(langCode);
+    // 🔥 GUARDAR EN TODAS LAS CLAVES PARA COMPATIBILIDAD
     localStorage.setItem("lang", langCode);
+    localStorage.setItem("selectedLanguage", langCode);
+    localStorage.setItem("userPreferredLanguage", langCode);
+    
+    // 🔥 CAMBIAR IDIOMA EN i18n
+    i18n.changeLanguage(langCode);
+    
     setIsOpen(false);
   };
 
@@ -76,7 +83,7 @@ const MobileLanguageSelector = () => {
 };
 
 // Componente para el menú dropdown móvil
-const MobileDropdownMenu = () => {
+const MobileDropdownMenu = ({ onHelpClick }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -88,7 +95,8 @@ const MobileDropdownMenu = () => {
     },
     { 
       label: t('ayuda'), 
-      action: () => <HelpCircle size={18} />
+      action: () => {},
+      isHelp: true
     }
   ];
 
@@ -120,12 +128,14 @@ const MobileDropdownMenu = () => {
                 ) : (
                   <button
                     onClick={() => {
-                      item.action();
                       setIsOpen(false);
+                      if (item.isHelp && onHelpClick) {
+                        onHelpClick();
+                      }
                     }}
                     className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-fucsia/20 transition-colors text-white"
                   >
-                    {item.icon}
+                    <HelpCircle size={18} />
                     <span className="text-sm">{item.label}</span>
                   </button>
                 )}
@@ -140,6 +150,7 @@ const MobileDropdownMenu = () => {
 
 export default function ParlandomChatApp() {
   const { t, i18n } = useTranslation();
+  const [showHelpModal, setShowHelpModal] = useState(false);
   
   // Configurar el título y favicon de la página
 useEffect(() => {
@@ -163,6 +174,7 @@ useEffect(() => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const hasChecked = useRef(false);
 
   const auth = searchParams.get("auth");
@@ -175,11 +187,8 @@ useEffect(() => {
   const [loadingHistorias, setLoadingHistorias] = useState(true);
 
   const cargarHistorias = async () => {
-    console.log('🚀 cargarHistorias iniciado');
     try {
       setLoadingHistorias(true);
-      console.log('📡 VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
-      console.log('📡 API_BASE_URL:', API_BASE_URL);
             
       const historiasPrueba = [
         { 
@@ -230,16 +239,12 @@ useEffect(() => {
       ];
       
       try {
-        console.log('🔍 Intentando cargar historias desde:', import.meta.env.VITE_API_BASE_URL);
-        console.log('🔍 axios baseURL configurado:', api.defaults.baseURL);
-        console.log('🔍 URL completa será:', `${api.defaults.baseURL || import.meta.env.VITE_API_BASE_URL}/api/stories`);
         const response = await api.get('/api/stories', {
           timeout: 10000
         });
-        console.log('✅ Respuesta recibida:', response.status, response.data);
         const historiasData = response.data.map(story => ({
           id: story.id,
-          nombre: story.user?.name || 'Usuario',
+          nombre: story.user?.display_name || story.user?.nickname || story.user?.name || 'Usuario',
           estado: story.user?.is_online ? "activa" : "inactiva",
           img: story.file_path ? `${API_BASE_URL}/storage/${story.file_path}` : pruebahistorias,
           image: story.file_path ? `${API_BASE_URL}/storage/${story.file_path}` : pruebahistorias,
@@ -260,13 +265,10 @@ useEffect(() => {
         
         setHistorias(historiasFinales);
               } catch (apiError) {
-                console.error('❌ Error al cargar historias desde API:', apiError);
-                console.error('❌ Detalles del error:', apiError.response?.data || apiError.message);
                 setHistorias(historiasPrueba);
       }
       
     } catch (error) {
-            console.error('❌ Error general al cargar historias:', error);
             setHistorias([]);
     } finally {
       setLoadingHistorias(false);
@@ -351,86 +353,168 @@ useEffect(() => {
     const videos = document.querySelectorAll('video[data-carousel="true"]');
     videos.forEach((video) => {
       video.currentTime = 0;
-      video.play().catch(console.log);
+      video.play().catch(() => {});
     });
   }, [currentIndex, expandedIndex, historias]);
 
+  // 🔥 VERIFICACIÓN TEMPRANA: Verificar sesión inmediatamente si hay token
   useEffect(() => {
     const checkUserAndRedirect = async () => {
       if (hasChecked.current) {
-                return;
+        return;
       }
 
       try {
-                hasChecked.current = true;
-
-        const res = await apiCall('/api/profile');
-        const user = res.data.user;
-
+        hasChecked.current = true;
         
-        if (user) {
-          const sessionToken = localStorage.getItem('token');
-          const sessionRoomName = localStorage.getItem('roomName');
-          const sessionUserName = localStorage.getItem('userName');
+        // 🔥 PASO 1: Verificar si hay token en localStorage
+        const token = localStorage.getItem('token');
+        
+        // Si NO hay token, mostrar landing page inmediatamente
+        if (!token || token.trim() === '') {
+          setIsCheckingSession(false);
+          setLoading(false);
+          return;
+        }
 
+        // 🔥 PASO 2: Si hay token, verificar sesión inmediatamente
+        try {
+          const res = await api.get(`${API_BASE_URL}/api/profile`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
           
-          if (sessionToken && sessionRoomName && sessionRoomName !== 'null' && sessionRoomName !== 'undefined') {
-                        
-            if (user.rol === "cliente") {
-                            navigate(`/videochatclient?roomName=${sessionRoomName}&userName=${sessionUserName}`, { replace: true });
-              return;
-            } else if (user.rol === "modelo") {
-                            navigate(`/videochat?roomName=${sessionRoomName}&userName=${sessionUserName}`, { replace: true });
+          const user = res.data.user;
+
+          // 🔥 Si hay usuario válido, redirigir según rol SIN mostrar landing
+          if (user && user.id) {
+            const sessionRoomName = localStorage.getItem('roomName');
+            const sessionUserName = localStorage.getItem('userName');
+
+            // Verificar si hay sesión de videochat activa
+            if (sessionRoomName && sessionRoomName !== 'null' && sessionRoomName !== 'undefined') {
+              if (user.rol === "cliente") {
+                navigate(`/videochatclient?roomName=${sessionRoomName}&userName=${sessionUserName}`, { replace: true });
+                return;
+              } else if (user.rol === "modelo") {
+                navigate(`/videochatclient?roomName=${sessionRoomName}&userName=${sessionUserName}`, { replace: true });
+                return;
+              }
+            }
+
+            // Verificar email verificado
+            if (!user.email_verified_at) {
+              navigate("/verificaremail", { replace: true });
               return;
             }
-          }
 
-          if (!user.email_verified_at) {
-                        navigate("/verificaremail", { replace: true });
-            return;
-          }
+            // Verificar perfil completo
+            if (!user.rol || !user.name) {
+              navigate("/genero", { replace: true });
+              return;
+            }
 
-          if (!user.rol || !user.name) {
-                        navigate("/genero", { replace: true });
-            return;
-          }
-
-          if (user.rol === "cliente") {
-                        navigate("/homecliente", { replace: true });
-            return;
-          }
-
-          if (user.rol === "modelo") {
-            const estado = user.verificacion?.estado;
+            // 🔄 Verificar si hay una acción pendiente de historias
+            const pendingAction = localStorage.getItem('pendingStoryAction');
+            if (pendingAction) {
+              try {
+                const actionData = JSON.parse(pendingAction);
+                
+                // Limpiar la acción pendiente
+                localStorage.removeItem('pendingStoryAction');
+                
+                // Ejecutar la acción pendiente
+                if (user.rol === "cliente") {
+                  if (actionData.action === 'chat') {
+                    // Generar room_name (mismo formato que usa el backend)
+                    const currentUserId = user.id || user.user?.id;
+                    const otherUserId = actionData.userId;
+                    const roomName = [currentUserId, otherUserId].sort().join('_');
+                    
+                    const chatData = {
+                      other_user_id: otherUserId,
+                      other_user_name: actionData.userName || 'Usuario',
+                      other_user_display_name: actionData.userName || 'Usuario',
+                      other_user_role: 'modelo',
+                      room_name: roomName,
+                      createdLocally: true,
+                      needsSync: true
+                    };
+                    
+                    // Redirigir al chat con la chica usando navigate con estado
+                    navigate({
+                      pathname: '/message',
+                      search: `?user=${encodeURIComponent(actionData.userName || 'Usuario')}`,
+                      state: {
+                        openChatWith: chatData
+                      }
+                    }, { replace: true });
+                    return;
+                  } else if (actionData.action === 'videocall') {
+                    // Verificar balance y luego iniciar llamada o redirigir a compra
+                    verificarBalanceYEjecutarAccion(actionData);
+                    return;
+                  }
+                }
+              } catch (error) {
+                localStorage.removeItem('pendingStoryAction');
+              }
+            }
             
-            switch (estado) {
-              case null:
-              case undefined:
-              case "rechazada":
-                navigate("/anteveri", { replace: true });
-                break;
-              case "pendiente":
-                navigate("/esperando", { replace: true });
-                break;
-              case "aprobada":
-                navigate("/homellamadas", { replace: true });
-                break;
-              default:
-                navigate("/anteveri", { replace: true });
+            // 🎯 REDIRECCIÓN INMEDIATA POR ROL
+            if (user.rol === "cliente") {
+              navigate("/homecliente", { replace: true });
+              return;
             }
-            return;
+
+            if (user.rol === "modelo") {
+              const estado = user.verificacion?.estado;
+              
+              switch (estado) {
+                case null:
+                case undefined:
+                case "rechazada":
+                  navigate("/anteveri", { replace: true });
+                  break;
+                case "pendiente":
+                  navigate("/esperando", { replace: true });
+                  break;
+                case "aprobada":
+                  navigate("/homellamadas", { replace: true });
+                  break;
+                default:
+                  navigate("/anteveri", { replace: true });
+              }
+              return;
+            }
+          }
+        } catch (apiError) {
+          // Si la verificación falla (token inválido, 401, etc.), mostrar landing
+          // Limpiar token inválido si es necesario
+          if (apiError.response?.status === 401 || apiError.response?.status === 403) {
+            try {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            } catch (e) {
+              // Ignorar errores de localStorage
+            }
           }
         }
 
-                setLoading(false);
+        // Si llegamos aquí, no hay sesión activa válida, mostrar landing
+        setIsCheckingSession(false);
+        setLoading(false);
 
       } catch (error) {
-                
+        // Cualquier otro error, mostrar landing page
         if (error.response?.status === 429) {
-                    setLoading(false);
+          setIsCheckingSession(false);
+          setLoading(false);
           return;
         }
         
+        setIsCheckingSession(false);
         setLoading(false);
       }
     };
@@ -438,7 +522,7 @@ useEffect(() => {
     if (!hasChecked.current) {
       checkUserAndRedirect();
     }
-  }, []);
+  }, [navigate]);
 
   const todasLasChicas = [
     "Ana", "Lucía", "Sofía", "Camila", "Valentina", "Isabela", "Mía", "Emilia"
@@ -458,17 +542,235 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleButtonClick = (action) => {
-        navigate("/home?auth=register");
+  const handleButtonClick = async (action, historia) => {
+    const token = localStorage.getItem('token');
+    const isAuthenticated = !!token;
+    
+    // Si no está autenticado, guardar acción pendiente y redirigir a login/register
+    if (!isAuthenticated) {
+      const pendingAction = {
+        action, // 'chat' o 'videocall'
+        userId: historia?.user_id,
+        userName: historia?.nombre,
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem('pendingStoryAction', JSON.stringify(pendingAction));
+      
+      // Redirigir a registro (o login según prefieras)
+      navigate("/home?auth=register");
+      return;
+    }
+    
+    // Usuario autenticado - ejecutar acción directamente
+    if (action === 'chat') {
+      handleChatAction(historia);
+    } else if (action === 'videocall') {
+      await handleVideoCallAction(historia);
+    }
+  };
+  
+  // 💬 Manejar acción de chat
+  const handleChatAction = (historia) => {
+    
+    if (!historia?.user_id) {
+      return;
+    }
+    
+    // Cerrar modal de historia si está abierto
+    if (expandedIndex !== null) {
+      handleClose();
+    }
+    
+    // Obtener el usuario actual para generar el room_name
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const currentUserId = user?.id || user?.user?.id;
+    const otherUserId = historia.user_id;
+    
+    if (!currentUserId || !otherUserId) {
+      // Si no hay usuario autenticado, guardar acción pendiente
+      const pendingAction = {
+        action: 'chat',
+        userId: otherUserId,
+        userName: historia.nombre || 'Usuario',
+        timestamp: Date.now()
+      };
+      localStorage.setItem('pendingStoryAction', JSON.stringify(pendingAction));
+      navigate("/home?auth=register");
+      return;
+    }
+    
+    // Generar room_name (mismo formato que usa el backend)
+    const roomName = [currentUserId, otherUserId].sort().join('_');
+    
+    const chatData = {
+      other_user_id: otherUserId,
+      other_user_name: historia.nombre || 'Usuario',
+      other_user_display_name: historia.nombre || 'Usuario',
+      other_user_role: 'modelo',
+      room_name: roomName,
+      createdLocally: true,
+      needsSync: true
+    };
+    
+    // Navegar al chat con la chica usando navigate con estado
+    navigate({
+      pathname: '/message',
+      search: `?user=${encodeURIComponent(historia.nombre || 'Usuario')}`,
+      state: {
+        openChatWith: chatData
+      }
+    });
+  };
+  
+  // 📹 Manejar acción de videollamada
+  const handleVideoCallAction = async (historia) => {
+    
+    if (!historia?.user_id) {
+      return;
+    }
+    
+    try {
+      // Verificar balance del usuario
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.can_start_call) {
+          // ✅ Tiene saldo suficiente - iniciar llamada directa a la chica
+          
+          // Cerrar modal de historia si está abierto
+          if (expandedIndex !== null) {
+            handleClose();
+          }
+          
+          // Iniciar llamada directa a la chica
+          await iniciarLlamadaDirecta(historia.user_id);
+          
+        } else {
+          // ❌ No tiene saldo suficiente - redirigir a comprar minutos
+          
+          // Cerrar modal de historia si está abierto
+          if (expandedIndex !== null) {
+            handleClose();
+          }
+          
+          // Redirigir a la página de compra de minutos/coins
+          navigate('/homecliente?action=buy-coins');
+        }
+      } else {
+        // En caso de error, también redirigir a compra
+        navigate('/homecliente?action=buy-coins');
+      }
+    } catch (error) {
+      navigate('/homecliente?action=buy-coins');
+    }
+  };
+  
+  // 🔄 Verificar balance y ejecutar acción pendiente
+  const verificarBalanceYEjecutarAccion = async (actionData) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.can_start_call) {
+          // ✅ Tiene saldo - iniciar llamada directa
+          await iniciarLlamadaDirecta(actionData.userId);
+        } else {
+          // ❌ No tiene saldo - redirigir a compra
+          navigate('/homecliente?action=buy-coins');
+        }
+      } else {
+        navigate('/homecliente?action=buy-coins');
+      }
+    } catch (error) {
+      navigate('/homecliente?action=buy-coins');
+    }
+  };
+  
+  // 📞 Iniciar llamada directa a una chica específica
+  const iniciarLlamadaDirecta = async (modeloUserId) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          receiver_id: modeloUserId,
+          call_type: 'video'
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.room_name) {
+          // Guardar datos de la sala
+          localStorage.setItem('roomName', data.room_name);
+          localStorage.setItem('userName', data.receiver?.name || 'Cliente');
+          localStorage.setItem('currentRoom', data.room_name);
+          localStorage.setItem('inCall', 'true');
+          localStorage.setItem('videochatActive', 'true');
+          
+          // Redirigir al videochat
+          window.location.href = '/videochatclient';
+        } else {
+          // Mostrar error o redirigir a espera
+          navigate('/esperandocallcliente');
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        navigate('/esperandocallcliente');
+      }
+    } catch (error) {
+      navigate('/esperandocallcliente');
+    }
   };
 
-  if (loading || loadingHistorias) {
+  // 🔥 NO mostrar contenido mientras se verifica la sesión
+  // Si hay sesión activa, el useEffect redirigirá antes de llegar aquí
+  if (isCheckingSession || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-pink-500 mx-auto mb-4"></div>
           <p className="text-white/80 mt-4">
-            {loading ? "Verificando estado..." : "Cargando historias..."}
+            {isCheckingSession ? "Verificando sesión..." : "Cargando..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 🔥 Solo mostrar historias si ya terminó la verificación de sesión
+  if (loadingHistorias && !isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-white/80 mt-4">
+            Cargando historias...
           </p>
         </div>
       </div>
@@ -479,6 +781,8 @@ useEffect(() => {
       }
 
   return (
+    <>
+      <SessionSuspendedModal />
     <div className="bg-ligand-mix-dark min-h-screen px-4">
       {/* Header para escritorio */}
       <header className="hidden sm:flex justify-between items-center p-3 gap-0">
@@ -501,12 +805,11 @@ useEffect(() => {
           >
             {t('iniciarSesion')}
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-[#ff007a] text-white rounded-lg hover:bg-pink-600 transition text-base">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M9.09 9a3 3 0 1 1 5.83 1c0 2-3 2-3 4" />
-              <line x1="12" y1="17" x2="12" y2="17" />
-            </svg>
+          <button 
+            onClick={() => setShowHelpModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#ff007a] text-white rounded-lg hover:bg-pink-600 transition text-base"
+          >
+            <HelpCircle size={20} />
             {t('ayuda')}
           </button>
         </div>
@@ -529,7 +832,7 @@ useEffect(() => {
             {t('iniciarSesion')}
           </button>
           
-          <MobileDropdownMenu />
+          <MobileDropdownMenu onHelpClick={() => setShowHelpModal(true)} />
         </div>
       </header>
       {/* Contenido principal */}
@@ -809,14 +1112,14 @@ useEffect(() => {
                                   >
                                     <button 
                                       className="bg-fucsia hover:bg-pink-600 px-4 py-3 rounded-xl flex items-center justify-center gap-2 text-white font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg text-sm lg:text-lg"
-                                      onClick={() => handleButtonClick('chat')}
+                                      onClick={() => handleButtonClick('chat', historia)}
                                     >
                                       <MessageCircle size={20} /> {t('chatear')}
                                     </button>
 
                                     <button 
                                       className="bg-gradient-to-r from-fucsia to-pink-600 hover:from-pink-600 hover:to-pink-700 px-4 py-3 rounded-xl flex items-center justify-center gap-2 text-white font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg text-sm lg:text-lg"
-                                      onClick={() => handleButtonClick('videocall')}
+                                      onClick={() => handleButtonClick('videocall', historia)}
                                     >
                                       <Video size={20} /> {t('videollamada')}
                                     </button>
@@ -892,7 +1195,140 @@ useEffect(() => {
       {showLogin && <LoginLigand onClose={() => navigate("/home")} />}
       {showRegister && <Register onClose={() => navigate("/home")} />}
       <HiddenLoginModal />
+
+      {/* Modal de Ayuda */}
+      {showHelpModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-gradient-to-b from-[#0a0d10] to-[#131418] border border-[#ff007a]/30 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden transform animate-fadeIn">
+            {/* Header */}
+            <div className="p-6 border-b border-[#ff007a]/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-[#ff007a]/20 rounded-full flex items-center justify-center">
+                  <HelpCircle size={24} className="text-[#ff007a]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">{t('helpModal.title') || 'Centro de Ayuda'}</h3>
+                  <p className="text-gray-400 text-sm">{t('helpModal.subtitle') || 'Todo lo que necesitas saber'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="text-white/60 hover:text-white p-2 hover:bg-[#3a3d44] rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 overflow-y-auto max-h-[calc(85vh-180px)]">
+              <div className="space-y-6">
+                {/* Sección: Iniciar Sesión */}
+                <div className="bg-[#1f2125] rounded-xl p-5 border border-[#ff007a]/10">
+                  <div className="flex items-center gap-3 mb-3">
+                    <User size={20} className="text-[#ff007a]" />
+                    <h4 className="text-lg font-semibold text-white">{t('helpModal.login.title') || '¿Cómo iniciar sesión?'}</h4>
+                  </div>
+                  <p className="text-gray-300 text-sm mb-3">
+                    {t('helpModal.login.description') || 'Para iniciar sesión en Ligando, haz clic en el botón "Iniciar Sesión" en la parte superior de la página. Puedes usar tu correo electrónico y contraseña, o iniciar sesión con Google.'}
+                  </p>
+                  <ul className="text-gray-300 text-sm space-y-2 ml-4">
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.login.step1') || 'Haz clic en "Iniciar Sesión" en el header'}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.login.step2') || 'Ingresa tu correo y contraseña, o usa Google'}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.login.step3') || '¡Listo! Ya puedes comenzar a chatear'}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Sección: Registrarse */}
+                <div className="bg-[#1f2125] rounded-xl p-5 border border-[#ff007a]/10">
+                  <div className="flex items-center gap-3 mb-3">
+                    <User size={20} className="text-[#ff007a]" />
+                    <h4 className="text-lg font-semibold text-white">{t('helpModal.register.title') || '¿No tienes cuenta?'}</h4>
+                  </div>
+                  <p className="text-gray-300 text-sm mb-3">
+                    {t('helpModal.register.description') || 'Crear una cuenta en Ligando es muy fácil. Solo necesitas un correo electrónico y seguir unos simples pasos.'}
+                  </p>
+                  <ul className="text-gray-300 text-sm space-y-2 ml-4">
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.register.step1') || 'Haz clic en "Iniciar Sesión"'}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.register.step2') || 'Selecciona "Regístrate aquí" o "Crear cuenta"'}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#ff007a] mt-1">•</span>
+                      <span>{t('helpModal.register.step3') || 'Completa el formulario y verifica tu correo'}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Sección: Sobre la Plataforma */}
+                <div className="bg-[#1f2125] rounded-xl p-5 border border-[#ff007a]/10">
+                  <div className="flex items-center gap-3 mb-3">
+                    <MessageCircle size={20} className="text-[#ff007a]" />
+                    <h4 className="text-lg font-semibold text-white">{t('helpModal.about.title') || '¿Qué es Ligando?'}</h4>
+                  </div>
+                  <p className="text-gray-300 text-sm">
+                    {t('helpModal.about.description') || 'Ligando es una plataforma de video chat donde puedes conectar con personas de todo el mundo. Puedes chatear, hacer videollamadas y conocer nuevas personas de forma segura y divertida.'}
+                  </p>
+                </div>
+
+                {/* Sección: Preguntas Frecuentes */}
+                <div className="bg-[#1f2125] rounded-xl p-5 border border-[#ff007a]/10">
+                  <div className="flex items-center gap-3 mb-3">
+                    <HelpCircle size={20} className="text-[#ff007a]" />
+                    <h4 className="text-lg font-semibold text-white">{t('helpModal.faq.title') || 'Preguntas Frecuentes'}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-[#ff007a] font-medium text-sm mb-1">{t('helpModal.faq.q1') || '¿Es gratis?'}</p>
+                      <p className="text-gray-300 text-sm">{t('helpModal.faq.a1') || 'Registrarse es completamente gratis. Algunas funciones premium pueden requerir monedas.'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#ff007a] font-medium text-sm mb-1">{t('helpModal.faq.q2') || '¿Cómo funcionan las videollamadas?'}</p>
+                      <p className="text-gray-300 text-sm">{t('helpModal.faq.a2') || 'Puedes iniciar una videollamada con cualquier usuario en línea. Las llamadas se realizan en tiempo real y son completamente privadas.'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#ff007a] font-medium text-sm mb-1">{t('helpModal.faq.q3') || '¿Necesito verificar mi cuenta?'}</p>
+                      <p className="text-gray-300 text-sm">{t('helpModal.faq.a3') || 'Sí, después de registrarte recibirás un código de verificación en tu correo electrónico para activar tu cuenta.'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-[#ff007a]/20 bg-[#1a1c20]">
+              <div className="flex items-center justify-between">
+                <p className="text-gray-400 text-xs">
+                  {t('helpModal.footer') || '¿Necesitas más ayuda? Contacta a nuestro equipo de soporte.'}
+                </p>
+                <button
+                  onClick={() => {
+                    setShowHelpModal(false);
+                    navigate("/home?auth=login");
+                  }}
+                  className="bg-[#ff007a] hover:bg-[#e6006f] text-white px-6 py-2 rounded-lg transition-colors text-sm font-medium"
+                >
+                  {t('helpModal.startButton') || 'Comenzar ahora'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    </>
   );
 }
 export const Dashboard = () => {

@@ -8,6 +8,39 @@
   "idioma": "Language",
   "iniciarSesion": "Login",
   "ayuda": "Help",
+  "helpModal": {
+    "title": "Help Center",
+    "subtitle": "Everything you need to know",
+    "login": {
+      "title": "How to log in?",
+      "description": "To log in to Ligando, click the \"Login\" button at the top of the page. You can use your email and password, or sign in with Google.",
+      "step1": "Click \"Login\" in the header",
+      "step2": "Enter your email and password, or use Google",
+      "step3": "Ready! You can start chatting"
+    },
+    "register": {
+      "title": "Don't have an account?",
+      "description": "Creating an account on Ligando is very easy. You just need an email address and follow a few simple steps.",
+      "step1": "Click \"Login\"",
+      "step2": "Select \"Register here\" or \"Create account\"",
+      "step3": "Complete the form and verify your email"
+    },
+    "about": {
+      "title": "What is Ligando?",
+      "description": "Ligando is a video chat platform where you can connect with people from around the world. You can chat, make video calls and meet new people in a safe and fun way."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "q1": "Is it free?",
+      "a1": "Registration is completely free. Some premium features may require coins.",
+      "q2": "How do video calls work?",
+      "a2": "You can start a video call with any online user. Calls are made in real time and are completely private.",
+      "q3": "Do I need to verify my account?",
+      "a3": "Yes, after registering you will receive a verification code in your email to activate your account."
+    },
+    "footer": "Need more help? Contact our support team.",
+    "startButton": "Get started"
+  },
   "comenzar": "Start Chatting",
   "subtitulo": "Video chat with random people instantly",
   "activa": "Active",
@@ -40,6 +73,7 @@
   "addedToFavorites": "Added to favorites",
   "searchUsers": "Search users",
   "viewStories": "View stories",
+  "storiesComingSoon": "Stories will be available soon",
   "buyCoins": "Buy coins",
   "coinPackages": "Coin packages",
   "videoMinutes10": "≈ 10 minutes of videochat",
@@ -169,7 +203,17 @@
     "callRejected": "The girl rejected the call",
     "callExpired": "The call expired without response",
     "timeoutExpired": "Waiting time expired",
-    "errorStartingCall": "Error starting call"
+    "errorStartingCall": "Error starting call",
+    "lastPayment": "Last Payment:",
+    "loadingLastPurchase": "Loading last payment...",
+    "claimCoins": "Claim Coins",
+    "claiming": "Claiming...",
+    "coinsClaimedSuccess": "Coins claimed successfully!",
+    "claimed": "Claimed",
+    "coins": "Coins",
+    "minutes": "Minutes",
+    "paymentProblemTitle": "Payment problem?",
+    "paymentProblemMessage": "If the payment was not made or the coins were not added, go to \"Buy Coins\" and review your transactions. Process the pending payment or contact support if you need help."
   },
   "storiesModal": {
     "loadingStories": "Loading stories...",
@@ -302,7 +346,12 @@
       "yesterday": "Yesterday",
       "callEnded": "Call ended",
       "messageSent": "Message sent",
-      "addedToFavorites": "Added you to favorites"
+      "addedToFavorites": "Added you to favorites",
+      "callRejected": "Call rejected",
+      "callCancelled": "Call cancelled",
+      "noHistory": "No call history",
+      "sendMessage": "Send message",
+      "callAgain": "Call again"
     },
     "restrictions": {
       "pendingApproval": "Story Pending Approval",
@@ -349,11 +398,14 @@
     "title": "Your Favorites",
     "count": "favorite",
     "countPlural": "favorites",
+    "singular": "favorite",
+    "plural": "favorites",
     "loading": "Loading favorites...",
     "updating": "Updating...",
     "refresh": "Refresh",
     "noFavorites": "You don't have favorites yet",
     "noFavoritesDesc": "When you add users as favorites, they will appear here",
+    "noFavoritesMessage": "When you add users as favorites, they will appear here",
     "searchUsers": "Search users",
     "errorLoading": "Error loading favorites",
     "retry": "Retry",
@@ -461,22 +513,464 @@
     "takePhoto": "Take photo",
     "deletePhoto": "Delete profile photo",
     "editAlias": "Edit alias or visible name",
+    "editAliasModal": {
+      "title": "Edit Nickname",
+      "customNickname": "Your custom nickname",
+      "nicknamePlaceholder": "Enter your nickname",
+      "characters": "characters",
+      "preview": "Preview:",
+      "nicknameInfo": "Your nickname is how other users will see you. Your real name will remain",
+      "useRealName": "Use real name",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving...",
+      "deleting": "Deleting..."
+    },
     "language": "Preferred language",
+    "languageModal": {
+      "title": "Select Language",
+      "description": "Select your preferred language for automatic translations",
+      "current": "Current",
+      "cancel": "Cancel",
+      "saveLanguage": "Save language",
+      "saving": "Saving..."
+    },
+    "managePhotoModal": {
+      "uploadFromFile": "Upload from file",
+      "selectFile": "Select file",
+      "fileFormats": "JPEG, PNG, WebP (max. 5MB)",
+      "preview": "Preview",
+      "confirmUpload": "Confirm upload",
+      "uploading": "Uploading...",
+      "cancel": "Cancel",
+      "or": "or",
+      "takePhoto": "Take photo",
+      "activateCamera": "Activate camera",
+      "activating": "Activating...",
+      "loadingCamera": "Loading camera...",
+      "capturePhoto": "Take photo",
+      "processing": "Processing...",
+      "deleteCurrentPhoto": "Delete current photo",
+      "deleting": "Deleting...",
+      "deletePhoto": "Delete photo"
+    },
     "payments": "Subscription and Payments",
     "managePaymentMethod": "Add or remove payment method",
+    "configurePayoutAccount": "Configure account for payouts",
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts.",
+    "transactionHistory": "Transaction History",
+    "paymentMethods": {
+      "title": "Payment Methods",
+      "addMethod": "Add Method",
+      "addCard": "Add Card",
+      "deleteMethod": "Delete",
+      "setDefault": "Set as default",
+      "noMethods": "You don't have any saved cards",
+      "addFirst": "Add a card as reference",
+      "info": "These methods are for reference only. Payments are processed directly through Wompi.",
+      "cardInfo": "This information is for reference only. Payments are processed directly through Wompi.",
+      "card": "Card",
+      "pse": "PSE",
+      "nequi": "Nequi",
+      "bancolombia": "Bancolombia",
+      "lastUsed": "Last used",
+      "default": "Default",
+      "suggestions": "Previously used cards",
+      "add": "Add",
+      "type": "Method type",
+      "lastFourDigits": "Last 4 digits",
+      "lastFourDigitsHint": "Enter the last 4 digits of your card as reference",
+      "bankName": "Bank",
+      "bankPlaceholder": "Bank name",
+      "accountType": "Account type",
+      "accountPlaceholder": "E.g: Savings",
+      "setAsDefault": "Set as default",
+      "save": "Save",
+      "cancel": "Cancel",
+      "confirmDelete": "Confirm deletion",
+      "deleteMessage": "Are you sure you want to delete this payment method?",
+      "delete": "Delete",
+      "errors": {
+        "loadFailed": "Error loading payment methods",
+        "selectType": "Select a method type",
+        "invalidDigits": "Enter the last 4 digits of your card",
+        "addFailed": "Error adding method",
+        "updateFailed": "Error updating method",
+        "deleteFailed": "Error deleting method"
+      }
+    },
     "country": "Country of residence (fiscal)",
     "minimumPayout": "Set minimum payout",
+    "payoutAccountModal": {
+      "currentConfiguration": "Current Configuration",
+      "country": "Country",
+      "changeConfiguration": "Change configuration",
+      "selectCountry": "Select your country",
+      "selectPaymentMethod": "Select payment method",
+      "localMethodsAvailable": "(Local methods available)",
+      "cryptoOnly": "(Cryptocurrencies only)",
+      "accountDetails": "Account details",
+      "walletAddress": "TRC-20 wallet address",
+      "accountHolderName": "Account holder name",
+      "accountHolderPlaceholder": "Full name of the account holder",
+      "verifyWalletWarning": "⚠️ Verify that the address is correct. Transactions are irreversible.",
+      "sendVerificationCode": "Send verification code",
+      "sendingCode": "Sending code...",
+      "verified": "Verified",
+      "pendingVerification": "Pending verification",
+      "confirmPaymentMethod": "Confirm your payment method",
+      "enterVerificationCode": "Enter the 6-digit code sent to your email to confirm the payment method change",
+      "codeValidFor": "Code valid for:",
+      "verificationCode": "Verification code",
+      "back": "Back",
+      "verifyCode": "Verify code",
+      "verifying": "Verifying...",
+      "resendCode": "Resend code",
+      "paymentMethodUpdated": "Payment method updated!",
+      "paymentMethodUpdatedDescription": "Your payment method has been verified and updated successfully. You can now receive payments.",
+      "continue": "Continue",
+      "close": "Close",
+      "success": {
+        "codeSent": "Verification code sent to your email",
+        "verified": "Payment method verified successfully!"
+      },
+      "errors": {
+        "selectCountry": "Please select your country",
+        "selectPaymentMethod": "Please select a payment method",
+        "enterAccountDetails": "Please complete all fields",
+        "enterAccountHolderName": "Please enter the account holder name",
+        "enterVerificationCode": "Please enter a 6-digit code",
+        "invalidCode": "Invalid verification code",
+        "codeExpired": "The code has expired",
+        "codeExpiredMessage": "The verification code has expired",
+        "connectionError": "Connection error"
+      }
+    },
+    "minimumPayoutModal": {
+      "title": "Configure Minimum Payout",
+      "description": "Set the minimum amount to receive your payments. Earnings will accumulate until reaching this amount.",
+      "currentConfiguration": "Current Configuration",
+      "selectNewMinimum": "Select new minimum amount:",
+      "recommended": "Recommended",
+      "customPayout": "Custom payout",
+      "newAmountSelected": "New amount selected",
+      "newAmountDescription": "With",
+      "asMinimum": "as minimum, you will only receive payments when your accumulated earnings reach this amount.",
+      "moreEarningsNeeded": "This means you will need more earnings before receiving a payment.",
+      "moreFrequentPayments": "This means you will receive payments more frequently.",
+      "cancel": "Cancel",
+      "updateMinimum": "Update Minimum",
+      "updating": "Updating...",
+      "loadingConfiguration": "Loading configuration...",
+      "payoutOptions": {
+        "basic": "Basic minimum payout",
+        "recommended": "Recommended minimum payout",
+        "medium": "Medium minimum payout",
+        "high": "High minimum payout",
+        "maximum": "Maximum minimum payout"
+      },
+      "payoutInfo": "You will only receive payments when you reach this amount",
+      "errors": {
+        "loadingError": "Error loading current configuration",
+        "selectDifferentAmount": "Select an amount different from the current one",
+        "updateError": "Error updating minimum payout",
+        "connectionError": "Connection error"
+      },
+      "success": {
+        "updated": "Minimum payout updated to"
+      }
+    },
     "others": "Others",
     "support": "Support or Help",
     "terms": "Terms and Conditions",
     "report": "Report a problem",
-    "modalInstruction": "Here you can implement the form or content for {{item}}."
+    "modalInstruction": "Here you can implement the form or content for {{item}}.",
+    "googlePasswordSetup": {
+      "title": "Set Password",
+      "description": "Since you registered with Google, you don't have a password set. We'll send you a link by email so you can set a password.",
+      "info": "After setting your password, you'll be able to log in both with Google and with your email and password.",
+      "sendEmailButton": "Send link by email",
+      "emailSent": "Link sent",
+      "emailSentDescription": "A link has been sent to {{email}}. Click the link in the email to set your password.",
+      "emailSentTip": "The link will expire in 24 hours. If you don't receive the email, check your spam folder.",
+      "sending": "Sending..."
+    },
+    "changePasswordModal": {
+      "title": "Change Password",
+      "verifyIdentity": "To change your password, we need to verify your identity.",
+      "currentPassword": "Current password",
+      "newPassword": "New password (min. 8 characters)",
+      "confirmPassword": "Confirm new password",
+      "codeSent": "Code sent",
+      "codeSentDescription": "We have sent a 6-digit code to your email.",
+      "codePlaceholder": "6-digit code",
+      "resendCode": "Didn't receive the code? Resend",
+      "successTitle": "Password changed!",
+      "successMessage": "Your password has been successfully updated.",
+      "autoClose": "This modal will close automatically...",
+      "processing": "Processing...",
+      "sendCode": "Send code",
+      "changePassword": "Change password",
+      "cancel": "Cancel",
+      "errors": {
+        "enterCurrentPassword": "Enter your current password",
+        "passwordMinLength": "The new password must be at least 8 characters",
+        "passwordsDontMatch": "The new passwords do not match",
+        "enterCode": "Enter the 6-digit code",
+        "codeSent": "Code sent to your email",
+        "errorRequestingCode": "Error requesting code",
+        "connectionError": "Connection error",
+        "passwordChanged": "🎉 Password changed successfully!",
+        "errorChangingPassword": "Error changing password"
+      }
+    },
+    "logoutAllModal": {
+      "title": "Close All Sessions",
+      "whatWillHappen": "What will happen?",
+      "willCloseAll": "All your active sessions will be closed",
+      "willNeedLogin": "You will have to log in again on other devices",
+      "currentStays": "Your current session will remain active",
+      "sendCodeDescription": "To continue, we will send a verification code to your email.",
+      "codeSent": "Code sent",
+      "codeSentDescription": "We have sent a verification code to your email.",
+      "codePlaceholder": "6-digit code",
+      "resendCode": "Didn't receive the code? Resend",
+      "successTitle": "Sessions closed!",
+      "successMessage": "All your sessions have been closed successfully.",
+      "autoClose": "This modal will close automatically...",
+      "processing": "Processing...",
+      "sendCode": "Send code",
+      "closeSessions": "Close sessions",
+      "cancel": "Cancel",
+      "errors": {
+        "enterCode": "Enter the 6-digit code",
+        "codeSent": "Code sent to your email",
+        "errorRequestingCode": "Error requesting code",
+        "connectionError": "Connection error",
+        "sessionsClosed": "🎉 All sessions have been closed successfully!",
+        "errorClosingSessions": "Error closing sessions"
+      }
+    },
+    "deleteAccountModal": {
+      "title": "Delete Account",
+      "warning": "WARNING",
+      "warningPermanent": "This action is PERMANENT and IRREVERSIBLE",
+      "warningDeleteData": "All your data and conversations will be deleted",
+      "warningNoRecovery": "You will not be able to recover your account",
+      "warningLoseAccess": "You will lose access to all functions",
+      "confirmPassword": "To continue, confirm your password:",
+      "currentPassword": "Your current password",
+      "finalVerification": "Final verification",
+      "finalVerificationDescription": "We have sent you a verification code. This is your last chance to cancel.",
+      "confirmText": "To confirm, type \"DELETE\":",
+      "confirmPlaceholder": "DELETE",
+      "codePlaceholder": "6-digit code",
+      "resendCode": "Didn't receive the code? Resend",
+      "successTitle": "Account deleted",
+      "successMessage": "Your account has been permanently deleted.",
+      "redirecting": "Redirecting to home...",
+      "processing": "Processing...",
+      "sendCode": "Send code",
+      "deleteAccount": "DELETE ACCOUNT",
+      "cancel": "Cancel",
+      "errors": {
+        "enterPassword": "Enter your password",
+        "enterCode": "Enter the 6-digit code",
+        "mustWriteDelete": "You must type \"DELETE\" to confirm",
+        "codeSent": "Code sent to your email",
+        "errorRequestingCode": "Error requesting code",
+        "connectionError": "Connection error",
+        "accountDeleted": "🗑️ Account deleted successfully. Redirecting...",
+        "errorDeletingAccount": "Error deleting account",
+        "sessionExpired": "Session expired. Please log in again."
+      }
+    },
+    "setupPassword": {
+      "title": "Set Password",
+      "description": "Set a password for your account. You'll be able to log in both with Google and with your email and password.",
+      "newPassword": "New Password",
+      "newPasswordPlaceholder": "Enter your new password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm your new password",
+      "setupButton": "Set Password",
+      "settingUp": "Setting up...",
+      "successTitle": "Password Set!",
+      "successMessage": "Your password has been set successfully. You can now log in with your email and password, or continue using Google.",
+      "redirecting": "Redirecting to login...",
+      "invalidLink": "Invalid Link",
+      "invalidLinkDescription": "The password setup link is invalid or incomplete.",
+      "passwordsMismatch": "Passwords do not match",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "error": "Error setting password",
+      "connectionError": "Connection error. Please try again.",
+      "backToHome": "Back to Home",
+      "requirementsTitle": "Security requirements:",
+      "minimumCharacters": "Minimum 8 characters",
+      "canUseGoogle": "You can continue using Google to log in",
+      "canUseEmail": "Or use your email and password"
+    },
+    "modals": {
+      "transactionHistory": {
+        "title": "Transaction History",
+        "description": "Review all your purchases, credit recharges and completed transactions.",
+        "loading": "Loading history...",
+        "retry": "Retry",
+        "searchPlaceholder": "Search by ID, description...",
+        "empty": "No transactions registered",
+        "emptyDesc": "Your transactions will appear here",
+        "noResults": "No results found",
+        "noResultsDesc": "Try adjusting search filters",
+        "filters": {
+          "all": "All",
+          "purchase": "Purchases",
+          "consumption": "Consumption",
+          "gift": "Gifts"
+        },
+        "types": {
+          "purchase": "Purchase",
+          "coinPurchase": "Coin Purchase",
+          "coinGift": "Coin Gift",
+          "consumption": "Consumption",
+          "giftSent": "Gift Sent",
+          "giftReceived": "Gift Received"
+        },
+        "status": {
+          "completed": "Completed",
+          "pending": "Pending",
+          "failed": "Failed",
+          "cancelled": "Cancelled"
+        },
+        "details": {
+          "title": "Transaction Details",
+          "description": "Description",
+          "type": "Type",
+          "amount": "Amount",
+          "status": "Status",
+          "date": "Date"
+        },
+        "errors": {
+          "title": "Error loading history",
+          "loadFailed": "Error getting history"
+        }
+      },
+      "notifications": {
+        "title": "Notification Settings",
+        "description": "Customize which notifications you want to receive",
+        "loading": "Loading preferences...",
+        "saving": "Saving...",
+        "save": "Save Preferences",
+        "success": "Preferences saved successfully",
+        "options": {
+          "messages": {
+            "label": "Message Notifications",
+            "description": "Be notified when you receive new messages"
+          },
+          "calls": {
+            "label": "Call Notifications",
+            "description": "Be notified when you receive calls or video chat requests"
+          },
+          "gifts": {
+            "label": "Gift Notifications",
+            "description": "Be notified when you receive gifts"
+          },
+          "favorites": {
+            "label": "Favorite Models Online",
+            "description": "Be notified when your favorite models are online"
+          }
+        },
+        "errors": {
+          "saveFailed": "Error saving preferences"
+        }
+      },
+      "notificationsFull": {
+        "title": "Notification Settings",
+        "description": "Customize which notifications you want to receive: new messages, models online, special offers, etc."
+      },
+      "privacy": {
+        "title": "Privacy Settings",
+        "description": "Control who can contact you and manage your blocks",
+        "loading": "Loading privacy information...",
+        "confirmUnblock": "Are you sure you want to unblock this user?",
+        "blockedUsers": {
+          "title": "Blocked Users",
+          "empty": "You haven't blocked any user",
+          "emptyDesc": "Users you block will not be able to send you messages or contact you",
+          "blockedOn": "Blocked on",
+          "reason": "Reason",
+          "unblock": "Unblock",
+          "unblocking": "Unblocking..."
+        },
+        "blockedByUsers": {
+          "title": "Users who have Blocked You",
+          "empty": "No one has blocked you",
+          "blockedOn": "Blocked you on",
+          "cannotContact": "You cannot contact this user"
+        },
+        "info": {
+          "title": "Privacy Information",
+          "point1": "Blocked users cannot send you messages or call you",
+          "point2": "You can unblock users at any time",
+          "point3": "If someone blocks you, you will not be able to contact them",
+          "point4": "Blocks are private and the other user will not be notified"
+        },
+        "errors": {
+          "loadFailed": "Error getting block status",
+          "unblockFailed": "Error unblocking user"
+        }
+      },
+      "privacyFull": {
+        "title": "Privacy Settings",
+        "description": "Control who can see you online, send private messages and view your profile."
+      },
+      "favorites": {
+        "title": "Favorite Models",
+        "description": "Manage your list of favorite models"
+      },
+      "favoritesFull": {
+        "title": "Favorite Models",
+        "description": "Manage your list of favorite models and receive notifications when they are online."
+      },
+      "paymentMethods": {
+        "title": "Add or remove payment method",
+        "description": "Manage your payment methods to make purchases on the platform."
+      },
+      "support": {
+        "title": "Support or Help",
+        "description": "For questions, technical problems or help with your account, write to us at support@ligando.online and our team will respond as soon as possible.",
+        "contactButton": "Contact support by email"
+      },
+      "report": {
+        "title": "Report a problem",
+        "description": "Tell us what problem you had. We will use this information to improve the platform.",
+        "problemType": "Problem type",
+        "problemTechnical": "Technical problem",
+        "problemPayment": "Problem with payments / coins",
+        "problemInappropriate": "Inappropriate behavior",
+        "problemOther": "Other",
+        "describeProblem": "Describe what happened",
+        "describePlaceholder": "Include as much detail as possible: what you were doing, on which screen, if you saw any error message, approximate time, etc.",
+        "sendReport": "Send report by email"
+      },
+      "close": "Close"
+    }
   },
   "subirHistoria": {
     "titulo": "Upload or record your story",
+    "tituloNoDisponible": "Story not available",
     "grabar": "Record story",
+    "noDisponible": "Not available",
     "subir": "Upload from your device",
     "publicar": "Publish story",
+    "subiendo": "Uploading...",
+    "verHistoria": "View Story",
+    "eliminar": "Delete",
+    "eliminarYCrearNueva": "Delete and Create New",
+    "seleccionaCamara": "Select your camera",
+    "consejo": "Tip",
+    "informacion": "Information",
+    "consejoAprobacion": "Stories go through approval before being public. Videos cannot last more than 15 seconds.",
+    "informacionRestriccion": "You can only have one active story at a time. Each story lasts 24 hours from its approval.",
     "alerta_grabacion": "Recording function in development or integrate getUserMedia to capture video."
   },
   "esperandoVerificacion": {
@@ -539,7 +1033,108 @@
     "sessionEnded": "Session ended!",
     "connecting": "Connecting...",
     "redirectingIn": "Redirecting in {{seconds}}s...",
-    "dontWorry": "Don't worry, we'll connect you with another guy"
+    "dontWorry": "Don't worry, we'll connect you with another guy",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "chat": {
+      "title": "Chat",
+      "notReady": "Chat is not ready yet. Try again.",
+      "startConversation": "Start an interesting conversation and enjoy the chat",
+      "chatWith": "Chat with {{name}}",
+      "waitingModel": "Waiting for model...",
+      "modelWillConnect": "A model will connect soon to chat with you"
+    },
+    "gifts": "Gifts",
+    "minutes": "Minutes",
+    "connected": "Connected",
+    "connectionEstablished": "Video call established successfully",
+    "connecting": "Connecting...",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "Time"
@@ -692,10 +1287,15 @@
   "earnings": {
     "title": "Payment System",
     "subtitle": "Weekly earnings and payments",
+    "unifiedPaymentSystem": "Unified Payment System",
+    "earningsByTimeAndGifts": "Earnings by time and gifts",
     "loading": "Loading...",
     "error": "Error",
     "retry": "Retry",
     "tabs": {
+      "all": "All",
+      "sessions": "Sessions",
+      "gifts": "Gifts",
       "thisWeek": "This Week",
       "pending": "Pending",
       "paid": "Paid"
@@ -710,6 +1310,14 @@
       "chatSessions": "Chat sessions",
       "giftsReceived": "Gifts received",
       "sessions": "sessions",
+      "regalos": "gifts",
+      "time": "Time",
+      "thisWeek": "This Week",
+      "unprocessed": "Unprocessed",
+      "received": "Received",
+      "mixed": "Mixed",
+      "timeOnly": "Time Only",
+      "giftOnly": "Gifts Only",
       "totalHistoric": "Total Historic Earned",
       "lastEarning": "Last Earning",
       "none": "None",
@@ -728,7 +1336,13 @@
       "next": "Next",
       "loadingEarnings": "Loading earnings...",
       "errorLoadingEarnings": "Error loading weekly earnings",
-      "connectionError": "Connection error"
+      "connectionError": "Connection error",
+      "records": "records",
+      "retry": "Retry",
+      "onlySessions": "Sessions Only",
+      "onlyGifts": "Gifts Only",
+      "noSessionEarnings": "You have no session earnings this week",
+      "noGiftEarnings": "You have no gift earnings this week"
     },
     "pending": {
       "title": "Total Pending",
@@ -775,6 +1389,28 @@
       "friday": "friday",
       "saturday": "saturday",
       "sunday": "sunday"
+    },
+    "sourceTypes": {
+      "video_session": "Videochat",
+      "direct_gift": "Direct Gift",
+      "chat_gift": "Chat Gift",
+      "session": "Session"
+    },
+    "pendingPayments": {
+      "loading": "Loading pending payments...",
+      "retry": "Retry",
+      "allClear": "All clear!",
+      "noPendingPayments": "You have no pending payments",
+      "totalPending": "Total Pending",
+      "paymentsWaiting": "payment(s) waiting",
+      "processing": "Processing...",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessingInfo": "💡 Payments are processed weekly. Your money will arrive soon."
     }
   },
   "preCallLobby": {
@@ -1159,5 +1795,43 @@
       "keepSufficientCoins": "Keep sufficient coins",
       "beRespectful": "Always be respectful",
       "eachConnectionUnique": "Each connection is unique"
-    }
+    },
+    "sessionSuspended": {
+      "title": "A new session was opened on another device",
+      "message": "Your current session has been suspended because a new session was opened on another device. You can continue with this session by clicking the button below.",
+      "continueSession": "Continue with this session",
+      "reactivating": "Reactivating session...",
+      "noToken": "No token available",
+      "reactivateError": "Error reactivating session",
+      "networkError": "Connection error. Please try again."
+    },
+    "sessionClosed": {
+      "title": "Your account was opened on another device",
+      "message": "Your account was opened on another device. You can continue with this session by clicking the button below.",
+      "continueSession": "Continue with this session",
+      "reclaiming": "Reclaiming...",
+      "successTitle": "Session reclaimed",
+      "successMessage": "Your session has been successfully reclaimed. Reloading...",
+      "noToken": "No token available",
+      "invalidResponse": "Invalid server response",
+      "reclaimError": "Error reclaiming session",
+      "networkError": "Connection error. Please try again."
+    },
+  "roulette": {
+    "titulo": "Video Roulette",
+    "estado": "Ready to connect",
+    "camera_label": "Camera",
+    "mic_label": "Microphone",
+    "start_button": "Start Search",
+    "random_user_notice": "You will be connected with a random user",
+    "default_camera": "Camera {{number}}",
+    "default_microphone": "Microphone {{number}}"
+  },
+  "mirror": {
+    "label": "Mirror mode",
+    "enable": "Enable mirror",
+    "disable": "Disable mirror",
+    "active": "Mirror active",
+    "description": "See my image as in a mirror"
+  }
 }

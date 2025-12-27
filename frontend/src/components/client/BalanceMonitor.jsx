@@ -37,7 +37,6 @@ export const useBalanceMonitor = () => {
             })
           });
         } catch (error) {
-          console.warn('⚠️ [BALANCE] Error notificando fin de sesión:', error);
         }
 
         // 🔥 NOTIFICAR AL PARTNER
@@ -54,7 +53,6 @@ export const useBalanceMonitor = () => {
             })
           });
         } catch (error) {
-          console.warn('⚠️ [BALANCE] Error notificando partner:', error);
         }
 
         // 🔥 ACTUALIZAR HEARTBEAT
@@ -71,7 +69,6 @@ export const useBalanceMonitor = () => {
             })
           });
         } catch (error) {
-          console.warn('⚠️ [BALANCE] Error actualizando heartbeat:', error);
         }
       }
 
@@ -113,7 +110,6 @@ export const useBalanceMonitor = () => {
       const roomName = localStorage.getItem('roomName');
       
       if (!authToken || !roomName || !API_BASE_URL) {
-        console.warn('⚠️ [BALANCE] Faltan datos para verificar saldo');
         return false;
       }
       
@@ -144,7 +140,6 @@ export const useBalanceMonitor = () => {
       }
       
       if (!clientUserId) {
-        console.warn('⚠️ [BALANCE] No se pudo obtener client user ID');
         return false;
       }
       
@@ -181,7 +176,6 @@ export const useBalanceMonitor = () => {
           return false;
         }
       } else {
-        console.warn('❌ [BALANCE] Error en balance API:', response.status);
       }
       
       return false;

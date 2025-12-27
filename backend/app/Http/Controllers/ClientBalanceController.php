@@ -8,8 +8,13 @@ use App\Models\UserCoins; // 🔥 CAMBIO AQUÍ
 use App\Models\ChatSession;
 use App\Models\VideoChatSession;
 use App\Models\CoinConsumption;
+use App\Models\CoinPurchase;
+use App\Models\CoinTransaction;
+use App\Models\GiftTransaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use App\Services\PlatformSettingsService;
 
 class ClientBalanceController extends Controller
 {
@@ -215,7 +220,7 @@ class ClientBalanceController extends Controller
                 'total_balance' => $totalCoins,
                 'remaining_minutes' => $remainingMinutes,
                 'remaining_seconds' => $remainingMinutes * 60,
-                'coins_per_minute' => self::COINS_PER_MINUTE,
+                'coins_per_minute' => PlatformSettingsService::getInteger('coins_per_minute', 10),
                 'balance_status' => $balanceStatus,
                 'total_consumed_historically' => $userCoins->total_consumed,
                 'total_purchased_historically' => $userCoins->total_purchased,
@@ -342,6 +347,190 @@ class ClientBalanceController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener historial de transacciones del cliente
+     * Endpoint: GET /api/transactions/history
+     */
+    public function getTransactionHistory(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            if ($user->rol !== 'cliente') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Solo los clientes pueden ver su historial'
+                ], 403);
+            }
+
+            $page = $request->input('page', 1);
+            $perPage = $request->input('per_page', 20);
+            $type = $request->input('type', 'all'); // all, purchase, consumption, gift
+
+            $transactions = collect();
+
+            // 1. Compras de monedas (CoinPurchase)
+            if ($type === 'all' || $type === 'purchase') {
+                $purchases = CoinPurchase::where('user_id', $user->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+                    ->map(function ($purchase) {
+                        return [
+                            'id' => 'purchase_' . $purchase->id,
+                            'transaction_type' => 'coin_purchase',
+                            'description' => "Compra de {$purchase->total_coins} monedas" . ($purchase->package ? " - {$purchase->package->name}" : ''),
+                            'amount' => $purchase->total_coins,
+                            'currency' => 'coins',
+                            'status' => $purchase->status,
+                            'date' => $purchase->created_at->toISOString(),
+                            'reference_id' => $purchase->transaction_id ?? $purchase->id,
+                            'payment_method' => $purchase->payment_method,
+                            'metadata' => [
+                                'package_id' => $purchase->package_id,
+                                'coins' => $purchase->coins,
+                                'bonus_coins' => $purchase->bonus_coins,
+                                'amount_paid' => $purchase->amount,
+                                'currency_paid' => $purchase->currency
+                            ]
+                        ];
+                    });
+                $transactions = $transactions->merge($purchases);
+            }
+
+            // 2. Transacciones de monedas (CoinTransaction)
+            if ($type === 'all' || $type === 'purchase') {
+                $coinTransactions = CoinTransaction::where('user_id', $user->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+                    ->map(function ($transaction) {
+                        $description = $transaction->type === 'purchased' 
+                            ? "Monedas compradas: {$transaction->amount}" 
+                            : "Monedas de regalo: {$transaction->amount}";
+                        
+                        return [
+                            'id' => 'coin_trans_' . $transaction->id,
+                            'transaction_type' => $transaction->type === 'purchased' ? 'purchase' : 'gift_received',
+                            'description' => $description,
+                            'amount' => $transaction->amount,
+                            'currency' => 'coins',
+                            'status' => 'completed',
+                            'date' => $transaction->created_at->toISOString(),
+                            'reference_id' => $transaction->reference_id ?? $transaction->id,
+                            'metadata' => [
+                                'source' => $transaction->source,
+                                'balance_after' => $transaction->balance_after,
+                                'notes' => $transaction->notes
+                            ]
+                        ];
+                    });
+                $transactions = $transactions->merge($coinTransactions);
+            }
+
+            // 3. Consumo de monedas (CoinConsumption)
+            if ($type === 'all' || $type === 'consumption') {
+                $consumptions = CoinConsumption::where('user_id', $user->id)
+                    ->orderBy('consumed_at', 'desc')
+                    ->get()
+                    ->map(function ($consumption) {
+                        return [
+                            'id' => 'consumption_' . $consumption->id,
+                            'transaction_type' => 'consumption',
+                            'description' => "Consumo de {$consumption->coins_consumed} monedas ({$consumption->minutes_consumed} min)",
+                            'amount' => -$consumption->coins_consumed, // Negativo porque es consumo
+                            'currency' => 'coins',
+                            'status' => 'completed',
+                            'date' => $consumption->consumed_at->toISOString(),
+                            'reference_id' => $consumption->session_id ?? $consumption->id,
+                            'metadata' => [
+                                'room_name' => $consumption->room_name,
+                                'minutes_consumed' => $consumption->minutes_consumed,
+                                'gift_coins_used' => $consumption->gift_coins_used,
+                                'purchased_coins_used' => $consumption->purchased_coins_used,
+                                'balance_after' => $consumption->balance_after
+                            ]
+                        ];
+                    });
+                $transactions = $transactions->merge($consumptions);
+            }
+
+            // 4. Regalos enviados y recibidos (GiftTransaction)
+            if ($type === 'all' || $type === 'gift') {
+                $giftsSent = GiftTransaction::where('sender_id', $user->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+                    ->map(function ($gift) {
+                        return [
+                            'id' => 'gift_sent_' . $gift->id,
+                            'transaction_type' => 'gift_sent',
+                            'description' => "Regalo enviado: {$gift->amount} monedas" . ($gift->receiver ? " a {$gift->receiver->name}" : ''),
+                            'amount' => -$gift->amount, // Negativo porque se envía
+                            'currency' => 'coins',
+                            'status' => 'completed',
+                            'date' => $gift->created_at->toISOString(),
+                            'reference_id' => $gift->reference_id ?? $gift->id,
+                            'metadata' => [
+                                'receiver_id' => $gift->receiver_id,
+                                'type' => $gift->type,
+                                'message' => $gift->message
+                            ]
+                        ];
+                    });
+                $transactions = $transactions->merge($giftsSent);
+
+                $giftsReceived = GiftTransaction::where('receiver_id', $user->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+                    ->map(function ($gift) {
+                        return [
+                            'id' => 'gift_received_' . $gift->id,
+                            'transaction_type' => 'gift_received',
+                            'description' => "Regalo recibido: {$gift->amount} monedas" . ($gift->sender ? " de {$gift->sender->name}" : ''),
+                            'amount' => $gift->amount,
+                            'currency' => 'coins',
+                            'status' => 'completed',
+                            'date' => $gift->created_at->toISOString(),
+                            'reference_id' => $gift->reference_id ?? $gift->id,
+                            'metadata' => [
+                                'sender_id' => $gift->sender_id,
+                                'type' => $gift->type,
+                                'message' => $gift->message
+                            ]
+                        ];
+                    });
+                $transactions = $transactions->merge($giftsReceived);
+            }
+
+            // Ordenar por fecha descendente
+            $transactions = $transactions->sortByDesc('date')->values();
+
+            // Paginación manual
+            $total = $transactions->count();
+            $totalPages = ceil($total / $perPage);
+            $offset = ($page - 1) * $perPage;
+            $paginatedTransactions = $transactions->slice($offset, $perPage)->values();
+
+            return response()->json([
+                'success' => true,
+                'transactions' => $paginatedTransactions,
+                'pagination' => [
+                    'current_page' => (int)$page,
+                    'per_page' => (int)$perPage,
+                    'total' => $total,
+                    'total_pages' => $totalPages,
+                    'has_next_page' => $page < $totalPages,
+                    'has_prev_page' => $page > 1
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo historial de transacciones: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al obtener el historial de transacciones'
             ], 500);
         }
     }

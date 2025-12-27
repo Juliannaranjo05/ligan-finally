@@ -43,7 +43,6 @@ export default function VerificacionIdentidad() {
       const img = new Image();
       
       const timeout = setTimeout(() => {
-        console.error('Timeout procesando imagen');
         resolve(file); // Si toma mucho tiempo, usar original
       }, 10000); // 10 segundos timeout
       
@@ -75,7 +74,6 @@ export default function VerificacionIdentidad() {
           // Convertir a blob - usar JPEG para mejor compatibilidad móvil
           canvas.toBlob((blob) => {
             if (!blob) {
-              console.error('Error creando blob');
               resolve(file);
               return;
             }
@@ -87,24 +85,16 @@ export default function VerificacionIdentidad() {
               lastModified: Date.now(),
             });
             
-            console.log(`✅ Imagen procesada:`, {
-              original: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-              procesada: `${(correctedFile.size / 1024 / 1024).toFixed(2)}MB`,
-              dimensiones: `${width}x${height}`
-            });
-            
             resolve(correctedFile);
           }, 'image/jpeg', 0.85); // Calidad 85% para balance
           
         } catch (error) {
-          console.error('Error procesando imagen:', error);
           clearTimeout(timeout);
           resolve(file); // Si hay error, usar archivo original
         }
       };
       
       img.onerror = () => {
-        console.error('Error cargando imagen');
         clearTimeout(timeout);
         resolve(file); // Si no se puede cargar, usar original
       };
@@ -113,7 +103,6 @@ export default function VerificacionIdentidad() {
       try {
         img.src = URL.createObjectURL(file);
       } catch (error) {
-        console.error('Error creando URL:', error);
         clearTimeout(timeout);
         resolve(file);
       }
@@ -124,13 +113,6 @@ export default function VerificacionIdentidad() {
     const file = e.target.files[0];
     if (file) {
       try {
-        console.log(`📱 Procesando ${tipo}:`, {
-          nombre: file.name,
-          tamaño: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          tipo: file.type,
-          dispositivo: navigator.userAgent.includes('Mobile') ? 'Móvil' : 'Desktop'
-        });
-
         // Validación previa para móviles
         if (file.size > 10 * 1024 * 1024) { // 10MB
           setMensaje({
@@ -142,11 +124,6 @@ export default function VerificacionIdentidad() {
 
         // Corregir orientación antes de guardar
         const imagenCorregida = await corregirOrientacionImagen(file);
-        
-        console.log(`✅ Imagen ${tipo} procesada:`, {
-          tamañoOriginal: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          tamañoFinal: `${(imagenCorregida.size / 1024 / 1024).toFixed(2)}MB`
-        });
         
         setImagenes(prev => ({ ...prev, [tipo]: imagenCorregida }));
         setPreviewImagenes(prev => ({ ...prev, [tipo]: URL.createObjectURL(imagenCorregida) }));
@@ -162,7 +139,6 @@ export default function VerificacionIdentidad() {
           }, 500); // Pequeño delay para mejor UX
         }
       } catch (error) {
-        console.error(`❌ Error procesando ${tipo}:`, error);
         setMensaje({
           tipo: "error",
           texto: `Error procesando la imagen ${tipo}. Por favor, intenta con otra foto.`
@@ -198,17 +174,6 @@ export default function VerificacionIdentidad() {
       return;
     }
 
-    console.log('📤 Enviando verificación con chunks desde:', {
-      dispositivo: navigator.userAgent.includes('Mobile') ? 'Móvil' : 'Desktop',
-      userAgent: navigator.userAgent,
-      archivos: {
-        selfie: `${(imagenes.selfie.size / 1024 / 1024).toFixed(2)}MB - ${imagenes.selfie.type}`,
-        documento: `${(imagenes.documento.size / 1024 / 1024).toFixed(2)}MB - ${imagenes.documento.type}`,
-        selfieDoc: `${(imagenes.selfieDoc.size / 1024 / 1024).toFixed(2)}MB - ${imagenes.selfieDoc.type}`,
-        video: `${(video.size / 1024 / 1024).toFixed(2)}MB - ${video.type}`
-      }
-    });
-
     // Validaciones de tamaño
     const maxImageSize = 5 * 1024 * 1024; // 5MB
     const maxVideoSize = 100 * 1024 * 1024; // 100MB
@@ -243,13 +208,6 @@ export default function VerificacionIdentidad() {
         const CHUNK_SIZE = 1.5 * 1024 * 1024; // 1.5MB por chunk (bajo límite de 2MB)
         const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
         const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        console.log(`🎬 Iniciando subida por chunks optimizada:`, {
-          videoSize: `${(videoFile.size / 1024 / 1024).toFixed(2)}MB`,
-          totalChunks,
-          chunkSize: `${(CHUNK_SIZE / 1024 / 1024).toFixed(1)}MB`,
-          uploadId
-        });
 
         // Subir chunks con reintentos
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -279,11 +237,9 @@ export default function VerificacionIdentidad() {
                   timeout: 15000 // 15 segundos por chunk (más rápido)
                 });
                 
-                console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} subido (intento ${intento}):`, response.data);
                 return; // Éxito, salir del loop de reintentos
                 
               } catch (chunkError) {
-                console.warn(`⚠️ Chunk ${chunkIndex + 1} falló en intento ${intento}:`, chunkError.message);
                 
                 if (intento === intentos) {
                   // Último intento, lanzar error
@@ -322,14 +278,6 @@ export default function VerificacionIdentidad() {
         // Si es pequeño, enviar normal
         formData.append("video", video, video.name || 'video.mp4');
       }
-      
-      console.log('📋 FormData final creado:', {
-        selfie: formData.get('selfie'),
-        documento: formData.get('documento'), 
-        selfie_doc: formData.get('selfie_doc'),
-        video_upload_id: formData.get('video_upload_id'),
-        video_directo: formData.get('video')
-      });
 
       // 3. Enviar verificación final
       setMensaje({ tipo: "info", texto: `📤 Finalizando verificación...` });
@@ -347,8 +295,6 @@ export default function VerificacionIdentidad() {
         }
       });
 
-      console.log('✅ Verificación enviada exitosamente:', response.data);
-
       // Limpiar estado
       setImagenes({ selfie: null, documento: null, selfieDoc: null });
       setPreviewImagenes({ selfie: null, documento: null, selfieDoc: null });
@@ -361,13 +307,6 @@ export default function VerificacionIdentidad() {
       }, 2000);
       
     } catch (error) {
-      console.error("❌ Error detallado al enviar verificación:", {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message
-      });
-
       if (error.response?.status === 422) {
         const errores = error.response.data.errors || {};
         let mensajeError = `❌ ${t('verificacion.messages.validationError')}\n\n`;

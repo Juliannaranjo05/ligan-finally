@@ -14,6 +14,7 @@ use App\Models\GiftRequest;
 use Exception;
 use Carbon\Carbon;
 use App\Models\ChatMessage; // En lugar de Message
+use App\Services\PlatformSettingsService;
 
 class GiftSystemController extends Controller
 {
@@ -27,10 +28,38 @@ class GiftSystemController extends Controller
                 ->orderBy('price', 'asc')
                 ->get()
                 ->map(function ($gift) {
+                    // Construir URL de imagen completa
+                    $imageUrl = null;
+                    if ($gift->image_path) {
+                        // Si ya es una URL completa, usarla directamente
+                        if (preg_match('/^https?:\/\//', $gift->image_path)) {
+                            $imageUrl = $gift->image_path;
+                        } else {
+                            // Limpiar la ruta
+                            $cleanPath = str_replace('\\', '/', trim($gift->image_path, '/'));
+                            // Si no empieza con storage/, agregarlo
+                            if (!str_starts_with($cleanPath, 'storage/')) {
+                                $cleanPath = 'storage/gifts/' . basename($cleanPath);
+                            }
+                            
+                            // Codificar la URL correctamente (separar directorio y archivo)
+                            $pathParts = explode('/', $cleanPath);
+                            $fileName = array_pop($pathParts);
+                            $directory = implode('/', $pathParts);
+                            
+                            // Codificar solo el nombre del archivo para preservar caracteres especiales
+                            $encodedFileName = rawurlencode($fileName);
+                            
+                            // Construir URL base y añadir la ruta codificada
+                            $baseUrl = rtrim(config('app.url'), '/');
+                            $imageUrl = $baseUrl . '/' . $directory . '/' . $encodedFileName;
+                        }
+                    }
+                    
                     return [
                         'id' => $gift->id,
                         'name' => $gift->name,
-                        'image_path' => $gift->image_path ? asset($gift->image_path) : 'https://via.placeholder.com/80x80/ff007a/ffffff?text=NO',
+                        'image_path' => $imageUrl ?: 'https://via.placeholder.com/80x80/ff007a/ffffff?text=NO',
                         'price' => $gift->price,
                         'category' => $gift->category ?? 'basic'
                     ];
@@ -40,7 +69,9 @@ class GiftSystemController extends Controller
                 'success' => true,
                 'gifts' => $gifts,
                 'total_available' => $gifts->count()
-            ]);
+            ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+              ->header('Pragma', 'no-cache')
+              ->header('Expires', '0');
 
         } catch (Exception $e) {
             Log::error('Error obteniendo regalos disponibles: ' . $e->getMessage());
@@ -580,9 +611,13 @@ class GiftSystemController extends Controller
                 ]);
             }
 
-            // 3. Calcular comisión (70% para la modelo, 30% para la plataforma)
-            $modeloAmount = $giftRequest->amount * 0.60;
-            $platformCommission = $giftRequest->amount * 0.40;
+            // 3. Calcular comisión usando configuración dinámica
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modeloRate = 1 - $platformCommissionRate;
+            
+            $modeloAmount = $giftRequest->amount * $modeloRate;
+            $platformCommission = $giftRequest->amount * $platformCommissionRate;
 
             // 4. Agregar monedas a la modelo
             $modeloCoins->increment('balance', $modeloAmount);
@@ -940,26 +975,32 @@ class GiftSystemController extends Controller
             // Crear lock temporal
             \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
 
-            // Verificar saldo del cliente con bloqueo de fila
-            $clientCoins = UserGiftCoins::lockForUpdate()
+            // Verificar saldo del cliente con bloqueo de fila - USAR UserCoins (sistema unificado)
+            $clientCoins = \App\Models\UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
 
             if (!$clientCoins) {
-                $clientCoins = UserGiftCoins::create([
+                $clientCoins = \App\Models\UserCoins::create([
                     'user_id' => $user->id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
-            if ($clientCoins->balance < $gift->price) {
+            // 🔥 VERIFICAR SALDO TOTAL (purchased_balance + gift_balance) como en VideoChatGiftController
+            $totalBalance = $clientCoins->purchased_balance + $clientCoins->gift_balance;
+            
+            if ($totalBalance < $gift->price) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [CHAT] Saldo insuficiente para regalo directo", [
                     'client_id' => $user->id,
-                    'balance' => $clientCoins->balance,
+                    'total_balance' => $totalBalance,
+                    'purchased_balance' => $clientCoins->purchased_balance,
+                    'gift_balance' => $clientCoins->gift_balance,
                     'required' => $gift->price
                 ]);
                 
@@ -968,45 +1009,67 @@ class GiftSystemController extends Controller
                     'error' => 'insufficient_balance',
                     'message' => 'Saldo insuficiente para este regalo',
                     'data' => [
-                        'current_balance' => $clientCoins->balance,
+                        'current_balance' => $totalBalance,
                         'required_amount' => $gift->price,
-                        'missing_amount' => $gift->price - $clientCoins->balance
+                        'missing_amount' => $gift->price - $totalBalance
                     ]
                 ], 400);
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
             Log::info("💰 [CHAT] Procesando regalo directo", [
-                'client_balance_before' => $clientCoins->balance,
+                'client_total_balance_before' => $totalBalance,
+                'purchased_balance' => $clientCoins->purchased_balance,
+                'gift_balance' => $clientCoins->gift_balance,
                 'amount' => $gift->price,
                 'room_name' => $roomName
             ]);
             
-            // 1. Descontar del cliente
-            $clientCoins->decrement('balance', $gift->price);
-            $clientCoins->increment('total_sent', $gift->price);
+            // 1. Descontar del cliente (consumir primero de gift_balance, luego de purchased_balance)
+            // 🔥 IGUAL QUE VideoChatGiftController para mantener consistencia
+            $remainingToConsume = $gift->price;
+            
+            if ($clientCoins->gift_balance > 0 && $remainingToConsume > 0) {
+                $giftConsumed = min($clientCoins->gift_balance, $remainingToConsume);
+                $clientCoins->gift_balance -= $giftConsumed;
+                $remainingToConsume -= $giftConsumed;
+            }
+            
+            if ($remainingToConsume > 0) {
+                $clientCoins->purchased_balance -= $remainingToConsume;
+            }
+            
+            $clientCoins->total_consumed += $gift->price;
+            $clientCoins->last_consumption_at = now();
+            $clientCoins->save();
 
-            // 2. Obtener/crear monedas de la modelo
-            $modeloCoins = UserGiftCoins::lockForUpdate()
+            // 2. Obtener/crear monedas de la modelo - USAR UserCoins (sistema unificado)
+            $modeloCoins = \App\Models\UserCoins::lockForUpdate()
                 ->where('user_id', $recipientId)
                 ->first();
 
             if (!$modeloCoins) {
-                $modeloCoins = UserGiftCoins::create([
+                $modeloCoins = \App\Models\UserCoins::create([
                     'user_id' => $recipientId,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
-            // 3. Calcular comisión (70% para la modelo, 30% para la plataforma)
-            $modeloAmount = $gift->price * 0.70;
-            $platformCommission = $gift->price * 0.30;
+            // 3. Calcular comisión usando configuración dinámica
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modeloRate = 1 - $platformCommissionRate;
+            
+            $modeloAmount = $gift->price * $modeloRate;
+            $platformCommission = $gift->price * $platformCommissionRate;
 
-            // 4. Agregar monedas a la modelo
-            $modeloCoins->increment('balance', $modeloAmount);
-            $modeloCoins->increment('total_received', $modeloAmount);
+            // 4. Agregar monedas a la modelo (en purchased_balance ya que son ganancias)
+            $modeloCoins->increment('purchased_balance', $modeloAmount);
+            $modeloCoins->increment('total_purchased', $modeloAmount);
+            $modeloCoins->save();
 
             // 5. Registrar la transacción directa
             $transactionId = DB::table('gift_transactions')->insertGetId([
@@ -1034,6 +1097,10 @@ class GiftSystemController extends Controller
             // 6. Limpiar lock
             \Illuminate\Support\Facades\Cache::forget($lockKey);
 
+            // 🔥 OBTENER BALANCE TOTAL ACTUALIZADO
+            $clientCoinsFresh = $clientCoins->fresh();
+            $newTotalBalance = $clientCoinsFresh->purchased_balance + $clientCoinsFresh->gift_balance;
+            
             Log::info('✅ [CHAT] Regalo directo enviado exitosamente', [
                 'transaction_id' => $transactionId,
                 'client_id' => $user->id,
@@ -1042,7 +1109,9 @@ class GiftSystemController extends Controller
                 'amount' => $gift->price,
                 'modelo_received' => $modeloAmount,
                 'platform_commission' => $platformCommission,
-                'client_new_balance' => $clientCoins->fresh()->balance,
+                'client_new_total_balance' => $newTotalBalance,
+                'client_new_purchased_balance' => $clientCoinsFresh->purchased_balance,
+                'client_new_gift_balance' => $clientCoinsFresh->gift_balance,
                 'room_name' => $roomName
             ]);
 
@@ -1087,8 +1156,54 @@ class GiftSystemController extends Controller
                 ]);
             }
 
+            // 6. 💬 CREAR MENSAJES DE CHAT PARA REGALO DIRECTO
+            Log::info('💬 [CHAT] Creando mensajes de chat para regalo directo');
+            $chatMessage = null;
+
+            try {
+                // Mensaje para el cliente (SENDER)
+                $chatMessage = ChatMessage::create([
+                    'room_name' => $roomName,
+                    'user_id' => $user->id,
+                    'user_name' => $user->name ?? 'Cliente',
+                    'user_role' => 'cliente',
+                    'message' => $message ?: "🎁 Enviaste: {$gift->name}",
+                    'type' => 'gift_sent',
+                    'extra_data' => json_encode([
+                        'gift_name' => $gift->name,
+                        'gift_image' => $gift->image_path,
+                        'gift_price' => $gift->price,
+                        'client_name' => $user->name ?? 'Cliente',
+                        'modelo_name' => $recipient->name ?? 'Modelo',
+                        'transaction_id' => $transactionId,
+                        'context' => 'chat_direct',
+                        'room_name' => $roomName,
+                        'action_text' => "Enviaste",
+                        'recipient_name' => $recipient->name ?? 'Modelo',
+                        'message' => $message
+                    ]),
+                    'gift_data' => json_encode([
+                        'gift_name' => $gift->name,
+                        'gift_image' => $gift->image_path,
+                        'gift_price' => $gift->price,
+                        'original_message' => $message
+                    ])
+                ]);
+                
+                Log::info('✅ [CHAT] Mensaje cliente creado ID: ' . $chatMessage->id);
+
+            } catch (\Exception $e) {
+                Log::error('❌ [CHAT] Error creando mensaje cliente: ' . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+
             DB::commit();
 
+            // 🔥 OBTENER BALANCE TOTAL ACTUALIZADO PARA LA RESPUESTA
+            $clientCoinsFresh = $clientCoins->fresh();
+            $newTotalBalance = $clientCoinsFresh->purchased_balance + $clientCoinsFresh->gift_balance;
+            
             return response()->json([
                 'success' => true,
                 'message' => '¡Regalo enviado exitosamente!',
@@ -1097,6 +1212,20 @@ class GiftSystemController extends Controller
                 'gift_image' => $gift->image_path,
                 'gift_price' => $gift->price,
                 'amount' => $gift->price,
+                'new_balance' => $newTotalBalance, // 🔥 Balance total (purchased + gift)
+                'purchased_balance' => $clientCoinsFresh->purchased_balance,
+                'gift_balance' => $clientCoinsFresh->gift_balance,
+                'chat_message' => $chatMessage ? [
+                    'id' => $chatMessage->id,
+                    'room_name' => $chatMessage->room_name,
+                    'user_id' => $chatMessage->user_id,
+                    'user_name' => $chatMessage->user_name,
+                    'user_role' => $chatMessage->user_role,
+                    'message' => $chatMessage->message,
+                    'type' => $chatMessage->type,
+                    'extra_data' => json_decode($chatMessage->extra_data, true),
+                    'created_at' => $chatMessage->created_at->toISOString()
+                ] : null,
                 'data' => [
                     'transaction_id' => $transactionId,
                     'gift' => [
@@ -1111,7 +1240,7 @@ class GiftSystemController extends Controller
                         'received_amount' => $modeloAmount
                     ],
                     'client_balance' => [
-                        'new_balance' => $clientCoins->fresh()->balance,
+                        'new_balance' => $clientCoins->fresh()->gift_balance,
                         'spent_amount' => $gift->price
                     ],
                     'transaction_details' => [
@@ -1261,9 +1390,13 @@ class GiftSystemController extends Controller
             // Convertir gift coins a USD
             $usdValue = $this->calculateUSDFromGiftCoins($giftValue);
             
-            // Calcular earnings (60% modelo / 40% plataforma)
-            $modelGiftEarnings = round($usdValue * 0.60, 2);
-            $platformGiftEarnings = round($usdValue * 0.40, 2);
+            // Calcular earnings usando configuración dinámica
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modelRate = 1 - $platformCommissionRate;
+            
+            $modelGiftEarnings = round($usdValue * $modelRate, 2);
+            $platformGiftEarnings = round($usdValue * $platformCommissionRate, 2);
 
             if ($existingEarning) {
                 // Actualizar earnings existente

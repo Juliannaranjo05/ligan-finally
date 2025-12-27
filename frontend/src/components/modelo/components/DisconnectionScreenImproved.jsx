@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowRight, Zap, Heart, Sparkles, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const DisconnectionScreenImprovedClient = ({ 
+const DisconnectionScreenImproved = ({ 
   disconnectionType, 
   disconnectionReason, 
   redirectCountdown
@@ -14,8 +14,8 @@ const DisconnectionScreenImprovedClient = ({
       case 'next':
         return {
           icon: '⏭️',
-          title: t('disconnect.modelSkippedYou', 'La modelo pasó al siguiente'),
-          subtitle: t('disconnect.searchedOtherClient', 'Buscó a otro cliente'),
+          title: t('disconnect.clientSkippedYou', 'El chico fue a la siguiente modelo'),
+          subtitle: t('disconnect.clientSearchedOther', 'Buscó a otra modelo'),
           bgGradient: 'from-amber-500/20 to-orange-500/20',
           borderColor: 'border-amber-400/30',
           iconBg: 'from-amber-500/20 to-amber-500/10',
@@ -23,10 +23,11 @@ const DisconnectionScreenImprovedClient = ({
           accentColor: 'text-amber-400'
         };
       case 'stop':
+      case 'partner_left_session':
         return {
           icon: '🛑',
-          title: t('disconnect.modelDisconnected', 'La modelo se desconectó'),
-          subtitle: t('disconnect.endedVideoCall', 'Finalizó la videollamada'),
+          title: t('disconnect.clientDisconnected', 'El chico colgó'),
+          subtitle: t('disconnect.clientEndedVideoCall', 'Finalizó la videollamada'),
           bgGradient: 'from-red-500/20 to-red-500/10',
           borderColor: 'border-red-400/30',
           iconBg: 'from-red-500/20 to-red-500/10',
@@ -36,8 +37,8 @@ const DisconnectionScreenImprovedClient = ({
       case 'left':
         return {
           icon: '👋',
-          title: t('disconnect.modelLeft', 'La modelo abandonó la sala'),
-          subtitle: t('disconnect.leftSession', 'Salió de la sesión'),
+          title: t('disconnect.clientLeft', 'El chico abandonó la sala'),
+          subtitle: t('disconnect.clientLeftSession', 'Salió de la sesión'),
           bgGradient: 'from-[#ff007a]/20 to-[#ff007a]/10',
           borderColor: 'border-[#ff007a]/30',
           iconBg: 'from-[#ff007a]/20 to-[#ff007a]/10',
@@ -130,7 +131,7 @@ const DisconnectionScreenImprovedClient = ({
                 </h3>
               </div>
               <p className="text-[#ff007a] text-sm">
-                {t('disconnect.connectingWithOther', 'Conectando con otra modelo...')}
+                {t('disconnect.connectingWithOtherClient', 'Buscando nuevo chico...')}
               </p>
             </div>
             
@@ -212,4 +213,4 @@ const DisconnectionScreenImprovedClient = ({
   );
 };
 
-export default DisconnectionScreenImprovedClient;
+export default DisconnectionScreenImproved;

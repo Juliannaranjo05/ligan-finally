@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import Header from "./header";
 import { getUser } from "../../utils/auth.js";
 import { useTranslation } from 'react-i18next'; // 👈 AGREGAR ESTA LÍNEA
@@ -9,6 +9,7 @@ import {
   TranslationSettings,
   TranslatedMessage
 } from '../../utils/translationSystem.jsx';
+import { useGlobalTranslation } from '../../contexts/GlobalTranslationContext';
 
 import {
   MessageSquare,
@@ -30,14 +31,17 @@ import {
 import CallingSystem from '../CallingOverlay.jsx';
 import IncomingCallOverlay from '../IncomingCallOverlay.jsx';
 import { useGiftSystem, GiftMessageComponent, GiftNotificationOverlay, GiftsModal, giftSystemStyles } from '../GiftSystem/index.jsx';
+import { useGlobalCall } from '../../contexts/GlobalCallContext.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivado() {
   const { settings: translationSettings, setSettings: setTranslationSettings, languages } = useCustomTranslation();
+  const { translateGlobalText, isEnabled: globalTranslationEnabled, changeGlobalLanguage, currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const { t, i18n: i18nInstance } = useTranslation();
 
   // 🔥 ESTADOS PRINCIPALES OPTIMIZADOS
   const [usuario, setUsuario] = useState({ id: null, name: "Usuario", rol: "cliente" });
@@ -78,16 +82,27 @@ export default function ChatPrivado() {
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [nicknameTarget, setNicknameTarget] = useState(null);
   const [nicknameValue, setNicknameValue] = useState('');
-  const [isReceivingCall, setIsReceivingCall] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
-  const [incomingCallPollingInterval, setIncomingCallPollingInterval] = useState(null);
+  // 🔥 USAR CONTEXTO GLOBAL PARA LLAMADAS ENTRANTES (ELIMINAR POLLING DUPLICADO)
+  const { isReceivingCall, incomingCall, answerCall, declineCall } = useGlobalCall();
   const audioRef = useRef(null);
+
+  // 🔥 ESTADOS PARA EL SISTEMA DE TRADUCCIÓN AUTOMÁTICA
+  const [translations, setTranslations] = useState(new Map());
+  const [translatingIds, setTranslatingIds] = useState(new Set());
+  const [localTranslationEnabled, setLocalTranslationEnabled] = useState(
+    translationSettings?.enabled || globalTranslationEnabled || false
+  );
+  const [currentLanguage, setCurrentLanguage] = useState(
+    translationSettings?.targetLanguage || globalCurrentLanguage || i18nInstance.language || 'es'
+  );
 
   // Refs
   const mensajesRef = useRef(null);
   const globalPollingInterval = useRef(null);
   const openChatWith = location.state?.openChatWith;
   const hasOpenedSpecificChat = useRef(false);
+  const mensajesRefForTranslation = useRef([]);
+  const translateMessageRef = useRef(null);
 
 
 
@@ -136,79 +151,8 @@ const stopIncomingCallSound = useCallback(() => {
   }
 }, []);
 
-// 🔥 FUNCIÓN: POLLING PARA LLAMADAS ENTRANTES (AGREGAR)
-const verificarLlamadasEntrantes = useCallback(async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/calls/check-incoming`, {
-      method: 'GET',
-      headers: getAuthHeaders()
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.has_incoming && data.incoming_call) {
-        // Verificar que no sea mi propia llamada saliente
-        const isMyOutgoingCall = currentCall && 
-                               currentCall.callId === data.incoming_call.id;
-        
-        if (isMyOutgoingCall) {
-          return;
-        }
-        
-        if (!isReceivingCall && !isCallActive) {
-          await playIncomingCallSound();
-          setIncomingCall(data.incoming_call);
-          setIsReceivingCall(true);
-        }
-      } else if (isReceivingCall && !data.has_incoming) {
-        stopIncomingCallSound();
-        setIsReceivingCall(false);
-        setIncomingCall(null);
-      }
-    }
-  } catch (error) {
-    console.error('Error verificando llamadas:', error);
-  }
-}, [isReceivingCall, isCallActive, currentCall, getAuthHeaders, playIncomingCallSound, stopIncomingCallSound]);
-
-// 🔥 FUNCIÓN: RESPONDER LLAMADA ENTRANTE (AGREGAR)
-const responderLlamada = useCallback(async (accion) => {
-  if (!incomingCall) return;
-  
-  try {
-    stopIncomingCallSound();
-    
-    const response = await fetch(`${API_BASE_URL}/api/calls/answer`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        call_id: incomingCall.id,
-        action: accion
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok && data.success) {
-      if (accion === 'accept') {
-        setIsReceivingCall(false);
-        setIncomingCall(null);
-        redirigirAVideochat(data);
-      } else {
-        setIsReceivingCall(false);
-        setIncomingCall(null);
-      }
-    } else {
-      setIsReceivingCall(false);
-      setIncomingCall(null);
-    }
-  } catch (error) {
-    console.error('Error respondiendo llamada:', error);
-    setIsReceivingCall(false);
-    setIncomingCall(null);
-  }
-}, [incomingCall, getAuthHeaders, stopIncomingCallSound]);
+// 🔥 REMOVIDO: verificarLlamadasEntrantes y responderLlamada ahora se manejan en GlobalCallContext
+// El polling de llamadas entrantes se maneja globalmente, no es necesario duplicarlo aquí
 
 // 🔥 FUNCIÓN: REDIRIGIR AL VIDEOCHAT (AGREGAR)
 const redirigirAVideochat = useCallback((callData) => {
@@ -243,23 +187,8 @@ const redirigirAVideochat = useCallback((callData) => {
   });
 }, [usuario.name, callPollingInterval, navigate]);
 
-// 🔥 USEEFFECTS ADICIONALES (AGREGAR AL FINAL DE LOS USEEFFECTS EXISTENTES)
-
-// Polling para llamadas entrantes
-useEffect(() => {
-  if (!usuario.id) return;
-
-  verificarLlamadasEntrantes();
-  
-  const interval = setInterval(verificarLlamadasEntrantes, 3000);
-  setIncomingCallPollingInterval(interval);
-
-  return () => {
-    if (interval) {
-      clearInterval(interval);
-    }
-  };
-}, [usuario.id, verificarLlamadasEntrantes]);
+// 🔥 REMOVIDO: Polling de llamadas entrantes ahora se maneja globalmente en GlobalCallContext
+// No es necesario duplicar el polling aquí
 
 // Configurar sistema de audio
 useEffect(() => {
@@ -292,11 +221,9 @@ useEffect(() => {
     if (callPollingInterval) {
       clearInterval(callPollingInterval);
     }
-    if (incomingCallPollingInterval) {
-      clearInterval(incomingCallPollingInterval);  
-    }
+    // 🔥 REMOVIDO: incomingCallPollingInterval ya no existe, se maneja en GlobalCallContext
   };
-}, [callPollingInterval, incomingCallPollingInterval, stopIncomingCallSound]);
+}, [callPollingInterval, stopIncomingCallSound]);
 
 
   // 🔥 SISTEMA DE REGALOS (DESPUÉS DE getAuthHeaders)
@@ -1164,6 +1091,148 @@ const cargarMensajes = useCallback(async (roomName) => {
           }
   }, [nicknameTarget, nicknameValue, getAuthHeaders]);
 
+  // 🔥 FUNCIÓN FALLBACK PARA TRADUCCIÓN
+  const translateWithFallback = useCallback(async (text, targetLang) => {
+    try {
+      const cleanText = text.toLowerCase().trim();
+      
+      if (targetLang === 'en') {
+        const translations = {
+          'hola': 'hello',
+          'como estas': 'how are you',
+          'como estás': 'how are you',
+          'como estas?': 'how are you?',
+          'como estás?': 'how are you?',
+          'bien': 'good',
+          'mal': 'bad',
+          'gracias': 'thank you',
+          'por favor': 'please',
+          'si': 'yes',
+          'sí': 'yes',
+          'no': 'no',
+          'que tal': 'how are you',
+          'qué tal': 'how are you',
+          'buenas': 'hi',
+          'buenos dias': 'good morning',
+          'buenos días': 'good morning',
+          'buenas noches': 'good night',
+          'buenas tardes': 'good afternoon',
+          'te amo': 'I love you',
+          'te quiero': 'I love you',
+          'hermosa': 'beautiful',
+          'guapa': 'beautiful',
+          'bonita': 'pretty'
+        };
+        
+        return translations[cleanText] || `[EN] ${text}`;
+      }
+      
+      if (targetLang === 'es') {
+        const translations = {
+          'hello': 'hola',
+          'hi': 'hola',
+          'how are you': 'cómo estás',
+          'how are you?': 'cómo estás?',
+          'good': 'bien',
+          'bad': 'mal',
+          'thank you': 'gracias',
+          'thanks': 'gracias',
+          'please': 'por favor',
+          'yes': 'sí',
+          'no': 'no',
+          'good morning': 'buenos días',
+          'good night': 'buenas noches',
+          'good afternoon': 'buenas tardes',
+          'i love you': 'te amo',
+          'beautiful': 'hermosa',
+          'pretty': 'bonita'
+        };
+        
+        return translations[cleanText] || `[ES] ${text}`;
+      }
+      
+      return `[${targetLang.toUpperCase()}] ${text}`;
+    } catch (error) {
+      return `[ERROR-${targetLang.toUpperCase()}] ${text}`;
+    }
+  }, []);
+
+  // 🔥 FUNCIÓN PRINCIPAL DE TRADUCCIÓN
+  const translateMessage = useCallback(async (message) => {
+    if (!localTranslationEnabled || !message?.id) return;
+    
+    const originalText = message.text || message.message;
+    if (!originalText || originalText.trim() === '') return;
+
+    if (translations.has(message.id) || translatingIds.has(message.id)) return;
+
+    setTranslatingIds(prev => new Set(prev).add(message.id));
+
+    try {
+      let result = null;
+      
+      if (typeof translateGlobalText === 'function') {
+        try {
+          result = await translateGlobalText(originalText, message.id);
+          
+          if (!result || result === originalText) {
+            result = await translateWithFallback(originalText, currentLanguage);
+          }
+        } catch (error) {
+          result = await translateWithFallback(originalText, currentLanguage);
+        }
+      } else {
+        result = await translateWithFallback(originalText, currentLanguage);
+      }
+      
+      if (result && result !== originalText && result.trim() !== '' && result.toLowerCase() !== originalText.toLowerCase()) {
+        setTranslations(prev => new Map(prev).set(message.id, result));
+      } else {
+        setTranslations(prev => new Map(prev).set(message.id, null));
+      }
+    } catch (error) {
+      setTranslations(prev => new Map(prev).set(message.id, null));
+    } finally {
+      setTranslatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(message.id);
+        return newSet;
+      });
+    }
+  }, [localTranslationEnabled, translateGlobalText, currentLanguage, translateWithFallback, translations, translatingIds]);
+
+  // 🔥 FUNCIÓN PARA RENDERIZAR MENSAJE CON TRADUCCIÓN
+  const renderMessageWithTranslation = useCallback((message, isOwn = false) => {
+    const originalText = message.text || message.message;
+    const translatedText = translations.get(message.id);
+    const isTranslating = translatingIds.has(message.id);
+    
+    const hasTranslation = translatedText && translatedText !== originalText && translatedText.trim() !== '';
+
+    return (
+      <div className="space-y-1">
+        <div className="text-white">
+          {originalText}
+          {isTranslating && (
+            <span className="ml-2 inline-flex items-center">
+              <div className="animate-spin rounded-full h-3 w-3 border-b border-current opacity-50"></div>
+            </span>
+          )}
+        </div>
+
+        {hasTranslation && (
+          <div className={`text-xs italic border-l-2 pl-2 py-1 ${
+            isOwn 
+              ? 'border-blue-300 text-blue-200 bg-blue-500/10' 
+              : 'border-green-300 text-green-200 bg-green-500/10'
+          } rounded-r`}>
+          {translatedText}
+        </div>
+        )}
+      </div>
+    );
+  }, [translations, translatingIds, localTranslationEnabled]);
+
   const renderMensaje = useCallback((mensaje) => {
   const textoMensaje = mensaje.message || mensaje.text || null;
   const esUsuarioActual = mensaje.user_id === usuario.id;
@@ -1204,16 +1273,31 @@ const cargarMensajes = useCallback(async (roomName) => {
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         
         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          imageUrl = imagePath;
+          imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
         } else {
           const cleanPath = imagePath.replace(/\\/g, '');
+          let finalUrl;
+          let fileName;
           if (cleanPath.startsWith('storage/')) {
-            imageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
           } else if (cleanPath.startsWith('/')) {
-            imageUrl = `${cleanBaseUrl}${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
+            const directory = pathParts.join('/');
+            const encodedFileName = encodeURIComponent(fileName);
+            finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
           } else {
-            imageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            fileName = cleanPath;
+            const encodedFileName = encodeURIComponent(cleanPath);
+            finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
+          // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+          imageUrl = `${finalUrl}?v=${version}`;
         }
       }
       
@@ -1233,6 +1317,9 @@ const cargarMensajes = useCallback(async (roomName) => {
                   src={imageUrl} 
                   alt={finalGiftData.gift_name || 'Regalo'}
                   className="w-12 h-12 object-contain"
+                  loading="lazy"
+                  decoding="async"
+                  key={`gift-request-mensajes-modelo-${finalGiftData.gift_name}-${imageUrl}`}
                   onError={(e) => {
                     e.target.style.display = 'none';
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
@@ -1430,31 +1517,13 @@ const cargarMensajes = useCallback(async (roomName) => {
       return <div className="text-2xl">{textoMensaje}</div>;
     
     default:
-      // Mensajes normales con traducción
-      if (translationSettings?.enabled && TranslatedMessage && textoMensaje?.trim()) {
-        const tipoMensaje = esUsuarioActual ? 'local' : 'remote';
-        const shouldShowTranslation = !esUsuarioActual || translationSettings.translateOutgoing;
-
-        if (shouldShowTranslation) {
-          return (
-            <TranslatedMessage
-              message={{
-                text: textoMensaje.trim(),
-                type: tipoMensaje,
-                id: mensaje.id,
-                timestamp: mensaje.created_at,
-                sender: mensaje.user_name,
-                senderRole: mensaje.user_role
-              }}
-              settings={translationSettings}
-              className="text-white"
-            />
-          );
-        }
+      // Mensajes normales con traducción automática
+      if (localTranslationEnabled && textoMensaje?.trim()) {
+        return renderMessageWithTranslation(mensaje, esUsuarioActual);
       }
       return <span className="text-white">{textoMensaje}</span>;
   }
-  }, [usuario.id, translationSettings, TranslatedMessage]);
+  }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation]);
   
   const formatearTiempo = useCallback((timestamp) => {
     const fecha = new Date(timestamp);
@@ -1471,9 +1540,115 @@ const cargarMensajes = useCallback(async (roomName) => {
     // Pedir permisos para notificaciones
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(permission => {
-              });
+      });
     }
   }, []);
+
+  // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
+  useEffect(() => {
+    const handleLanguageChange = (lng) => {
+      if (lng && lng !== currentLanguage) {
+        // Actualizar estados locales
+        const shouldEnable = lng !== 'es';
+        setCurrentLanguage(lng);
+        setLocalTranslationEnabled(shouldEnable);
+        
+        // Actualizar configuración de traducción con el nuevo idioma
+        setTranslationSettings(prev => ({
+          ...prev,
+          targetLanguage: lng,
+          enabled: shouldEnable,
+          showOriginal: true, // Mostrar mensaje original
+          showOnlyTranslation: false, // Mostrar también la traducción debajo
+          autoDetect: true,
+          translateOutgoing: false
+        }));
+        
+        // Actualizar el contexto global también
+        if (typeof changeGlobalLanguage === 'function') {
+          try {
+            changeGlobalLanguage(lng);
+          } catch (error) {
+            console.warn('Error cambiando idioma global:', error);
+          }
+        }
+        
+        // Limpiar traducciones existentes para forzar retraducción
+        setTranslations(new Map());
+        setTranslatingIds(new Set());
+      }
+    };
+
+    // Escuchar cambios en el idioma de i18n
+    i18nInstance.on('languageChanged', handleLanguageChange);
+    
+    // También verificar el idioma inicial
+    const currentI18nLang = i18nInstance.language || 'es';
+    if (currentI18nLang && currentI18nLang !== currentLanguage) {
+      handleLanguageChange(currentI18nLang);
+    }
+
+    return () => {
+      i18nInstance.off('languageChanged', handleLanguageChange);
+    };
+  }, [currentLanguage, changeGlobalLanguage, i18nInstance, setTranslationSettings]);
+
+  // 🔥 EFECTO PARA TRADUCIR MENSAJES AUTOMÁTICAMENTE
+  useEffect(() => {
+    if (!localTranslationEnabled) return;
+
+    const messagesToTranslate = mensajes.filter(message => {
+      return (
+        message.type !== 'system' && 
+        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(message.type) &&
+        !translations.has(message.id) &&
+        !translatingIds.has(message.id) &&
+        (message.text || message.message) &&
+        (message.text || message.message).trim() !== ''
+      );
+    });
+
+    messagesToTranslate.forEach((message, index) => {
+      setTimeout(() => {
+        translateMessage(message);
+      }, index * 100);
+    });
+
+  }, [mensajes.length, localTranslationEnabled, translateMessage]);
+
+  // Sincronizar refs con estados
+  useEffect(() => {
+    mensajesRefForTranslation.current = mensajes;
+  }, [mensajes]);
+
+  useEffect(() => {
+    translateMessageRef.current = translateMessage;
+  }, [translateMessage]);
+
+  // 🔥 EFECTO PARA RE-TRADUCIR CUANDO CAMBIA EL IDIOMA
+  useEffect(() => {
+    if (!localTranslationEnabled) return;
+
+    // Limpiar traducciones existentes
+    setTranslations(new Map());
+    setTranslatingIds(new Set());
+    
+    // Re-traducir todos los mensajes usando refs
+    const timeoutId = setTimeout(() => {
+      const currentMensajes = mensajesRefForTranslation.current;
+      const currentTranslateMessage = translateMessageRef.current;
+      
+      if (currentMensajes && currentTranslateMessage) {
+        currentMensajes.forEach((mensaje) => {
+          if (mensaje.text || mensaje.message) {
+            currentTranslateMessage(mensaje);
+          }
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [currentLanguage, localTranslationEnabled]); // Solo cuando cambia el idioma
 
   useEffect(() => {
     if (usuario.id && !loading) {
@@ -1796,7 +1971,7 @@ const cargarMensajes = useCallback(async (roomName) => {
         setOnlineUsers(new Set([2, 3, 4, 5]));
       }
     };
-
+    
     if (usuario.id) {
       // Cargar inicial
       cargarUsuariosOnline();
@@ -1806,6 +1981,174 @@ const cargarMensajes = useCallback(async (roomName) => {
       return () => clearInterval(interval);
     }
   }, [usuario.id, getAuthHeaders]);
+
+  // 🔗 Abrir chat con modelo desde URL (cuando viene del link de perfil)
+  useEffect(() => {
+    const modeloId = searchParams.get('modelo');
+    const slug = searchParams.get('slug');
+    
+    if (!modeloId && !slug) return;
+    if (!usuario.id || usuario.rol !== 'cliente') return;
+    if (hasOpenedSpecificChat.current) return;
+
+    const abrirChatConModelo = async () => {
+      try {
+        let targetModelId = modeloId;
+
+        // Si viene un slug, obtener el ID del modelo
+        if (slug && !modeloId) {
+          const response = await fetch(`${API_BASE_URL}/api/model/by-slug/${slug}`, {
+            headers: getAuthHeaders()
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.model_id) {
+              targetModelId = data.model_id;
+            } else {
+              return; // No se encontró el modelo
+            }
+          } else {
+            return; // Error al obtener el modelo
+          }
+        }
+
+        if (!targetModelId) return;
+
+        // Buscar si ya existe una conversación con este modelo
+        const conversacionExistente = conversaciones.find(
+          conv => conv.other_user_id === parseInt(targetModelId)
+        );
+
+        if (conversacionExistente) {
+          // Abrir la conversación existente
+          setConversacionActiva(conversacionExistente.room_name);
+          await marcarComoVisto(conversacionExistente.room_name);
+          await cargarMensajes(conversacionExistente.room_name);
+          hasOpenedSpecificChat.current = true;
+          
+          // Limpiar parámetro de URL
+          navigate('/mensajes', { replace: true });
+        } else {
+          // Crear nueva conversación
+          const response = await fetch(`${API_BASE_URL}/api/chat/start-conversation`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ other_user_id: parseInt(targetModelId) })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.room_name) {
+              // Recargar conversaciones para incluir la nueva
+              await cargarConversaciones();
+              
+              // Abrir la nueva conversación
+              setTimeout(async () => {
+                setConversacionActiva(data.room_name);
+                await marcarComoVisto(data.room_name);
+                await cargarMensajes(data.room_name);
+                hasOpenedSpecificChat.current = true;
+                
+                // Limpiar parámetro de URL
+                navigate('/mensajes', { replace: true });
+              }, 500);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error abriendo chat con modelo:', error);
+      }
+    };
+
+    // Esperar a que se carguen las conversaciones
+    if (conversaciones.length > 0 || !loading) {
+      abrirChatConModelo();
+    }
+  }, [searchParams, usuario.id, usuario.rol, conversaciones, loading, getAuthHeaders, navigate, cargarConversaciones, marcarComoVisto, cargarMensajes]);
+
+  // 🔗 Abrir chat con usuario desde location.state (cuando viene de usuarios activos)
+  useEffect(() => {
+    if (!openChatWith || hasOpenedSpecificChat.current) return;
+    if (!usuario.id) return;
+    if (conversaciones.length === 0 && loading) return; // Esperar a que se carguen las conversaciones
+
+    const abrirChatConUsuario = async () => {
+      try {
+        const targetUserId = openChatWith.userId || openChatWith.other_user_id;
+        const targetUserName = openChatWith.userName || openChatWith.other_user_name || openChatWith.name;
+        const targetUserRole = openChatWith.userRole || openChatWith.role || 'cliente';
+
+        if (!targetUserId) return;
+
+        // Buscar si ya existe una conversación con este usuario
+        const conversacionExistente = conversaciones.find(
+          conv => conv.other_user_id === parseInt(targetUserId)
+        );
+
+        if (conversacionExistente) {
+          // Abrir la conversación existente
+          await abrirConversacion(conversacionExistente);
+          hasOpenedSpecificChat.current = true;
+          
+          // Limpiar estado
+          navigate('/mensajes', { replace: true });
+        } else {
+          // Crear nueva conversación
+          const response = await fetch(`${API_BASE_URL}/api/chat/start-conversation`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ other_user_id: parseInt(targetUserId) })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.room_name) {
+              // Recargar conversaciones para incluir la nueva
+              await cargarConversaciones();
+              
+              // Crear objeto de conversación con los datos disponibles
+              const nuevaConversacion = {
+                room_name: data.room_name,
+                other_user_id: parseInt(targetUserId),
+                other_user_name: targetUserName,
+                other_user_display_name: targetUserName || targetUserName,
+                other_user_role: targetUserRole,
+                last_message: "",
+                last_message_time: new Date().toISOString(),
+                unread_count: 0,
+                avatar_url: openChatWith.avatar_url || null
+              };
+              
+              // Esperar un momento para que se actualicen las conversaciones y luego abrir
+              setTimeout(async () => {
+                await abrirConversacion(nuevaConversacion);
+                hasOpenedSpecificChat.current = true;
+                
+                // Limpiar estado
+                navigate('/mensajes', { replace: true });
+              }, 500);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error abriendo chat con usuario:', error);
+        hasOpenedSpecificChat.current = true;
+      }
+    };
+
+    // Esperar a que se carguen las conversaciones
+    if (conversaciones.length > 0 || !loading) {
+      abrirChatConUsuario();
+    }
+  }, [openChatWith, usuario.id, conversaciones, loading, getAuthHeaders, navigate, cargarConversaciones, abrirConversacion]);
+
+  // 🔄 Resetear flag cuando no hay openChatWith
+  useEffect(() => {
+    if (!openChatWith) {
+      hasOpenedSpecificChat.current = false;
+    }
+  }, [openChatWith]);
 
   
   return (
@@ -1867,7 +2210,7 @@ const cargarMensajes = useCallback(async (roomName) => {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-white/50" />
               <input
                 type="text"
-                placeholder="Buscar conversaciones..."
+                placeholder={t("chat.searchPlaceholder")}
                 className="w-full pl-10 pr-4 py-2 rounded-lg bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
                 value={busquedaConversacion}
                 onChange={(e) => setBusquedaConversacion(e.target.value)}
@@ -1914,15 +2257,15 @@ const cargarMensajes = useCallback(async (roomName) => {
                           {/* Indicador de estado */}
                           {(() => {
                             if (blockStatus === 'yo_bloquee') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" title="Bloqueado por ti" />;
+                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.blockedByYou")} />;
                             } else if (blockStatus === 'me_bloquearon') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" title="Te bloqueó" />;
+                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.blockedYou")} />;
                             } else if (blockStatus === 'mutuo') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title="Bloqueo mutuo" />;
+                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.mutualBlock")} />;
                             } else {
                               return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
                                 isOnline ? 'bg-green-500' : 'bg-gray-500'
-                              }`} title={isOnline ? 'En línea' : 'Desconectado'} />;
+                              }`} title={isOnline ? t("chat.online") : t("chat.offline")} />;
                             }
                           })()}
                           
@@ -1972,8 +2315,8 @@ const cargarMensajes = useCallback(async (roomName) => {
               <div className="flex-1 flex items-center justify-center p-4">
                 <div className="text-center">
                   <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">Selecciona una conversación</h3>
-                  <p className="text-white/60">Elige una conversación para ver los mensajes</p>
+                  <h3 className="text-xl font-semibold mb-2">{t("chat.selectConversation")}</h3>
+                  <p className="text-white/60">{t("chat.selectConversationDesc")}</p>
                 </div>
               </div>
             )
@@ -2266,9 +2609,9 @@ const cargarMensajes = useCallback(async (roomName) => {
                   placeholder={
                     isChatBlocked()
                       ? bloqueados.has(conversacionSeleccionada?.other_user_id)
-                        ? "Usuario bloqueado"
-                        : "Te bloqueó"
-                      : "Escribe un mensaje..."
+                        ? t("chat.status.cannotSendBlocked")
+                        : t("chat.status.userBlockedYou")
+                      : t("chat.messagePlaceholder")
                   }
                   className={`flex-1 px-4 py-3 rounded-full outline-none placeholder-white/60 text-sm ${
                     isChatBlocked()
@@ -2346,8 +2689,8 @@ const cargarMensajes = useCallback(async (roomName) => {
       <IncomingCallOverlay
         isVisible={isReceivingCall}
         callData={incomingCall}
-        onAnswer={() => responderLlamada('accept')} // 🔥 FUNCIÓN REAL
-        onDecline={() => responderLlamada('reject')} // 🔥 FUNCIÓN REAL
+        onAnswer={answerCall} // 🔥 USAR FUNCIÓN DEL CONTEXTO GLOBAL
+        onDecline={declineCall} // 🔥 USAR FUNCIÓN DEL CONTEXTO GLOBAL
       />
     </div>
   );

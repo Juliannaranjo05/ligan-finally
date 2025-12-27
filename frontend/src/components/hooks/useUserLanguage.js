@@ -1,5 +1,6 @@
 // hooks/useUserLanguage.js
 import { useEffect } from 'react';
+import i18n from '../../i18n';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -37,19 +38,21 @@ export const useUserLanguage = () => {
                               
           // Solo actualizar si es diferente
           if (currentLocalLang !== dbLanguage) {
+            // Guardar en todas las claves para compatibilidad
+            localStorage.setItem('lang', dbLanguage); // Clave principal de i18n
             localStorage.setItem('userPreferredLanguage', dbLanguage);
-                        
-            // Actualizar i18next si está disponible
-            if (window.i18n && typeof window.i18n.changeLanguage === 'function') {
-              window.i18n.changeLanguage(dbLanguage);
-                          }
+            localStorage.setItem('selectedLanguage', dbLanguage);
+            
+            // Actualizar i18n
+            if (i18n.language !== dbLanguage) {
+              i18n.changeLanguage(dbLanguage);
+            }
             
             // Disparar evento personalizado para notificar el cambio
             window.dispatchEvent(new CustomEvent('userLanguageChanged', {
               detail: { language: dbLanguage }
             }));
-          } else {
-                      }
+          }
         } else {
                   }
       } else {
@@ -70,17 +73,21 @@ export const useUserLanguage = () => {
       const data = await response.json();
       
       if (data.success) {
-        // Actualizar localStorage
-        localStorage.setItem('userPreferredLanguage', data.preferred_language);
-                
-        // Actualizar i18next
-        if (window.i18n && typeof window.i18n.changeLanguage === 'function') {
-          window.i18n.changeLanguage(data.preferred_language);
+        const newLang = data.preferred_language;
+        
+        // Actualizar localStorage en todas las claves
+        localStorage.setItem('lang', newLang); // Clave principal de i18n
+        localStorage.setItem('userPreferredLanguage', newLang);
+        localStorage.setItem('selectedLanguage', newLang);
+        
+        // Actualizar i18n
+        if (i18n.language !== newLang) {
+          i18n.changeLanguage(newLang);
         }
         
-        return { success: true, language: data.preferred_language };
+        return { success: true, language: newLang };
       } else {
-                return { success: false, error: data.error };
+        return { success: false, error: data.error };
       }
     } catch (error) {
             return { success: false, error: 'Error de conexión' };

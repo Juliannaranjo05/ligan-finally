@@ -8,8 +8,11 @@ const RouteGuard = ({ children }) => {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const roomName = localStorage.getItem('roomName');
-    
-    if (token && roomName) {
+    const inCall = localStorage.getItem('inCall');
+    const videochatActive = localStorage.getItem('videochatActive');
+
+    // Solo redirigir automáticamente si realmente estamos en una sesión de video
+    if (token && roomName && (inCall === 'true' || videochatActive === 'true')) {
       const currentPath = location.pathname;
       
       // Rutas bloqueadas
@@ -26,7 +29,7 @@ const RouteGuard = ({ children }) => {
       ];
       
       if (rutasBloqueadas.includes(currentPath)) {
-        console.log('🚫 RUTA BLOQUEADA POR GUARD:', currentPath);
+        console.log('🚫 RUTA BLOQUEADA POR GUARD (session active):', currentPath);
         
         // Redirigir inmediatamente a videochat
         navigate('/videochat', { replace: true });

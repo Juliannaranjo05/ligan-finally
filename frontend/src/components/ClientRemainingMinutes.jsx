@@ -35,7 +35,6 @@ const ClientRemainingMinutes = ({ roomName, clientUserId, connected }) => {
         }
       }
     } catch (err) {
-      console.error('Error obteniendo tiempo restante:', err);
     }
   };
 

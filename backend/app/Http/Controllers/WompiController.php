@@ -13,19 +13,22 @@ use App\Models\CoinPackage;
 use App\Models\UserCoins;
 use App\Models\CoinTransaction;
 use App\Http\Controllers\VideoChatCoinController;
+use App\Services\CurrencyDetectionService;
 use Exception;
 
 class WompiController extends Controller
 {
     private $wompiConfig;
+    private $currencyDetectionService;
 
-    public function __construct()
+    public function __construct(CurrencyDetectionService $currencyDetectionService)
     {
         $this->wompiConfig = [
             // Credenciales Wompi
             'public_key' => config('wompi.public_key'),
             'private_key' => config('wompi.private_key'),
             'integrity_secret' => config('wompi.integrity_secret'),
+            'events_secret' => config('wompi.events_secret'),
             
             // URLs de Wompi
             'api_url' => config('wompi.api_url', 'https://production.wompi.co/v1'),
@@ -36,6 +39,8 @@ class WompiController extends Controller
             'currency' => config('wompi.currency', 'COP'),
             'environment' => config('app.env'),
         ];
+        
+        $this->currencyDetectionService = $currencyDetectionService;
     }
 
     /**
@@ -74,11 +79,30 @@ class WompiController extends Controller
 
     /**
      * 📦 Obtener paquetes disponibles para Wompi
+     * 
+     * @param Request $request Puede incluir 'currency' (COP, USD, EUR, etc.)
      */
-    public function getPackages()
+    public function getPackages(Request $request)
     {
         try {
             $user = auth()->user();
+            
+            // 🔥 DETECCIÓN DE MONEDA:
+            // 1. Si el usuario especifica una moneda manualmente, usarla
+            // 2. Si no, detectar automáticamente por IP
+            // 3. Si falla la detección, usar COP por defecto (LATAM)
+            if ($request && $request->has('currency') && $request->input('currency')) {
+                $currency = strtoupper($request->input('currency'));
+            } else {
+                // Detección automática por IP
+                $userIp = $request->ip();
+                $currency = $this->currencyDetectionService->detectCurrencyByIp($userIp);
+                
+                Log::info('Moneda detectada automáticamente', [
+                    'ip' => $userIp,
+                    'currency' => $currency
+                ]);
+            }
             
             // Verificar si es primera compra
             $hasFirstPurchase = DB::table('coin_purchases')
@@ -86,21 +110,45 @@ class WompiController extends Controller
                 ->where('status', 'completed')
                 ->exists();
 
+            // Obtener paquetes activos y eliminar duplicados
+            // Agrupar por tipo, coins, price y bonus_coins, manteniendo solo el primero (menor ID o menor sort_order)
             $packages = CoinPackage::where('is_active', true)
                 ->orderBy('sort_order')
+                ->orderBy('id')
                 ->get()
-                ->map(function ($package) use ($hasFirstPurchase) {
-                    // Convertir precio USD a COP (aproximado)
-                    $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-                    $priceCop = $package->price * $usdToCop;
+                ->unique(function ($package) {
+                    // Crear una clave única basada en características del paquete
+                    return strtolower($package->type) . '_' . 
+                           $package->coins . '_' . 
+                           $package->price . '_' . 
+                           $package->bonus_coins . '_' . 
+                           ($package->is_popular ? '1' : '0');
+                })
+                ->values() // Reindexar el array después de unique
+                ->map(function ($package) use ($hasFirstPurchase, $currency) {
+                    // Precio base en USD (LATAM)
+                    $basePriceUsd = $package->price;
                     
-                    // Lógica de precios
+                    // Calcular precio según moneda (aplica +10% para USD/EUR)
+                    $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+                    
+                    // Convertir precios a otras monedas para mostrar
+                    $usdToCop = config('wompi.usd_to_cop_rate', 4000);
+                    $usdToEur = config('wompi.usd_to_eur_rate', 0.92);
+                    
+                    // Precio en COP (para Wompi, siempre en COP)
+                    $priceCop = $calculatedPriceUsd * $usdToCop;
+                    
+                    // Precio en EUR
+                    $priceEur = $calculatedPriceUsd * $usdToEur;
+                    
+                    // Lógica de precios (mantener compatibilidad con descuentos de primera vez)
                     if ($hasFirstPurchase) {
                         $showPriceCop = $package->regular_price * $usdToCop;
                         $showDiscount = 0;
                         $isFirstTimeEligible = false;
                     } else {
-                        $showPriceCop = $package->is_first_time_only ? $priceCop : $package->regular_price * $usdToCop;
+                        $showPriceCop = $package->is_first_time_only ? $priceCop : $priceCop;
                         $showDiscount = $package->is_first_time_only ? $package->discount_percentage : 0;
                         $isFirstTimeEligible = $package->is_first_time_only;
                     }
@@ -114,8 +162,10 @@ class WompiController extends Controller
                         'coins' => $package->coins,
                         'bonus_coins' => $package->bonus_coins,
                         'total_coins' => $package->coins + $package->bonus_coins,
-                        'price_usd' => $package->price,
-                        'price_cop' => (int)$showPriceCop,
+                        'price_usd' => round($calculatedPriceUsd, 2), // Precio calculado según moneda
+                        'price_usd_base' => round($basePriceUsd, 2), // Precio base LATAM
+                        'price_eur' => round($priceEur, 2),
+                        'price_cop' => (int)$showPriceCop, // Mantener para uso interno de Wompi
                         'price_cop_cents' => (int)($showPriceCop * 100), // Para Wompi
                         'regular_price_cop' => (int)($package->regular_price * $usdToCop),
                         'discount_percentage' => $showDiscount,
@@ -123,7 +173,10 @@ class WompiController extends Controller
                         'is_popular' => $package->is_popular,
                         'is_active' => $package->is_active,
                         'is_first_purchase' => !$hasFirstPurchase,
-                        'usd_to_cop_rate' => $usdToCop
+                        'usd_to_cop_rate' => $usdToCop,
+                        'usd_to_eur_rate' => $usdToEur,
+                        'currency' => $currency, // Moneda seleccionada
+                        'price_multiplier' => ($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00 // Multiplicador aplicado
                     ];
                 });
 
@@ -131,8 +184,12 @@ class WompiController extends Controller
                 'success' => true,
                 'packages' => $packages,
                 'is_first_purchase' => !$hasFirstPurchase,
-                'currency' => 'COP',
+                'currency' => $currency, // Moneda detectada/seleccionada
+                'currency_detected' => !($request && $request->has('currency') && $request->input('currency')), // true si fue detectada automáticamente
+                'default_currency' => 'COP', // Moneda por defecto (Wompi)
+                'is_latam' => $this->currencyDetectionService->isLatamCurrency($currency),
                 'usd_to_cop_rate' => config('wompi.usd_to_cop_rate', 4000),
+                'usd_to_eur_rate' => config('wompi.usd_to_eur_rate', 0.92),
                 'environment_info' => $this->getEnvironmentInfo()
             ]);
 
@@ -167,14 +224,98 @@ class WompiController extends Controller
             // Validación de entrada
             $request->validate([
                 'package_id' => 'required|exists:coin_packages,id',
+                'currency' => 'nullable|string|max:3', // Opcional: COP, USD, EUR, etc.
             ]);
 
             $user = Auth::user();
             $package = CoinPackage::findOrFail($request->package_id);
+            
+            // 🔥 DETECCIÓN DE MONEDA:
+            // 1. Si el usuario especifica una moneda manualmente, usarla
+            // 2. Si no, detectar automáticamente por IP
+            // 3. Si falla la detección, usar COP por defecto (LATAM)
+            if ($request->has('currency') && $request->input('currency')) {
+                $currency = strtoupper($request->input('currency'));
+            } else {
+                // Detección automática por IP
+                $userIp = $request->ip();
+                $currency = $this->currencyDetectionService->detectCurrencyByIp($userIp);
+                
+                Log::info('Moneda detectada automáticamente para pago', [
+                    'ip' => $userIp,
+                    'currency' => $currency,
+                    'package_id' => $package->id
+                ]);
+            }
 
-            // Calcular precio en COP
+            // 🔒 PREVENIR COMPRAS DUPLICADAS: Verificar si ya existe una compra pendiente reciente (últimos 30 segundos)
+            $recentPendingPurchase = CoinPurchase::where('user_id', $user->id)
+                ->where('package_id', $package->id)
+                ->where('payment_method', 'wompi')
+                ->where('status', 'pending')
+                ->where('created_at', '>=', now()->subSeconds(30))
+                ->first();
+
+            if ($recentPendingPurchase) {
+                Log::warning('⚠️ Intento de crear compra duplicada', [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'existing_purchase_id' => $recentPendingPurchase->id,
+                    'created_at' => $recentPendingPurchase->created_at
+                ]);
+                
+                // Calcular precio según moneda
+                $basePriceUsd = $package->price;
+                $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+                $usdToCop = config('wompi.usd_to_cop_rate', 4000);
+                $priceCop = $calculatedPriceUsd * $usdToCop;
+                
+                $signature = $this->generateIntegritySignature($recentPendingPurchase->transaction_id, $priceCop * 100, 'COP');
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Compra ya en proceso',
+                    'purchase_id' => $recentPendingPurchase->id,
+                    'wompi_data' => [
+                        'public_key' => $this->wompiConfig['public_key'],
+                        'currency' => 'COP',
+                        'amount_in_cents' => $priceCop * 100,
+                        'reference' => $recentPendingPurchase->transaction_id,
+                        'signature_integrity' => $signature,
+                        'checkout_url' => $this->wompiConfig['checkout_url'],
+                        'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
+                        'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
+                        'customer_email' => $user->email,
+                        'customer_full_name' => $user->name,
+                    ],
+                    'package_info' => [
+                        'name' => $package->name,
+                        'coins' => $package->coins,
+                        'bonus_coins' => $package->bonus_coins ?? 0,
+                        'total_coins' => $package->coins + ($package->bonus_coins ?? 0),
+                        'price_usd' => $calculatedPriceUsd,
+                        'price_usd_base' => $basePriceUsd,
+                    ],
+                    'environment' => config('app.env'),
+                    'duplicate_prevented' => true
+                ], 200);
+            }
+
+            // Calcular precio según moneda (aplica +10% para USD/EUR)
+            $basePriceUsd = $package->price; // Precio base LATAM
+            $calculatedPriceUsd = $this->calculatePriceByCurrency($basePriceUsd, $currency);
+            
+            // Convertir precio calculado a COP (Wompi siempre procesa en COP)
             $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-            $priceCop = $package->price * $usdToCop;
+            $priceCop = $calculatedPriceUsd * $usdToCop;
+            
+            // Asegurar que el precio en centavos sea un entero
+            $amountInCents = (int)round($priceCop * 100);
+            
+            // Validar que el monto mínimo sea al menos 1000 COP (según documentación Wompi)
+            if ($amountInCents < 100000) { // 1000 COP = 100000 centavos
+                throw new Exception("El monto mínimo para transacciones en Wompi es de $1,000 COP");
+            }
 
             // Validar límites de transacción
             $this->validateTransactionLimits($priceCop);
@@ -191,7 +332,7 @@ class WompiController extends Controller
                 'coins' => $package->coins,
                 'bonus_coins' => $package->bonus_coins ?? 0,
                 'total_coins' => $package->coins + ($package->bonus_coins ?? 0),
-                'amount' => $package->price, // USD
+                'amount' => $calculatedPriceUsd, // Precio calculado según moneda (USD)
                 'currency' => 'USD',
                 'payment_method' => 'wompi',
                 'status' => 'pending',
@@ -199,15 +340,26 @@ class WompiController extends Controller
                 'payment_data' => json_encode([
                     'wompi_reference' => $reference,
                     'amount_cop' => $priceCop,
-                    'amount_cop_cents' => $priceCop * 100,
+                    'amount_cop_cents' => $amountInCents,
                     'usd_to_cop_rate' => $usdToCop,
+                    'currency_selected' => $currency, // Moneda seleccionada por el usuario
+                    'price_usd_base' => $basePriceUsd, // Precio base LATAM
+                    'price_usd_calculated' => $calculatedPriceUsd, // Precio calculado (con +10% si aplica)
+                    'price_multiplier' => ($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00,
                     'created_at' => now()->toISOString(),
                     'environment' => config('app.env'),
                 ])
             ]);
 
-            // Generar firma de integridad
-            $signature = $this->generateIntegritySignature($reference, $priceCop * 100, 'COP');
+            // Generar firma de integridad usando el monto en centavos como entero
+            $signature = $this->generateIntegritySignature($reference, $amountInCents, 'COP');
+            
+            Log::info("🔐 Firma de integridad generada", [
+                'reference' => $reference,
+                'amount_in_cents' => $amountInCents,
+                'currency' => 'COP',
+                'signature_preview' => substr($signature, 0, 20) . '...'
+            ]);
 
             DB::commit();
 
@@ -226,11 +378,12 @@ class WompiController extends Controller
                 'wompi_data' => [
                     'public_key' => $this->wompiConfig['public_key'],
                     'currency' => 'COP',
-                    'amount_in_cents' => $priceCop * 100,
+                    'amount_in_cents' => $amountInCents, // Usar el entero calculado
                     'reference' => $reference,
                     'signature_integrity' => $signature,
-                    'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL'),
-                    'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL'),
+                    'checkout_url' => $this->wompiConfig['checkout_url'],
+                    'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
+                    'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
                     'customer_email' => $user->email,
                     'customer_full_name' => $user->name,
                 ],
@@ -239,8 +392,10 @@ class WompiController extends Controller
                     'coins' => $package->coins,
                     'bonus_coins' => $package->bonus_coins,
                     'total_coins' => $purchase->total_coins,
-                    'price_usd' => $package->price,
+                    'price_usd' => $calculatedPriceUsd, // Precio calculado según moneda
+                    'price_usd_base' => $basePriceUsd, // Precio base LATAM
                     'price_cop' => $priceCop,
+                    'currency' => $currency, // Moneda seleccionada
                     'type' => $package->type
                 ],
                 'environment' => config('app.env')
@@ -275,7 +430,14 @@ class WompiController extends Controller
     {
         $timestamp = time();
         $random = strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
-        return "WMP{$timestamp}{$userId}{$packageId}{$random}";
+        // Wompi requiere referencias alfanuméricas sin caracteres especiales complejos
+        // Usar solo letras, números, guiones y guiones bajos
+        $reference = "WMP{$timestamp}{$userId}{$packageId}{$random}";
+        
+        // Limpiar referencia para asegurar que solo tenga caracteres válidos
+        $reference = preg_replace('/[^a-zA-Z0-9_-]/', '', $reference);
+        
+        return $reference;
     }
 
     /**
@@ -314,6 +476,30 @@ class WompiController extends Controller
         if ($amountCop > $maxAmount) {
             throw new Exception("Monto máximo de transacción: $" . number_format($maxAmount, 0) . " COP");
         }
+    }
+
+    /**
+     * 💱 Calcular precio según moneda
+     * Aplica +10% para USD/EUR, precio base para LATAM
+     * 
+     * @param float $basePrice Precio base en USD (LATAM)
+     * @param string $currency Moneda de pago (COP, USD, EUR, MXN, ARS, CLP, PEN, etc.)
+     * @return float Precio calculado en USD
+     */
+    private function calculatePriceByCurrency($basePrice, $currency = 'COP')
+    {
+        // Monedas LATAM: precio base
+        $latamCurrencies = ['COP', 'MXN', 'ARS', 'CLP', 'PEN', 'BRL', 'UYU', 'PYG', 'BOB', 'VES', 'GTQ', 'HNL', 'NIO', 'CRC', 'PAB', 'DOP', 'HTG', 'JMD', 'BBD', 'BZD', 'XCD', 'AWG', 'SRD', 'GYD', 'TTD'];
+        
+        $currencyUpper = strtoupper($currency);
+        
+        // Si es USD o EUR, aplicar +10%
+        if ($currencyUpper === 'USD' || $currencyUpper === 'EUR') {
+            return round($basePrice * 1.10, 2);
+        }
+        
+        // Para LATAM, precio base
+        return round($basePrice, 2);
     }
 
     /**
@@ -497,19 +683,22 @@ class WompiController extends Controller
 
             DB::beginTransaction();
 
+            // Actualizar payment_data con información de Wompi
+            $currentPaymentData = json_decode($purchase->payment_data, true) ?? [];
+            $updatedPaymentData = array_merge($currentPaymentData, [
+                'webhook_approved' => $transactionData,
+                'wompi_transaction_id' => $transactionData['id'] ?? null,
+                'wompi_reference' => $transactionData['reference'] ?? $purchase->transaction_id,
+                'completed_at' => now()->toISOString(),
+                'environment' => config('app.env'),
+                'verified_manually' => true // Marcar que fue verificado manualmente
+            ]);
+
             // Marcar como completado
             $purchase->update([
                 'status' => 'completed',
                 'completed_at' => now(),
-                'payment_data' => json_encode(array_merge(
-                    json_decode($purchase->payment_data, true) ?? [],
-                    [
-                        'webhook_approved' => $transactionData,
-                        'wompi_transaction_id' => $transactionData['id'] ?? null,
-                        'completed_at' => now()->toISOString(),
-                        'environment' => config('app.env')
-                    ]
-                ))
+                'payment_data' => json_encode($updatedPaymentData)
             ]);
 
             // Agregar monedas al usuario
@@ -517,20 +706,25 @@ class WompiController extends Controller
 
             DB::commit();
 
-            Log::info("✅ Pago Wompi completado", [
+            Log::info("✅ Pago Wompi completado y monedas agregadas", [
                 'purchase_id' => $purchase->id,
                 'user_id' => $purchase->user_id,
                 'reference' => $purchase->transaction_id,
                 'wompi_transaction_id' => $transactionData['id'] ?? null,
-                'coins_added' => $purchase->total_coins
+                'coins_added' => $purchase->total_coins,
+                'purchased_coins' => $purchase->coins,
+                'bonus_coins' => $purchase->bonus_coins
             ]);
 
             return response('OK', 200);
 
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error('❌ Error procesando pago aprobado: ' . $e->getMessage());
-            return response('Error processing approved payment', 500);
+            Log::error('❌ Error procesando pago aprobado: ' . $e->getMessage(), [
+                'purchase_id' => $purchase->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e; // Lanzar excepción para que el llamador pueda manejarla
         }
     }
 
@@ -611,25 +805,68 @@ class WompiController extends Controller
      */
     private function validateWebhookSignature(Request $request)
     {
+        // En modo sandbox, ser más permisivo con la validación del webhook
+        // ya que puede haber problemas con el checksum en pruebas
+        if (config('wompi.sandbox', false)) {
+            Log::info('🧪 Modo sandbox: Validación de webhook más permisiva', [
+                'ip' => $request->ip(),
+                'has_checksum' => $request->header('X-Event-Checksum') ? 'yes' : 'no'
+            ]);
+            
+            // En sandbox, solo validar que existe el checksum si está configurado verify_webhooks
+            if (config('wompi.verify_webhooks', true)) {
+                $checksum = $request->header('X-Event-Checksum');
+                if (!$checksum) {
+                    Log::warning('⚠️ Webhook sandbox sin checksum, pero continuando en modo permisivo');
+                    // En sandbox, no lanzar excepción si falta el checksum
+                }
+            }
+            return; // En sandbox, permitir el webhook sin validación estricta
+        }
+        
         if (!config('wompi.verify_webhooks', true)) {
+            Log::info('⚠️ Validación de webhook deshabilitada');
             return; // Validación deshabilitada
         }
 
         $payload = $request->getContent();
+        $eventsSecret = $this->wompiConfig['events_secret'] ?? config('wompi.events_secret');
+        
         // Wompi envía el checksum en este header específico
         $checksum = $request->header('X-Event-Checksum');
         
         if (!$checksum) {
-            Log::warning('⚠️ Webhook sin X-Event-Checksum header');
+            Log::warning('⚠️ Webhook sin X-Event-Checksum header', [
+                'headers' => $request->headers->all(),
+                'ip' => $request->ip()
+            ]);
             throw new Exception('Missing webhook checksum');
         }
 
-        // Por ahora solo validamos que existe el checksum
-        // La validación completa requiere implementar el algoritmo específico de Wompi
-        Log::info('✅ Webhook con checksum válido', ['checksum' => $checksum]);
-        
-        // TODO: Implementar validación completa según documentación de Wompi
-        // Por ahora permitimos todos los webhooks que tengan checksum
+        // Validar checksum según documentación de Wompi
+        // El checksum se calcula como: SHA256(payload + events_secret)
+        if ($eventsSecret) {
+            $expectedChecksum = hash('sha256', $payload . $eventsSecret);
+            
+            if (!hash_equals($expectedChecksum, $checksum)) {
+                Log::error('❌ Webhook con checksum inválido', [
+                    'expected' => $expectedChecksum,
+                    'received' => $checksum,
+                    'ip' => $request->ip(),
+                    'payload_length' => strlen($payload)
+                ]);
+                throw new Exception('Invalid webhook checksum');
+            }
+            
+            Log::info('✅ Webhook con checksum válido', [
+                'checksum' => substr($checksum, 0, 20) . '...',
+                'ip' => $request->ip()
+            ]);
+        } else {
+            Log::warning('⚠️ No hay events_secret configurado, validando solo presencia de checksum');
+            // Si no hay events_secret, solo validamos que existe el checksum
+            Log::info('✅ Webhook con checksum presente', ['checksum' => substr($checksum, 0, 20) . '...']);
+        }
     }
 
     /**
@@ -679,6 +916,224 @@ class WompiController extends Controller
                 ], 404);
             }
 
+            // Si el pago está pendiente, verificar con Wompi directamente
+            // Wompi usa "reference" para buscar transacciones, no transaction_id
+            $reference = $purchase->transaction_id; // transaction_id contiene la reference
+            $wompiTransactionId = null;
+            
+            // Intentar obtener el transaction_id de Wompi desde payment_data
+            if ($purchase->payment_data) {
+                $paymentData = json_decode($purchase->payment_data, true);
+                $wompiTransactionId = $paymentData['wompi_transaction_id'] ?? 
+                                     $paymentData['transaction_id'] ?? null;
+            }
+            
+            // Buscar por reference primero (más confiable), luego por transaction_id si está disponible
+            $searchId = $wompiTransactionId ?: $reference;
+            
+            if ($purchase->status === 'pending' && $searchId) {
+                try {
+                    Log::info('🔍 Verificando estado con Wompi API', [
+                        'purchase_id' => $purchase->id,
+                        'reference' => $reference,
+                        'wompi_transaction_id' => $wompiTransactionId,
+                        'search_id' => $searchId,
+                        'api_url' => $this->wompiConfig['api_url']
+                    ]);
+
+                    // Intentar buscar por reference primero (más confiable en sandbox)
+                    // Wompi usa el parámetro ?reference= para buscar transacciones
+                    $response = Http::timeout(10)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                            'Accept' => 'application/json'
+                        ])
+                        ->get($this->wompiConfig['api_url'] . '/transactions?reference=' . urlencode($reference));
+                    
+                    // Si falla buscando por reference, intentar por transaction_id directo
+                    if (!$response->successful() && $wompiTransactionId && $reference !== $wompiTransactionId) {
+                        Log::info('🔄 Reintentando búsqueda por transaction_id', [
+                            'purchase_id' => $purchase->id,
+                            'wompi_transaction_id' => $wompiTransactionId
+                        ]);
+                        $response = Http::timeout(10)
+                            ->withHeaders([
+                                'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                                'Accept' => 'application/json'
+                            ])
+                            ->get($this->wompiConfig['api_url'] . '/transactions/' . $wompiTransactionId);
+                    }
+                    
+                    // Si aún falla, intentar buscar todas las transacciones recientes y filtrar
+                    if (!$response->successful()) {
+                        Log::info('🔄 Intentando búsqueda en lista de transacciones', [
+                            'purchase_id' => $purchase->id,
+                            'reference' => $reference
+                        ]);
+                        // Buscar transacciones recientes (últimas 50)
+                        $response = Http::timeout(10)
+                            ->withHeaders([
+                                'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                                'Accept' => 'application/json'
+                            ])
+                            ->get($this->wompiConfig['api_url'] . '/transactions');
+                    }
+
+                    if ($response->successful()) {
+                        $responseData = $response->json();
+                        
+                        // Manejar diferentes estructuras de respuesta de Wompi
+                        $transactionData = null;
+                        
+                        if (isset($responseData['data']) && is_array($responseData['data'])) {
+                            // Si es un array, buscar la transacción que coincida con nuestra reference
+                            $transactions = $responseData['data'];
+                            foreach ($transactions as $tx) {
+                                $txReference = $tx['reference'] ?? null;
+                                $txId = $tx['id'] ?? null;
+                                
+                                // Buscar por reference exacta o por transaction_id
+                                if ($txReference === $reference || 
+                                    ($wompiTransactionId && $txId === $wompiTransactionId) ||
+                                    ($txReference && strpos($txReference, $reference) !== false)) {
+                                    $transactionData = $tx;
+                                    Log::info('✅ Transacción encontrada por coincidencia', [
+                                        'reference_match' => $txReference === $reference,
+                                        'id_match' => $txId === $wompiTransactionId,
+                                        'found_reference' => $txReference,
+                                        'found_id' => $txId
+                                    ]);
+                                    break;
+                                }
+                            }
+                            
+                            // Si no encontramos coincidencia exacta pero hay transacciones, buscar la más reciente
+                            if (!$transactionData && count($transactions) > 0) {
+                                // Ordenar por fecha y tomar la más reciente que pueda ser nuestra
+                                usort($transactions, function($a, $b) {
+                                    $dateA = $a['created_at'] ?? $a['createdAt'] ?? '1970-01-01';
+                                    $dateB = $b['created_at'] ?? $b['createdAt'] ?? '1970-01-01';
+                                    return strtotime($dateB) - strtotime($dateA);
+                                });
+                                
+                                // Tomar la más reciente que tenga un monto similar o que sea reciente (últimos 5 minutos)
+                                foreach ($transactions as $tx) {
+                                    $txDate = $tx['created_at'] ?? $tx['createdAt'] ?? null;
+                                    if ($txDate && strtotime($txDate) > (time() - 300)) { // Últimos 5 minutos
+                                        $transactionData = $tx;
+                                        Log::info('📋 Usando transacción reciente como fallback', [
+                                            'reference' => $tx['reference'] ?? 'unknown',
+                                            'id' => $tx['id'] ?? 'unknown',
+                                            'created_at' => $txDate
+                                        ]);
+                                        break;
+                                    }
+                                }
+                                
+                                // Si aún no encontramos, usar la más reciente
+                                if (!$transactionData) {
+                                    $transactionData = $transactions[0];
+                                    Log::info('📋 Usando primera transacción de la lista', [
+                                        'reference' => $transactionData['reference'] ?? 'unknown',
+                                        'id' => $transactionData['id'] ?? 'unknown'
+                                    ]);
+                                }
+                            }
+                        } else {
+                            $transactionData = $responseData['data'] ?? $responseData;
+                        }
+                        
+                        $wompiStatus = $transactionData['status'] ?? null;
+
+                        Log::info('🔍 Estado verificado con Wompi', [
+                            'purchase_id' => $purchase->id,
+                            'local_status' => $purchase->status,
+                            'wompi_status' => $wompiStatus,
+                            'reference' => $reference,
+                            'wompi_transaction_id' => $transactionData['id'] ?? null,
+                            'full_response' => $transactionData
+                        ]);
+
+                        // Si Wompi dice que está aprobado pero localmente está pendiente, procesarlo automáticamente
+                        if (in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && $purchase->status === 'pending') {
+                            Log::info('🔄🔄🔄 PROCESANDO AUTOMÁTICAMENTE: Pago aprobado en Wompi pero pendiente localmente', [
+                                'purchase_id' => $purchase->id,
+                                'wompi_status' => $wompiStatus,
+                                'transaction_id' => $transactionData['id'] ?? null,
+                                'reference' => $reference,
+                                'amount_in_cents' => $transactionData['amount_in_cents'] ?? null,
+                                'user_id' => $purchase->user_id
+                            ]);
+                            
+                            try {
+                                $this->handleTransactionApproved($purchase, $transactionData);
+                                
+                                // Recargar el purchase para obtener el estado actualizado
+                                $purchase->refresh();
+                                
+                                Log::info('✅✅✅ PAGO PROCESADO AUTOMÁTICAMENTE - Monedas agregadas al usuario', [
+                                    'purchase_id' => $purchase->id,
+                                    'new_status' => $purchase->status,
+                                    'coins_added' => $purchase->total_coins,
+                                    'purchased_coins' => $purchase->coins,
+                                    'bonus_coins' => $purchase->bonus_coins,
+                                    'user_id' => $purchase->user_id,
+                                    'completed_at' => $purchase->completed_at
+                                ]);
+                            } catch (Exception $e) {
+                                Log::error('❌ ERROR CRÍTICO al procesar pago aprobado automáticamente: ' . $e->getMessage(), [
+                                    'purchase_id' => $purchase->id,
+                                    'trace' => $e->getTraceAsString(),
+                                    'wompi_status' => $wompiStatus,
+                                    'transaction_data' => $transactionData
+                                ]);
+                                // No lanzar excepción, solo loguear para que el usuario pueda ver el estado
+                            }
+                        } else {
+                            Log::info('ℹ️ Estado de Wompi no requiere procesamiento', [
+                                'purchase_id' => $purchase->id,
+                                'wompi_status' => $wompiStatus,
+                                'local_status' => $purchase->status,
+                                'needs_processing' => in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && $purchase->status === 'pending',
+                                'is_approved' => in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']),
+                                'is_pending' => $purchase->status === 'pending'
+                            ]);
+                        }
+                    } else {
+                        Log::warning('⚠️ Error en respuesta de Wompi API', [
+                            'purchase_id' => $purchase->id,
+                            'status_code' => $response->status(),
+                            'response' => $response->body()
+                        ]);
+                    }
+                } catch (Exception $e) {
+                    Log::error('❌ Error verificando estado con Wompi API: ' . $e->getMessage(), [
+                        'purchase_id' => $purchase->id,
+                        'reference' => $reference,
+                        'wompi_transaction_id' => $wompiTransactionId,
+                        'search_id' => $searchId,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+            } else {
+                Log::info('ℹ️ No se puede verificar con Wompi', [
+                    'purchase_id' => $purchase->id,
+                    'status' => $purchase->status,
+                    'has_transaction_id' => !empty($purchase->transaction_id),
+                    'transaction_id_value' => $purchase->transaction_id,
+                    'payment_data' => $purchase->payment_data
+                ]);
+                
+                // Si no hay transaction_id pero el pago fue creado hace más de 5 minutos, 
+                // podría ser un problema de sincronización - intentar buscar por reference
+                if (empty($transactionId) && $purchase->created_at->diffInMinutes(now()) > 5) {
+                    Log::warning('⚠️ Compra pendiente sin transaction_id después de 5 minutos', [
+                        'purchase_id' => $purchase->id,
+                        'created_at' => $purchase->created_at
+                    ]);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'purchase' => [
@@ -718,12 +1173,13 @@ class WompiController extends Controller
                 ->where('payment_method', 'wompi')
                 ->with('package')
                 ->orderBy('created_at', 'desc')
-                ->paginate(10);
+                ->paginate(50); // Aumentar a 50 para mostrar más pagos
 
             $formattedPurchases = $purchases->getCollection()->map(function ($purchase) {
                 return [
                     'id' => $purchase->id,
                     'package_name' => $purchase->package->name ?? 'Paquete eliminado',
+                    'package_type' => $purchase->package->type ?? 'minutes', // Agregar tipo de paquete
                     'coins' => $purchase->coins,
                     'bonus_coins' => $purchase->bonus_coins,
                     'total_coins' => $purchase->total_coins,
@@ -752,6 +1208,261 @@ class WompiController extends Controller
                 'success' => false,
                 'error' => 'Error al obtener el historial',
                 'environment' => config('app.env')
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ Procesar manualmente un pago pendiente
+     * Este método verifica con Wompi y procesa el pago si está aprobado
+     */
+    public function processPendingPurchase(Request $request, $purchaseId)
+    {
+        try {
+            $user = Auth::user();
+            $purchase = CoinPurchase::where('id', $purchaseId)
+                ->where('user_id', $user->id)
+                ->where('payment_method', 'wompi')
+                ->first();
+
+            if (!$purchase) {
+                return response()->json(['success' => false, 'error' => 'Compra no encontrada'], 404);
+            }
+
+            if ($purchase->status === 'completed') {
+                return response()->json([
+                    'success' => true, 
+                    'message' => 'La compra ya está completada',
+                    'purchase' => $purchase
+                ], 200);
+            }
+
+            // Obtener el ID de transacción de Wompi
+            $paymentData = json_decode($purchase->payment_data, true);
+            $reference = $purchase->transaction_id;
+            $wompiTransactionId = $paymentData['wompi_transaction_id'] ?? null;
+            $searchId = $wompiTransactionId ?: $reference;
+
+            if (!$searchId) {
+                Log::warning('❌ Compra pendiente sin transaction_id ni reference', [
+                    'purchase_id' => $purchase->id
+                ]);
+                return response()->json([
+                    'success' => false, 
+                    'error' => 'ID de transacción Wompi no encontrado para esta compra'
+                ], 400);
+            }
+
+            // Verificar con Wompi - Intentar múltiples métodos de búsqueda
+            Log::info('🔍 Verificando pago pendiente con Wompi', [
+                'purchase_id' => $purchase->id,
+                'reference' => $reference,
+                'wompi_transaction_id' => $wompiTransactionId,
+                'search_id' => $searchId,
+                'created_at' => $purchase->created_at->toISOString()
+            ]);
+
+            $response = null;
+            $transactionData = null;
+            
+            // Método 1: Buscar por transaction_id de Wompi si está disponible
+            if ($wompiTransactionId) {
+                try {
+                    $response = Http::timeout(15)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                            'Accept' => 'application/json'
+                        ])
+                        ->get($this->wompiConfig['api_url'] . '/transactions/' . $wompiTransactionId);
+                    
+                    if ($response->successful()) {
+                        $responseData = $response->json();
+                        $transactionData = $responseData['data'] ?? $responseData;
+                        Log::info('✅ Transacción encontrada por wompi_transaction_id', [
+                            'purchase_id' => $purchase->id,
+                            'transaction_id' => $wompiTransactionId
+                        ]);
+                    }
+                } catch (Exception $e) {
+                    Log::warning('⚠️ Error buscando por wompi_transaction_id: ' . $e->getMessage());
+                }
+            }
+            
+            // Método 2: Si no se encontró, buscar por reference
+            if (!$transactionData && $reference) {
+                try {
+                    $response = Http::timeout(15)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                            'Accept' => 'application/json'
+                        ])
+                        ->get($this->wompiConfig['api_url'] . '/transactions?reference=' . urlencode($reference));
+                    
+                    if ($response->successful()) {
+                        $responseData = $response->json();
+                        if (isset($responseData['data']) && is_array($responseData['data']) && count($responseData['data']) > 0) {
+                            // Buscar la transacción que coincida con nuestra reference
+                            foreach ($responseData['data'] as $tx) {
+                                if (($tx['reference'] ?? null) === $reference) {
+                                    $transactionData = $tx;
+                                    break;
+                                }
+                            }
+                            if (!$transactionData) {
+                                $transactionData = $responseData['data'][0];
+                            }
+                            Log::info('✅ Transacción encontrada por reference', [
+                                'purchase_id' => $purchase->id,
+                                'reference' => $reference
+                            ]);
+                        }
+                    }
+                } catch (Exception $e) {
+                    Log::warning('⚠️ Error buscando por reference: ' . $e->getMessage());
+                }
+            }
+            
+            // Si aún no tenemos datos, intentar el método original
+            if (!$transactionData) {
+                $response = Http::timeout(15)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                        'Accept' => 'application/json'
+                    ])
+                    ->get($this->wompiConfig['api_url'] . '/transactions/' . $searchId);
+            }
+
+            // Si aún no tenemos transactionData y la respuesta falló
+            if (!$transactionData && (!$response || !$response->successful())) {
+                // Intentar buscar por reference si falla
+                if ($wompiTransactionId && $reference !== $wompiTransactionId) {
+                    Log::info('🔄 Reintentando búsqueda por reference', [
+                        'purchase_id' => $purchase->id,
+                        'reference' => $reference
+                    ]);
+                    $response = Http::timeout(15)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                            'Accept' => 'application/json'
+                        ])
+                        ->get($this->wompiConfig['api_url'] . '/transactions?reference=' . $reference);
+                }
+
+                if (!$response->successful()) {
+                    $errorBody = $response->body();
+                    $errorData = json_decode($errorBody, true);
+                    
+                    Log::error('❌ Error consultando Wompi API', [
+                        'purchase_id' => $purchase->id,
+                        'status_code' => $response->status(),
+                        'reference' => $reference,
+                        'wompi_transaction_id' => $wompiTransactionId,
+                        'search_id' => $searchId,
+                        'api_url' => $this->wompiConfig['api_url'],
+                        'response' => $errorBody
+                    ]);
+                    
+                    // Si es 404, puede ser que la transacción no existe en Wompi o el ID es incorrecto
+                    if ($response->status() === 404) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'No se encontró la transacción en Wompi. Verifica que el pago se haya completado correctamente. Si el dinero ya fue descontado, contacta con soporte.',
+                            'wompi_status_code' => 404,
+                            'reference' => $reference
+                        ], 400);
+                    }
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'No se pudo verificar el pago con Wompi. Estado HTTP: ' . $response->status(),
+                        'wompi_status_code' => $response->status(),
+                        'details' => $errorData['error'] ?? $errorBody
+                    ], 400);
+                }
+            }
+
+            $responseData = $response->json();
+            
+            // Manejar diferentes estructuras de respuesta
+            $transactionData = null;
+            if (isset($responseData['data']) && is_array($responseData['data'])) {
+                // Si es un array, buscar la transacción que coincida
+                foreach ($responseData['data'] as $tx) {
+                    if (($tx['reference'] ?? null) === $reference || ($tx['id'] ?? null) === $wompiTransactionId) {
+                        $transactionData = $tx;
+                        break;
+                    }
+                }
+                if (!$transactionData && count($responseData['data']) > 0) {
+                    $transactionData = $responseData['data'][0];
+                }
+            } else {
+                $transactionData = $responseData['data'] ?? $responseData;
+            }
+
+            $wompiStatus = $transactionData['status'] ?? null;
+
+            Log::info('📊 Estado de Wompi', [
+                'purchase_id' => $purchase->id,
+                'wompi_status' => $wompiStatus,
+                'local_status' => $purchase->status,
+                'transaction_data' => $transactionData
+            ]);
+
+            if (in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL'])) {
+                // Procesar el pago
+                $this->handleTransactionApproved($purchase, $transactionData);
+                $purchase->refresh();
+
+                Log::info('✅ Pago procesado exitosamente', [
+                    'purchase_id' => $purchase->id,
+                    'new_status' => $purchase->status,
+                    'coins_added' => $purchase->total_coins
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Pago procesado exitosamente. Monedas añadidas.',
+                    'purchase' => [
+                        'id' => $purchase->id,
+                        'status' => $purchase->status,
+                        'total_coins' => $purchase->total_coins,
+                        'coins' => $purchase->coins,
+                        'bonus_coins' => $purchase->bonus_coins
+                    ]
+                ], 200);
+            } else if ($wompiStatus === null && $response->status() === 404) {
+                // Si no encontramos la transacción pero el dinero ya fue descontado,
+                // ofrecer procesar manualmente si el usuario confirma
+                Log::warning('⚠️ Transacción no encontrada en Wompi pero dinero descontado', [
+                    'purchase_id' => $purchase->id,
+                    'reference' => $reference,
+                    'amount' => $purchase->amount
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No se encontró la transacción en Wompi. Si el dinero ya fue descontado de tu cuenta, el pago puede estar procesándose. Intenta de nuevo en unos minutos o contacta con soporte.',
+                    'wompi_status' => null,
+                    'can_retry' => true,
+                    'reference' => $reference
+                ], 400);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El pago aún no ha sido aprobado por Wompi. Estado actual: ' . ($wompiStatus ?? 'Desconocido'),
+                    'wompi_status' => $wompiStatus
+                ], 400);
+            }
+
+        } catch (Exception $e) {
+            Log::error('❌ Error procesando compra pendiente manualmente: ' . $e->getMessage(), [
+                'purchase_id' => $purchaseId,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno al procesar la compra pendiente: ' . $e->getMessage()
             ], 500);
         }
     }

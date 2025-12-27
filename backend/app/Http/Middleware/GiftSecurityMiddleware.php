@@ -777,20 +777,45 @@ class GiftSecurityMiddleware
             return false;
         }
 
-        // Generar token esperado con timestamp por hora (renovación cada hora)
-        $currentHour = date('Y-m-d-H');
+        // 🔥 SOPORTE PARA CLIENTES WEB: Si viene session_id en el request y plataforma es 'web',
+        // usar ese session_id en lugar de session()->getId()
+        $request = request();
+        $platform = $request->input('platform', 'web');
+        $sessionIdFromRequest = $request->input('session_id');
+        
+        // Determinar qué session ID usar
+        if ($platform === 'web' && $sessionIdFromRequest) {
+            // Para clientes web, usar el session_id del request
+            $sessionId = $sessionIdFromRequest;
+            // Para web, usar 'web-app-key' como clave en lugar de config('app.key')
+            $appKey = 'web-app-key';
+            // Para web, usar 'web-client' como IP (el frontend no puede conocer la IP real del servidor)
+            $userIP = 'web-client';
+            // Para web, usar UTC para coincidir con toISOString() del frontend
+            $currentHour = gmdate('Y-m-d-H'); // UTC
+        } else {
+            // Para otros clientes (móvil, etc), usar la sesión de Laravel
+            $sessionId = session()->getId();
+            $appKey = config('app.key');
+            $userIP = request()->ip();
+            // Para otros clientes, usar la hora del servidor
+            $currentHour = date('Y-m-d-H');
+        }
+        
         $expectedToken = hash('sha256', implode('|', [
             $user->id,
-            session()->getId(),
+            $sessionId,
             $currentHour,
-            config('app.key'),
-            request()->ip()
+            $appKey,
+            $userIP
         ]));
         
         if ($sessionToken !== $expectedToken) {
             $this->logSecurity('FRAUDE CRÍTICO: Token de sesión inválido', $user, null, 'CRITICAL', [
                 'provided_token' => substr($sessionToken, 0, 16) . '...',
-                'expected_token' => substr($expectedToken, 0, 16) . '...'
+                'expected_token' => substr($expectedToken, 0, 16) . '...',
+                'platform' => $platform,
+                'session_id_used' => substr($sessionId, 0, 16) . '...'
             ]);
             return false;
         }

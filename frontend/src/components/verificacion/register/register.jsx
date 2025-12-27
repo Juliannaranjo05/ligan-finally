@@ -32,7 +32,6 @@ export default function Register({ onClose, onShowLogin }) {
       localStorage.setItem("emailToVerify", email);
       navigate("/verificaremail", { state: { email } });
     } catch (err) {
-      console.error(err);
       setError(t("register.errorGeneric"));
     } finally {
       setLoading(false);
