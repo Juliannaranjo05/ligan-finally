@@ -1825,7 +1825,9 @@
     "start_button": "Start Search",
     "random_user_notice": "You will be connected with a random user",
     "default_camera": "Camera {{number}}",
-    "default_microphone": "Microphone {{number}}"
+    "default_microphone": "Microphone {{number}}",
+    "cameraInUse": "Error: Camera is being used by another application. Please close other applications that may be using the camera (Zoom, Teams, etc.) and reload the page.",
+    "cameraAccessError": "Cannot access camera. Please make sure it is not being used by another application."
   },
   "mirror": {
     "label": "Mirror mode",

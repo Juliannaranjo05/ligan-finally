@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Gift, Sparkles, Send, MessageSquare, Heart } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { translateGift, getGiftCardText } from './giftTranslations';
 
 export const GiftsModal = ({
   isOpen,
@@ -15,24 +16,44 @@ export const GiftsModal = ({
   userBalance = 0,   // Saldo del usuario
   loading = false
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [selectedGift, setSelectedGift] = useState(null);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [imageCacheBuster, setImageCacheBuster] = useState(Date.now());
   
-  // 🔥 NORMALIZAR userRole PARA COMPARACIÓN
-  // 🔥 PRIORIDAD 1: Si roomName contiene "modelo", ES MODELO (viene de videochat.jsx de modelo)
-  // 🔥 PRIORIDAD 2: Si userRole es explícitamente "modelo", SIEMPRE ES MODELO
-  // 🔥 PRIORIDAD 3: Si onSendGift es explícitamente undefined Y onRequestGift está definido, ES MODELO
-  // 🔥 PRIORIDAD 4: Si onRequestGift está disponible, ES MODELO
-  const normalizedUserRole = (userRole || '').toLowerCase();
-  const isModeloByRoomName = roomName && roomName.toLowerCase().includes('modelo');
-  const isModeloByUserRole = normalizedUserRole === 'modelo';
-  const isModeloByProps = (onSendGift === undefined && onRequestGift !== undefined) || (onRequestGift && !onSendGift);
+  // 🔥 OBTENER IDIOMA ACTUAL
+  const currentLanguage = i18n.language || 'es';
   
-  // 🔥 SI roomName CONTIENE "modelo" O userRole ES "modelo", FORZAR QUE SEA MODELO
-  const effectiveUserRole = (isModeloByRoomName || isModeloByUserRole) ? 'modelo' : (isModeloByProps ? 'modelo' : (userRole || 'cliente'));
+  // 🔥 NORMALIZAR userRole PARA COMPARACIÓN
+  // 🔥 PRIORIDAD 1: userRole explícito (más confiable)
+  // 🔥 PRIORIDAD 2: Si roomName contiene "modelo", ES MODELO (viene de videochat.jsx de modelo)
+  // 🔥 PRIORIDAD 3: Si onSendGift está definido, ES CLIENTE (clientes envían regalos)
+  // 🔥 PRIORIDAD 4: Si onRequestGift está definido Y onSendGift NO está, ES MODELO
+  const normalizedUserRole = (userRole || '').toLowerCase();
+  const isModeloByUserRole = normalizedUserRole === 'modelo';
+  const isClienteByUserRole = normalizedUserRole === 'cliente';
+  const isModeloByRoomName = roomName && roomName.toLowerCase().includes('modelo');
+  const isClienteByProps = onSendGift !== undefined;
+  const isModeloByProps = onRequestGift !== undefined && onSendGift === undefined;
+  
+  // 🔥 SI userRole ES EXPLÍCITO, USARLO (más confiable)
+  // 🔥 SI NO, USAR LÓGICA DE PROPS
+  let effectiveUserRole;
+  if (isModeloByUserRole) {
+    effectiveUserRole = 'modelo';
+  } else if (isClienteByUserRole) {
+    effectiveUserRole = 'cliente';
+  } else if (isModeloByRoomName) {
+    effectiveUserRole = 'modelo';
+  } else if (isClienteByProps) {
+    effectiveUserRole = 'cliente';
+  } else if (isModeloByProps) {
+    effectiveUserRole = 'modelo';
+  } else {
+    effectiveUserRole = userRole || 'cliente';
+  }
+  
   const normalizedRole = effectiveUserRole?.toLowerCase() || '';
   const isModelo = normalizedRole === 'modelo';
   
@@ -40,13 +61,18 @@ export const GiftsModal = ({
   useEffect(() => {
     if (isOpen) {
       console.log('🎁 [GIFTMODAL] Modal abierto - userRole:', userRole, 'effectiveUserRole:', effectiveUserRole, 'isModelo:', isModelo);
+      console.log('💰 [GIFTMODAL] userBalance recibido:', userBalance);
+      console.log('💰 [GIFTMODAL] Props completas:', { userBalance, userRole, recipientName, recipientId });
     }
-  }, [isOpen, userRole, effectiveUserRole, isModelo]);
+  }, [isOpen, userRole, effectiveUserRole, isModelo, userBalance]);
   
   // 🔥 FORZAR RECARGA DE IMÁGENES CUANDO SE ABRE EL MODAL
   useEffect(() => {
     if (isOpen) {
       setImageCacheBuster(Date.now());
+    } else {
+      // 🔥 Resetear loading cuando se cierra el modal
+      setIsLoading(false);
     }
   }, [isOpen]);
 
@@ -62,12 +88,14 @@ export const GiftsModal = ({
       // Validar que gift.id existe
       if (!giftId) {
         alert(t('gifts.invalidGiftId'));
+        setIsLoading(false);
         return;
       }
 
       // Validar que recipientId es un número válido
       if (isNaN(recipientIdNumber)) {
         alert(t('gifts.invalidRecipientId'));
+        setIsLoading(false);
         return;
       }
 
@@ -93,10 +121,13 @@ export const GiftsModal = ({
         );
 
         if (result.success) {
-          alert(t('gifts.requestSent', { giftName: gift.name, recipientName: recipientName }));
+          const translatedGiftName = translateGift(gift, currentLanguage);
+          alert(t('gifts.requestSent', { giftName: translatedGiftName, recipientName: recipientName }));
+          setIsLoading(false);
           onClose();
         } else {
           alert(`${t('error')}: ${result.error}`);
+          setIsLoading(false);
         }
 
       } else {
@@ -110,9 +141,10 @@ export const GiftsModal = ({
         }
 
         // Confirmación antes de enviar
+        const translatedGiftName = translateGift(gift, currentLanguage);
         const confirmSend = window.confirm(
           t('gifts.confirmSend', {
-            giftName: gift.name,
+            giftName: translatedGiftName,
             recipientName: recipientName,
             price: gift.price,
             balance: userBalance
@@ -128,22 +160,41 @@ export const GiftsModal = ({
           giftId,              // ✅ ID del regalo
           recipientIdNumber,   // ✅ ID de la modelo
           roomName,
-          message || `¡${gift.name} para ti! 💝`
+          message || `¡${translatedGiftName} para ti! 💝`
         );
 
         if (result.success) {
-          alert(t('gifts.giftSent', { giftName: gift.name, recipientName: recipientName }));
-          onClose();
+          // 🔥 Si es un error de red pero el regalo se envió, no mostrar alert
+          if (result.networkError || result.timeout) {
+            // El regalo se envió pero hubo error de conexión - cerrar modal sin alert
+            setIsLoading(false);
+            onClose();
+          } else {
+            // Regalo enviado normalmente - mostrar confirmación
+            alert(t('gifts.giftSent', { giftName: translatedGiftName, recipientName: recipientName }));
+            setIsLoading(false);
+            onClose();
+          }
         } else {
-          alert(`${t('error')}: ${result.error}`);
+          // 🔥 Solo mostrar error si NO es un error de red/timeout
+          if (!result.networkError && !result.timeout) {
+            alert(`${t('error')}: ${result.error}`);
+            setIsLoading(false);
+          } else {
+            // Error de red pero puede haberse enviado - cerrar modal sin mostrar error
+            setIsLoading(false);
+            onClose();
+          }
         }
       }
 
     } catch (error) {
-      alert(t('gifts.processingError'));
+      // 🔥 No mostrar error si es un error de red - el regalo puede haberse enviado
+      console.error('🎁 [GIFTMODAL] Error procesando regalo:', error);
+      setIsLoading(false);
+      // Cerrar modal sin mostrar error - el regalo puede haberse enviado
+      onClose();
     }
-    
-    setIsLoading(false);
   };
 
   const handleClose = () => {
@@ -298,7 +349,7 @@ export const GiftsModal = ({
                         ? 'text-white group-hover:text-[#ff007a]' 
                         : 'text-gray-500'
                     }`}>
-                      {gift.name}
+                      {translateGift(gift, currentLanguage)}
                     </h3>
 
                     {/* Precio con indicador de saldo */}
@@ -308,7 +359,7 @@ export const GiftsModal = ({
                         : 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 shadow-gray-500/20'
                     }`}>
                       <Sparkles size={8} />
-                      {gift.price}
+                      {gift.price} {getGiftCardText('coins', currentLanguage, 'monedas')}
                       {!isModelo && !canAfford && (
                         <span className="ml-1 text-red-300">💸</span>
                       )}

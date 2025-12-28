@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../../api/axios";
 import { User, Heart, X } from "lucide-react";
@@ -16,6 +16,20 @@ export default function SeleccionGenero() {
   const [nombreError, setNombreError] = useState("");
   const navigate = useNavigate();
   const { t } = useTranslation(); // ✅ AGREGAR
+
+  // Asegurar que el token esté configurado cuando el componente se carga
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      // Siempre actualizar el header para asegurar que esté sincronizado
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      console.log('✅ Token encontrado y configurado en genero');
+    } else {
+      // Si no hay token, puede ser que se perdió - mostrar mensaje al usuario
+      console.error('❌ No se encontró token en localStorage en el componente genero');
+      setError("Tu sesión ha expirado. Por favor recarga la página o vuelve a registrarte.");
+    }
+  }, []);
 
   const handleContinue = async (e) => {
     e.preventDefault();
@@ -46,6 +60,23 @@ export default function SeleccionGenero() {
     setCargando(true);
 
     try {
+      // Verificar que el token exista antes de hacer la petición
+      const token = localStorage.getItem("token");
+      if (!token) {
+        // Si no hay token, intentar obtener el usuario para forzar la autenticación
+        // o redirigir al inicio del flujo
+        setError("Tu sesión ha expirado. Por favor recarga la página.");
+        setCargando(false);
+        // Recargar después de un momento para intentar recuperar el token
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+        return;
+      }
+
+      // Asegurar que el token esté en los headers de axios
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
       await api.post(`${API_BASE_URL}/api/asignar-rol`, {
         rol: genero,
         name: nombre.trim(),
@@ -95,9 +126,23 @@ export default function SeleccionGenero() {
       }, 400);
 
     } catch (err) {
+      console.error('Error en asignar-rol:', err);
+      
+      // Manejar error de autenticación específicamente
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        const errorMsg = err.response?.data?.message || err.response?.data?.error || 'No autenticado';
+        if (errorMsg.includes('Unauthenticated') || errorMsg.includes('autenticado')) {
+          setError('Tu sesión ha expirado. Por favor recarga la página e intenta nuevamente.');
+          // Recargar después de un momento para obtener nuevo token
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+          return;
+        }
+      }
       
       // Mostrar mensaje de error más específico si está disponible
-      const errorMessage = err.response?.data?.message || t('seleccion_genero.error_guardar');
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || t('seleccion_genero.error_guardar');
       setError(errorMessage);
       
       // Si el error es 403 y el mensaje indica que el rol no coincide, mostrar mensaje específico

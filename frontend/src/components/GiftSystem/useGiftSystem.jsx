@@ -1,7 +1,7 @@
 // ==========================================
 // ==========================================
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // 🔐 GENERADOR DE TOKENS COMPATIBLE CON TU MIDDLEWARE
 class SessionTokenManager {
@@ -61,6 +61,10 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
 
   const API_BASE_URL = apiBaseUrl || import.meta.env.VITE_API_BASE_URL;
 
+  // 🔥 REFS PARA PREVENIR MÚLTIPLES LLAMADAS SIMULTÁNEAS
+  const loadingGiftsRef = useRef(false);
+  const loadingRequestsRef = useRef(false);
+
   // 🔥 FUNCIÓN PARA PRECARGAR IMÁGENES DE REGALOS
   const preloadGiftImages = useCallback((giftsArray) => {
     giftsArray.forEach((gift) => {
@@ -108,10 +112,16 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
 
   // 🎁 CARGAR REGALOS
   const loadGifts = useCallback(async () => {
+    // 🔥 PREVENIR MÚLTIPLES LLAMADAS SIMULTÁNEAS
+    if (loadingGiftsRef.current) {
+      return { success: false, error: 'Ya se está cargando' };
+    }
+    
     try {
+      loadingGiftsRef.current = true;
       setLoadingGifts(true);
             
-      const response = await fetch(`${API_BASE_URL}/api/gifts/available?t=${Date.now()}`, {
+      const response = await fetch(`${API_BASE_URL}/api/gifts/available`, {
         headers: {
           ...getAuthHeaders(),
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -151,15 +161,29 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
             return { success: false, error: error.message };
     } finally {
       setLoadingGifts(false);
+      loadingGiftsRef.current = false;
     }
   }, [API_BASE_URL, getAuthHeaders]);
 
   // 📋 CARGAR SOLICITUDES PENDIENTES
   const loadPendingRequests = useCallback(async () => {
-    if (userRole !== 'cliente') return { success: true, requests: [] };
+    if (userRole !== 'cliente') {
+      console.log('🎁 [useGiftSystem] loadPendingRequests: No es cliente, retornando requests vacío');
+      return { success: true, requests: [] };
+    }
+    
+    // 🔥 PREVENIR MÚLTIPLES LLAMADAS SIMULTÁNEAS
+    if (loadingRequestsRef.current) {
+      console.log('🎁 [useGiftSystem] loadPendingRequests: Ya se está cargando, esperando...');
+      // Esperar un poco y retornar requests vacío para evitar bloqueos
+      return { success: true, requests: [] };
+    }
     
     try {
+      loadingRequestsRef.current = true;
       setLoadingRequests(true);
+      
+      console.log('🎁 [useGiftSystem] loadPendingRequests: Iniciando carga...');
       
       const response = await fetch(`${API_BASE_URL}/api/gifts/requests/pending`, {
         headers: getAuthHeaders()
@@ -167,18 +191,40 @@ export const useGiftSystem = (userId, userRole, getAuthHeaders, apiBaseUrl) => {
       
       if (!response.ok) {
         const errorText = await response.text();
-                return { success: false, error: errorText };
+        console.error('🎁 [useGiftSystem] Error cargando pendingRequests:', response.status, errorText);
+        // Asegurar que siempre retornamos un objeto válido
+        const errorResult = { success: false, error: errorText, requests: [] };
+        return errorResult;
       }
 
       const data = await response.json();
+      console.log('🎁 [useGiftSystem] loadPendingRequests: Respuesta recibida:', { 
+        success: data.success, 
+        requestsCount: data.requests?.length || 0 
+      });
+      
       if (data.success) {
-        setPendingRequests(data.requests || []);
-                return { success: true, requests: data.requests };
+        const requestsArray = data.requests || [];
+        setPendingRequests(requestsArray);
+        const successResult = { success: true, requests: requestsArray };
+        console.log('🎁 [useGiftSystem] loadPendingRequests: Retornando éxito con', requestsArray.length, 'requests');
+        return successResult;
+      } else {
+        console.warn('🎁 [useGiftSystem] loadPendingRequests devolvió success: false:', data);
+        const errorResult = { success: false, error: data.message || data.error || 'Error desconocido', requests: [] };
+        return errorResult;
       }
     } catch (error) {
-            return { success: false, error: error.message };
+      console.error('🎁 [useGiftSystem] Excepción en loadPendingRequests:', error);
+      console.error('🎁 [useGiftSystem] Stack trace:', error.stack);
+      // Asegurar que siempre retornamos un objeto válido incluso en caso de excepción
+      const errorResult = { success: false, error: error.message || 'Error de conexión', requests: [] };
+      console.log('🎁 [useGiftSystem] loadPendingRequests retornando error:', errorResult);
+      return errorResult;
     } finally {
       setLoadingRequests(false);
+      loadingRequestsRef.current = false;
+      console.log('🎁 [useGiftSystem] loadPendingRequests finally ejecutado');
     }
   }, [userRole, API_BASE_URL, getAuthHeaders]);
 
@@ -326,44 +372,117 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
   // ✅ ACEPTAR REGALO
   const acceptGiftRequest = useCallback(async (requestId, securityHash = null) => {
   try {
+    console.log('🎁 [useGiftSystem] acceptGiftRequest INICIO:', { 
+      requestId, 
+      hasSecurityHash: !!securityHash,
+      sessionToken: !!sessionToken 
+    });
         
     // 🔐 GENERAR TOKEN DE SESIÓN SI NO EXISTE
     const token = sessionToken || await generateSessionToken();
     if (!token) {
+      console.error('🎁 [useGiftSystem] ❌ No se pudo generar token de sesión');
       return { success: false, error: 'Session token required' };
     }
+    
+    console.log('🎁 [useGiftSystem] Token de sesión obtenido:', !!token);
 
     // Buscar hash de seguridad si no se proporcionó
     let finalSecurityHash = securityHash;
-    if (!finalSecurityHash) {
+    if (!finalSecurityHash && pendingRequests && pendingRequests.length > 0) {
       const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
       if (pendingRequest && pendingRequest.security_hash) {
         finalSecurityHash = pendingRequest.security_hash;
+        console.log('🎁 [useGiftSystem] ✅ Security hash encontrado en pendingRequests');
       }
     }
 
+    // 🔥 Si no tenemos security_hash, continuar de todos modos
+    // El backend puede generar o validar el hash de otra manera
     if (!finalSecurityHash) {
-      return { success: false, error: 'Security hash missing' };
+      console.warn('🎁 [useGiftSystem] ⚠️ Security hash no encontrado para requestId:', requestId);
+      console.log('🎁 [useGiftSystem] pendingRequests disponibles:', pendingRequests?.map(r => ({ id: r.id, has_hash: !!r.security_hash })) || []);
+      // No retornar error aquí - dejar que el backend maneje la validación
+      // El backend puede generar el hash si no se proporciona
     }
 
     const requestData = {
       request_id: parseInt(requestId),
-      security_hash: finalSecurityHash,
       session_token: token
     };
+    
+    // 🔥 Solo incluir security_hash si lo tenemos (el backend puede generarlo si no se proporciona)
+    if (finalSecurityHash) {
+      requestData.security_hash = finalSecurityHash;
+    }
 
-    const response = await fetch(`${API_BASE_URL}/api/gifts/requests/${requestId}/accept`, {
-      method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestData)
+    console.log('🎁 [useGiftSystem] Enviando aceptación de regalo:', { 
+      requestId, 
+      hasSecurityHash: !!finalSecurityHash,
+      requestDataKeys: Object.keys(requestData)
     });
 
-    const data = await response.json();
+    // 🔥 TIMEOUT MEJORADO PARA IPHONE - Aumentar timeout a 30 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
+    
+    let response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/gifts/requests/${requestId}/accept`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      // Si es timeout o error de red, lanzar error para que se maneje arriba
+      if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+        throw fetchError;
+      }
+      throw fetchError;
+    }
+
+    // 🔥 Leer respuesta como texto primero para poder inspeccionarla
+    const responseText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('🎁 [useGiftSystem] Error parseando JSON de respuesta:', e);
+      console.error('🎁 [useGiftSystem] Respuesta raw:', responseText.substring(0, 1000));
+      return { success: false, error: 'Respuesta inválida del servidor', rawResponse: responseText };
+    }
+    
+    // 🔥 Log detallado de la respuesta
+    console.log('🎁 [useGiftSystem] Respuesta del servidor:', { 
+      status: response.status, 
+      ok: response.ok,
+      statusText: response.statusText,
+      data,
+      dataKeys: data ? Object.keys(data) : [],
+      hasMessage: !!data?.message,
+      hasError: !!data?.error,
+      hasErrors: !!data?.errors,
+      responseTextPreview: responseText.substring(0, 500),
+      fullResponseText: responseText
+    });
+    
+    // 🔥 Si la respuesta no es OK, siempre retornar error con información
+    if (!response.ok) {
+      console.error('🎁 [useGiftSystem] ❌ Respuesta no OK:', {
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        responseText
+      });
+    }
         
-    if (response.ok && data.success) {
+    if (response.ok && data && data.success) {
       // Remover de pendientes
       setPendingRequests(prev => prev.filter(req => req.id !== parseInt(requestId)));
       
@@ -377,11 +496,17 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
       const giftName = data.data?.gift?.name || 'regalo';
       const newBalance = data.data?.client_balance?.new_balance;
       
-      if (Notification.permission === 'granted') {
-        new Notification('🎁 Regalo Enviado', {
-          body: `¡${giftName} enviado exitosamente! Saldo restante: ${newBalance || 'N/A'}`,
-          icon: '/favicon.ico'
-        });
+      // 🔥 Verificar que Notification existe antes de usarlo (no disponible en iOS Safari en algunos contextos)
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('🎁 Regalo Enviado', {
+            body: `¡${giftName} enviado exitosamente! Saldo restante: ${newBalance || 'N/A'}`,
+            icon: '/favicon.ico'
+          });
+        } catch (e) {
+          // Ignorar errores de notificación en iOS
+          console.warn('No se pudo mostrar notificación:', e);
+        }
       }
 
       return { 
@@ -396,20 +521,109 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
         }
       };
     } else {
-            
-      // Manejar errores específicos
-      let errorMessage = data.message || data.error || 'Error desconocido';
-      
-      if (data.error === 'insufficient_balance') {
-        errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || 'más'} monedas`;
-      } else if (data.error === 'invalid_request') {
-        errorMessage = 'La solicitud ya expiró o fue procesada';
+      // 🔥 Asegurar que data existe
+      if (!data) {
+        console.error('🎁 [useGiftSystem] ❌ data es null o undefined');
+        data = {};
       }
       
-      return { success: false, error: errorMessage };
+      // 🔥 Intentar extraer el mensaje de error de varias formas posibles
+      let errorMessage = null;
+      
+      // Prioridad 1: data.message
+      if (data && data.message && typeof data.message === 'string') {
+        errorMessage = data.message;
+      }
+      // Prioridad 2: data.error (puede ser string o objeto)
+      else if (data && data.error) {
+        if (typeof data.error === 'string') {
+          errorMessage = data.error;
+        } else if (typeof data.error === 'object' && data.error.message) {
+          errorMessage = data.error.message;
+        }
+      }
+      // Prioridad 3: data.errors (objeto de validación Laravel)
+      else if (data && data.errors && typeof data.errors === 'object') {
+        const firstError = Object.values(data.errors)[0];
+        if (Array.isArray(firstError) && firstError.length > 0) {
+          errorMessage = firstError[0];
+        } else if (typeof firstError === 'string') {
+          errorMessage = firstError;
+        }
+      }
+      // Prioridad 4: Mensajes por código de estado
+      if (!errorMessage) {
+        if (response.status === 404) {
+          errorMessage = 'La solicitud de regalo no fue encontrada o ya fue procesada.';
+        } else if (response.status === 403) {
+          errorMessage = 'No tienes permiso para aceptar esta solicitud.';
+        } else if (response.status === 409) {
+          errorMessage = 'Esta transacción ya se está procesando. Por favor espera.';
+        } else if (response.status === 400) {
+          errorMessage = 'Solicitud inválida. Verifica los datos e intenta nuevamente.';
+        } else if (response.status === 500) {
+          errorMessage = 'Error del servidor. Por favor intenta nuevamente más tarde.';
+        } else {
+          errorMessage = `Error desconocido (HTTP ${response.status})`;
+        }
+      }
+      
+      // Mensajes específicos por tipo de error
+      if (data && (data.error === 'insufficient_balance' || data.data?.error === 'insufficient_balance')) {
+        errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || data.required_amount || 'más'} monedas`;
+      } else if (data && (data.error === 'invalid_request' || data.data?.error === 'invalid_request')) {
+        errorMessage = 'La solicitud ya expiró o fue procesada';
+      } else if (data && (data.error === 'security_violation' || data.data?.error === 'security_violation')) {
+        errorMessage = 'Error de validación de seguridad. Por favor recarga la página e intenta nuevamente.';
+      } else if (data && (data.error === 'already_processing' || data.data?.error === 'already_processing')) {
+        errorMessage = 'Esta transacción ya se está procesando. Por favor espera un momento.';
+      }
+      
+      // 🔥 Si aún no tenemos un mensaje, usar uno genérico pero informativo
+      if (!errorMessage) {
+        errorMessage = `Error al procesar la solicitud (HTTP ${response.status})`;
+        console.warn('🎁 [useGiftSystem] ⚠️ No se pudo extraer mensaje de error del servidor', {
+          data,
+          responseStatus: response.status,
+          responseText: responseText.substring(0, 200)
+        });
+      }
+      
+      console.error('🎁 [useGiftSystem] Error aceptando regalo:', {
+        errorMessage,
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText,
+        dataKeys: data ? Object.keys(data) : [],
+        data,
+        responseTextPreview: responseText.substring(0, 500),
+        fullResponseText: responseText
+      });
+      
+      // 🔥 Asegurar que siempre retornamos un objeto con error
+      const errorResult = { 
+        success: false, 
+        error: errorMessage, 
+        message: errorMessage,
+        serverResponse: data, 
+        status: response.status,
+        rawResponse: responseText
+      };
+      
+      console.log('🎁 [useGiftSystem] Retornando error:', errorResult);
+      return errorResult;
     }
   } catch (error) {
-        return { success: false, error: 'Error de conexión' };
+    console.error('🎁 [useGiftSystem] Excepción al aceptar regalo:', error);
+    console.error('🎁 [useGiftSystem] Stack trace:', error.stack);
+    const errorResult = { 
+      success: false, 
+      error: error.message || 'Error de conexión. Verifica tu internet.',
+      message: error.message || 'Error de conexión. Verifica tu internet.',
+      exception: true
+    };
+    console.log('🎁 [useGiftSystem] Retornando excepción:', errorResult);
+    return errorResult;
   }
   }, [sessionToken, generateSessionToken, pendingRequests, API_BASE_URL, getAuthHeaders, setUserBalance]);
 
@@ -433,12 +647,18 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
       setPendingRequests(prev => prev.filter(req => req.id !== parseInt(requestId)));
             
       // Notificación discreta
-      if (Notification.permission === 'granted') {
-        new Notification('Solicitud Rechazada', {
-          body: 'Has rechazado una solicitud de regalo',
-          icon: '/favicon.ico'
-        });
-      }
+        // 🔥 Verificar que Notification existe antes de usarlo (no disponible en iOS Safari en algunos contextos)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification('Solicitud Rechazada', {
+              body: 'Has rechazado una solicitud de regalo',
+              icon: '/favicon.ico'
+            });
+          } catch (e) {
+            // Ignorar errores de notificación en iOS
+            console.warn('No se pudo mostrar notificación:', e);
+          }
+        }
       
       return { success: true, message: data.message };
     } else {
@@ -449,16 +669,54 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
   }
   }, [API_BASE_URL, getAuthHeaders]);
 
-  // 🚀 INICIALIZACIÓN
+  // 🚀 INICIALIZACIÓN - Solo ejecutar cuando userId o userRole cambian (no en cada render)
+  const initializedKeyRef = useRef(null);
+  // 💰 CARGAR BALANCE DEL USUARIO
+  const loadUserBalance = useCallback(async () => {
+    if (!userId || userRole !== 'cliente') {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.balance) {
+          // 🔥 Usar total_balance (purchased_balance + gift_balance)
+          const totalBalance = data.balance.total_balance || 
+                              (data.balance.purchased_balance || 0) + (data.balance.gift_balance || 0);
+          setUserBalance(totalBalance);
+          console.log('💰 [useGiftSystem] Balance cargado:', {
+            totalBalance,
+            purchased_balance: data.balance.purchased_balance,
+            gift_balance: data.balance.gift_balance
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ [useGiftSystem] Error cargando balance:', error);
+    }
+  }, [userId, userRole, API_BASE_URL, getAuthHeaders]);
+
   useEffect(() => {
-    if (userId && getAuthHeaders) {
-            generateSessionToken();
+    const currentKey = `${userId}-${userRole}`;
+    
+    // Solo ejecutar si el userId o userRole realmente cambió
+    if (userId && getAuthHeaders && initializedKeyRef.current !== currentKey) {
+      initializedKeyRef.current = currentKey;
+      generateSessionToken();
       loadGifts();
       if (userRole === 'cliente') {
         loadPendingRequests();
+        loadUserBalance(); // 🔥 Cargar balance cuando es cliente
       }
     }
-  }, [userId, userRole, getAuthHeaders, generateSessionToken, loadGifts, loadPendingRequests]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, userRole]); // 🔥 Solo dependencias críticas - funciones están en refs o son estables
 
   // 🔄 REFRESCAR TOKEN CADA HORA
   useEffect(() => {
@@ -471,6 +729,96 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
     return () => clearInterval(interval);
   }, [userId, generateSessionToken]);
 
+  // 🎁 ENVIAR REGALO SIMPLE - Usa el nuevo endpoint directo
+  const sendGiftSimple = useCallback(async (requestId) => {
+    try {
+      console.log('🎁 [useGiftSystem] sendGiftSimple INICIO:', { requestId });
+      
+      const response = await fetch(`${API_BASE_URL}/api/gifts/send-simple`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request_id: parseInt(requestId)
+        })
+      });
+      
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('🎁 [useGiftSystem] Error parseando JSON:', e);
+        console.error('🎁 [useGiftSystem] Respuesta raw:', responseText.substring(0, 1000));
+        return { success: false, error: 'Respuesta inválida del servidor', rawResponse: responseText };
+      }
+      
+      console.log('🎁 [useGiftSystem] sendGiftSimple respuesta:', {
+        status: response.status,
+        ok: response.ok,
+        data
+      });
+      
+      if (response.ok && data.success) {
+        // Remover de pendientes
+        setPendingRequests(prev => prev.filter(req => req.id !== parseInt(requestId)));
+        
+        // Actualizar saldo si está disponible
+        if (data.data?.client_balance?.new_balance !== undefined) {
+          setUserBalance(data.data.client_balance.new_balance);
+        }
+        
+        console.log('🎁 [useGiftSystem] sendGiftSimple éxito');
+        
+        return {
+          success: true,
+          transaction: data.data,
+          newBalance: data.data?.client_balance?.new_balance,
+          giftInfo: {
+            name: data.data?.gift?.name,
+            image: data.data?.gift?.image,
+            price: data.data?.gift?.amount
+          },
+          message: data.message || '¡Regalo enviado exitosamente!'
+        };
+      } else {
+        // Extraer mensaje de error
+        let errorMessage = data.message || data.error || 'Error al enviar el regalo';
+        
+        if (data.error === 'insufficient_balance') {
+          const required = data.data?.required_amount || 'más';
+          errorMessage = `Saldo insuficiente. Necesitas ${required} monedas para enviar este regalo.`;
+        } else if (data.error === 'invalid_request') {
+          errorMessage = 'La solicitud ya expiró o fue procesada. Por favor, recarga la página.';
+        }
+        
+        console.error('🎁 [useGiftSystem] sendGiftSimple error:', {
+          errorMessage,
+          status: response.status,
+          data
+        });
+        
+        return {
+          success: false,
+          error: errorMessage,
+          message: errorMessage,
+          serverResponse: data,
+          status: response.status
+        };
+      }
+    } catch (error) {
+      console.error('🎁 [useGiftSystem] Excepción en sendGiftSimple:', error);
+      return {
+        success: false,
+        error: error.message || 'Error de conexión. Verifica tu internet.',
+        message: error.message || 'Error de conexión. Verifica tu internet.',
+        exception: true
+      };
+    }
+  }, [API_BASE_URL, getAuthHeaders, setPendingRequests, setUserBalance]);
+
   return {
     gifts,
     loadingGifts,
@@ -480,8 +828,10 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
     userBalance,
     loadGifts,
     loadPendingRequests,
+    loadUserBalance, // 🔥 Exportar función para cargar balance
     requestGift,
     acceptGiftRequest,
+    sendGiftSimple,
     rejectGiftRequest,
     generateSessionToken,
     setPendingRequests,

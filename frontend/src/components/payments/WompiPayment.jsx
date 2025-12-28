@@ -42,6 +42,7 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
   const [redirectCountdown, setRedirectCountdown] = useState(3);
   const [paymentUrl, setPaymentUrl] = useState(null);
   const [showBuyMinutesSidebar, setShowBuyMinutesSidebar] = useState(false);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
   
   // Obtener país desde localStorage si no viene como prop
   const country = selectedCountry || (() => {
@@ -345,17 +346,8 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
           fetchPurchaseHistory()
         ]);
         
-        // Cerrar ventana de pago
-        setShowPaymentWindow(false);
-        setSelectedPackage(null);
-        setPurchaseId(null);
-        setWompiData(null);
-        setPaymentUrl(null);
-        
-        // Cerrar modal después de un momento
-        setTimeout(() => {
-          if (onClose) onClose();
-        }, 2000);
+        // Marcar como completado para mostrar botón de finalizar
+        setPaymentCompleted(true);
       }
 
     } catch (error) {
@@ -371,6 +363,7 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
     setWompiData(null);
     setPaymentUrl(null);
     setRedirectCountdown(3);
+    setPaymentCompleted(false);
   };
 
   const handleManualRedirect = () => {
@@ -902,23 +895,54 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
                   {t('wompi.verification.coinsWillAppear')}
                 </p>
                 
-                <button
-                  onClick={() => checkPurchaseStatus(purchaseId)}
-                  disabled={checkingStatus}
-                  className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white py-2 sm:py-3 px-4 rounded-lg font-semibold transition-colors text-sm sm:text-base flex items-center justify-center gap-2"
-                >
-                  {checkingStatus ? (
-                    <>
-                      <Loader className="animate-spin" size={16} />
-                      {t('wompi.verification.checking')}
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw size={16} />
-                      {t('wompi.verification.checkNow')}
-                    </>
-                  )}
-                </button>
+                {paymentCompleted ? (
+                  <div className="space-y-3">
+                    <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 text-center">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Check className="text-green-400" size={24} />
+                        <h4 className="text-green-400 font-bold text-lg">
+                          {t('wompi.verification.paymentCompleted') || '¡Pago completado!'}
+                        </h4>
+                      </div>
+                      <p className="text-white/70 text-sm">
+                        {t('wompi.verification.coinsAdded') || 'Tus monedas han sido agregadas exitosamente'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowPaymentWindow(false);
+                        setSelectedPackage(null);
+                        setPurchaseId(null);
+                        setWompiData(null);
+                        setPaymentUrl(null);
+                        setPaymentCompleted(false);
+                        if (onClose) onClose();
+                      }}
+                      className="w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-lg font-semibold transition-colors text-base flex items-center justify-center gap-2"
+                    >
+                      <Check size={20} />
+                      {t('wompi.verification.finish') || 'Finalizar'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => checkPurchaseStatus(purchaseId)}
+                    disabled={checkingStatus}
+                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white py-2 sm:py-3 px-4 rounded-lg font-semibold transition-colors text-sm sm:text-base flex items-center justify-center gap-2"
+                  >
+                    {checkingStatus ? (
+                      <>
+                        <Loader className="animate-spin" size={16} />
+                        {t('wompi.verification.checking')}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={16} />
+                        {t('wompi.verification.checkNow')}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Métodos de pago aceptados */}

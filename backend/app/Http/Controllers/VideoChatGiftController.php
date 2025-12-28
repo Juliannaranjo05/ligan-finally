@@ -14,6 +14,7 @@ use App\Models\UserCoins;
 use App\Models\GiftRequest;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
+use App\Services\PlatformSettingsService;
 use Exception;
 use Carbon\Carbon;
 
@@ -385,7 +386,7 @@ class VideoChatGiftController extends Controller
                 'amount' => $gift->price,
                 'modelo_received' => $modeloAmount,
                 'platform_commission' => $platformCommission,
-                'client_new_balance' => $clientCoins->fresh()->balance,
+                'client_new_balance' => $clientUserCoins->fresh()->gift_balance,
                 'room_name' => $roomName
             ]);
 
@@ -875,6 +876,12 @@ class VideoChatGiftController extends Controller
             $user = Auth::user();
             $securityHash = $request->input('security_hash');
             
+            // 🔥 CONVERTIR security_hash A STRING SI ES ARRAY
+            if (is_array($securityHash)) {
+                $securityHash = json_encode($securityHash);
+            }
+            $securityHash = (string) ($securityHash ?? '');
+            
             Log::info("✅ [VIDEOCHAT] Cliente {$user->id} intentando aceptar regalo {$requestId}");
             Log::info("🔐 [VIDEOCHAT] Security hash recibido: " . ($securityHash ? 'SÍ (' . substr($securityHash, 0, 16) . '...)' : 'NO'));
 
@@ -1026,26 +1033,32 @@ class VideoChatGiftController extends Controller
             // Crear lock temporal
             \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
 
-            // 7. Verificar saldo del cliente con bloqueo de fila
-            $clientCoins = UserGiftCoins::lockForUpdate()
+            // 7. 🔥 VERIFICAR SALDO DEL CLIENTE USANDO UserCoins (igual que sendDirectGift)
+            $clientUserCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
 
-            if (!$clientCoins) {
-                $clientCoins = UserGiftCoins::create([
+            if (!$clientUserCoins) {
+                $clientUserCoins = UserCoins::create([
                     'user_id' => $user->id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
-            if ($clientCoins->balance < $giftRequest->amount) {
+            // Obtener balance total (purchased_balance + gift_balance)
+            $totalBalance = $clientUserCoins->purchased_balance + $clientUserCoins->gift_balance;
+
+            if ($totalBalance < $giftRequest->amount) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [VIDEOCHAT] Saldo insuficiente", [
                     'client_id' => $user->id,
-                    'balance' => $clientCoins->balance,
+                    'total_balance' => $totalBalance,
+                    'purchased_balance' => $clientUserCoins->purchased_balance,
+                    'gift_balance' => $clientUserCoins->gift_balance,
                     'required' => $giftRequest->amount
                 ]);
                 
@@ -1054,23 +1067,39 @@ class VideoChatGiftController extends Controller
                     'error' => 'insufficient_balance',
                     'message' => 'Saldo insuficiente para este regalo en videochat',
                     'data' => [
-                        'current_balance' => $clientCoins->balance,
+                        'current_balance' => $totalBalance,
                         'required_amount' => $giftRequest->amount,
-                        'missing_amount' => $giftRequest->amount - $clientCoins->balance
+                        'missing_amount' => $giftRequest->amount - $totalBalance
                     ]
                 ], 400);
             }
 
-            // 8. 💰 PROCESAR TRANSACCIÓN ESPECÍFICA PARA VIDEOCHAT
+            // 8. 💰 PROCESAR TRANSACCIÓN ESPECÍFICA PARA VIDEOCHAT (igual que sendDirectGift)
             Log::info("💰 [VIDEOCHAT] Iniciando transacción", [
-                'client_balance_before' => $clientCoins->balance,
+                'client_balance_before' => $totalBalance,
+                'purchased_balance' => $clientUserCoins->purchased_balance,
+                'gift_balance' => $clientUserCoins->gift_balance,
                 'amount' => $giftRequest->amount,
                 'room_name' => $giftRequest->room_name
             ]);
             
-            // 1. Descontar del cliente
-            $clientCoins->decrement('balance', $giftRequest->amount);
-            $clientCoins->increment('total_sent', $giftRequest->amount);
+            // 1. Descontar del cliente (consumir primero de gift_balance, luego de purchased_balance)
+            // 🔥 IGUAL QUE sendDirectGift para mantener consistencia
+            $remainingToConsume = $giftRequest->amount;
+            
+            if ($clientUserCoins->gift_balance > 0 && $remainingToConsume > 0) {
+                $giftConsumed = min($clientUserCoins->gift_balance, $remainingToConsume);
+                $clientUserCoins->gift_balance -= $giftConsumed;
+                $remainingToConsume -= $giftConsumed;
+            }
+            
+            if ($remainingToConsume > 0) {
+                $clientUserCoins->purchased_balance -= $remainingToConsume;
+            }
+            
+            $clientUserCoins->total_consumed += $giftRequest->amount;
+            $clientUserCoins->last_consumption_at = now();
+            $clientUserCoins->save();
 
             // 2. Obtener/crear monedas de la modelo
             $modeloCoins = UserGiftCoins::lockForUpdate()
@@ -1197,7 +1226,7 @@ class VideoChatGiftController extends Controller
            // 8. Limpiar lock
            \Illuminate\Support\Facades\Cache::forget($lockKey);
 
-           // 9. Cancelar solicitudes duplicadas
+           // 9. Cancelar solicitudes duplicadas (usar 'rejected' ya que 'cancelled' no está en el enum)
            $duplicatesUpdated = GiftRequest::where('modelo_id', $giftRequest->modelo_id)
                ->where('client_id', $user->id)
                ->where('room_name', $giftRequest->room_name)
@@ -1205,8 +1234,9 @@ class VideoChatGiftController extends Controller
                ->where('id', '!=', $requestId)
                ->where('created_at', '>', now()->subMinutes(5))
                ->update([
-                   'status' => 'cancelled', 
-                   'cancelled_reason' => 'duplicate_accepted_videochat'
+                   'status' => 'rejected', 
+                   'rejection_reason' => 'duplicate_accepted_videochat',
+                   'processed_at' => now()
                ]);
 
            if ($duplicatesUpdated > 0) {
@@ -1248,7 +1278,7 @@ class VideoChatGiftController extends Controller
                'amount' => $giftRequest->amount,
                'modelo_received' => $modeloAmount,
                'platform_commission' => $platformCommission,
-               'client_new_balance' => $clientCoins->fresh()->balance,
+               'client_new_balance' => $clientUserCoins->fresh()->gift_balance,
                'room_name' => $giftRequest->room_name,
                'transaction_id' => $transactionId
            ]);
@@ -1273,7 +1303,7 @@ class VideoChatGiftController extends Controller
                        'received_amount' => $modeloAmount
                    ],
                    'client_balance' => [
-                       'new_balance' => $clientCoins->fresh()->balance,
+                       'new_balance' => $clientUserCoins->fresh()->gift_balance,
                        'spent_amount' => $giftRequest->amount
                    ],
                    'transaction_details' => [

@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 🔥 Variables CSS para layout móvil dinámico */
+:root {
+  --mobile-header-height: 64px;
+  --mobile-time-display-height: 120px;
+  --mobile-chat-input-height: 80px;
+}
+
+/* 🔥 Ajustes para layout móvil - Adaptación a barras de navegador */
+@media (max-width: 1024px) {
+  .mobile-video-container {
+    height: 100dvh !important; /* Dynamic viewport height para adaptarse a barras del navegador */
+    max-height: 100dvh;
+  }
+  
+  .video-main-container {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  
+  .mobile-chat-input-fixed {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+  }
+}
 
 /* Scrollbar transparente para chat de mensajes */
 .chat-scroll-transparent::-webkit-scrollbar {

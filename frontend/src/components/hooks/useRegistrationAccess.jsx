@@ -193,10 +193,21 @@ export function useRegistrationAccess() {
 
       const currentPath = location.pathname;
 
-      // 🏃‍♂️ SI ACABA DE VERIFICAR EMAIL, NO INTERCEPTAR
+      // 🏃‍♂️ SI ACABA DE VERIFICAR EMAIL, NO INTERCEPTAR (especialmente si estamos en /genero)
       const justVerified = localStorage.getItem('email_just_verified');
       if (justVerified) {
-                localStorage.removeItem('email_just_verified'); // Limpiar bandera
+        // Si estamos en /genero después de verificar, NO limpiar la bandera todavía
+        // Solo limpiarla después de que el usuario esté seguro en /genero
+        if (currentPath === '/genero') {
+          setLoading(false);
+          // Limpiar la bandera después de un momento para permitir que el componente se renderice
+          setTimeout(() => {
+            localStorage.removeItem('email_just_verified');
+          }, 2000);
+          return;
+        }
+        // Para otras rutas, limpiar inmediatamente
+        localStorage.removeItem('email_just_verified');
         setLoading(false);
         return;
       }
@@ -207,10 +218,25 @@ export function useRegistrationAccess() {
         return;
       }
 
-      // Verificar token
+      // ✅ PRIORIDAD: Si acabamos de registrar y estamos en verificaremail, NO hacer NINGUNA llamada API
+      const justRegistered = localStorage.getItem("just_registered") === "true";
+      if (justRegistered && currentPath === '/verificaremail') {
+        // Mantener la bandera y NO procesar redirección - NO limpiar la bandera aquí
+        // NO hacer llamadas API que puedan fallar y activar el interceptor
+        setLoading(false);
+        return; // Dejar que el componente de verificación se renderice normalmente
+      }
+
+      // Verificar token (solo si no acabamos de registrar)
       const token = localStorage.getItem('token');
       if (!token) {
-                navigate("/home", { replace: true });
+        // Si estamos en verificaremail sin token y sin just_registered, puede ser un error
+        // Pero no redirigir inmediatamente, dejar que el componente maneje
+        if (currentPath === '/verificaremail') {
+          setLoading(false);
+          return;
+        }
+        navigate("/home", { replace: true });
         return;
       }
 
@@ -218,13 +244,60 @@ export function useRegistrationAccess() {
                 
         hasFetched.current = true;
         GLOBAL_PROCESSING = true;
+        
+        // Limpiar la bandera solo si estamos navegando a otra ruta (fuera de verificaremail)
+        if (justRegistered && currentPath !== '/verificaremail') {
+          localStorage.removeItem("just_registered");
+        }
 
         // Obtener usuario
-        const response = await getUser();
-        const user = response?.user || response;
+        let user = null;
+        try {
+          const response = await getUser();
+          user = response?.user || response;
+          
+          // Log exitoso
+          const logData = {
+            timestamp: new Date().toISOString(),
+            action: 'getUser_success',
+            path: currentPath,
+            hasUser: !!user,
+            userId: user?.id || null,
+            emailVerified: !!user?.email_verified_at
+          };
+          localStorage.setItem('last_registration_access_log', JSON.stringify(logData));
+          console.log('✅ [REGISTRATION_ACCESS] getUser exitoso:', logData);
+        } catch (getUserError) {
+          // Log error
+          const errorLog = {
+            timestamp: new Date().toISOString(),
+            action: 'getUser_error',
+            path: currentPath,
+            error: getUserError.message,
+            status: getUserError.response?.status || 'unknown',
+            statusText: getUserError.response?.statusText || 'unknown'
+          };
+          localStorage.setItem('last_registration_access_error', JSON.stringify(errorLog));
+          console.error('❌ [REGISTRATION_ACCESS] Error en getUser:', errorLog);
+          
+          // Si estamos en verificaremail y hay error, NO redirigir (puede ser un nuevo registro)
+          if (currentPath === '/verificaremail') {
+            setLoading(false);
+            return;
+          }
+          
+          // Para otros errores, redirigir a home
+          navigate("/home", { replace: true });
+          return;
+        }
 
         if (!user) {
-                    navigate("/home", { replace: true });
+          // Si estamos en verificaremail y no hay usuario, NO redirigir (puede ser un nuevo registro)
+          if (currentPath === '/verificaremail') {
+            setLoading(false);
+            return;
+          }
+          navigate("/home", { replace: true });
           return;
         }
 
@@ -232,7 +305,12 @@ export function useRegistrationAccess() {
         const userStep = determineCurrentStep(user);
         
         if (!userStep) {
-                    navigate("/verificaremail", { replace: true }); // Fallback seguro
+          // Si estamos en verificaremail y no se determina paso, quedarse aquí
+          if (currentPath === '/verificaremail') {
+            setLoading(false);
+            return;
+          }
+          navigate("/verificaremail", { replace: true }); // Fallback seguro
           return;
         }
 
@@ -257,13 +335,36 @@ export function useRegistrationAccess() {
         const isAllowedPath = userStep.config.allowedPaths.includes(currentPath);
 
         if (!isAllowedPath) {
-                    navigate(userStep.config.redirectTo, { replace: true });
+          // Si estamos en verificaremail y el paso es email_verification, quedarse aquí
+          if (currentPath === '/verificaremail' && userStep.key === 'email_verification') {
+            setLoading(false);
+            return;
+          }
+          navigate(userStep.config.redirectTo, { replace: true });
           return;
         }
 
         
       } catch (error) {
+        // Log error general
+        const generalErrorLog = {
+          timestamp: new Date().toISOString(),
+          action: 'useRegistrationAccess_error',
+          path: currentPath,
+          error: error.message,
+          status: error.response?.status || 'unknown',
+          statusText: error.response?.statusText || 'unknown',
+          stack: error.stack?.substring(0, 500) // Limitar tamaño
+        };
+        localStorage.setItem('last_registration_access_general_error', JSON.stringify(generalErrorLog));
+        console.error('❌ [REGISTRATION_ACCESS] Error general:', generalErrorLog);
                 
+        // Si estamos en verificaremail, NO redirigir aunque haya error
+        if (currentPath === '/verificaremail') {
+          setLoading(false);
+          return;
+        }
+        
         // Si hay error de autenticación, redirigir a home
         if (error.response?.status === 401 || error.response?.status === 403) {
           navigate("/home", { replace: true });

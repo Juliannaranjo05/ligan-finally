@@ -194,7 +194,7 @@ useEffect(() => {
         { 
           id: 'prueba1', 
           nombre: "Mía", 
-          estado: "activa", 
+          estado: "activa", // 🔄 SIEMPRE ACTIVA
           img: pruebahistorias, 
           image: pruebahistorias,
           mime_type: 'image/jpeg',
@@ -203,7 +203,7 @@ useEffect(() => {
         { 
           id: 'prueba2', 
           nombre: "Emilia", 
-          estado: "inactiva", 
+          estado: "activa", // 🔄 SIEMPRE ACTIVA
           img: pruebahistorias, 
           image: pruebahistorias,
           mime_type: 'image/jpeg',
@@ -212,7 +212,7 @@ useEffect(() => {
         { 
           id: 'prueba3', 
           nombre: "Valentina", 
-          estado: "activa", 
+          estado: "activa", // 🔄 SIEMPRE ACTIVA
           img: pruebahistorias, 
           image: pruebahistorias,
           mime_type: 'image/jpeg',
@@ -221,7 +221,7 @@ useEffect(() => {
         { 
           id: 'prueba4', 
           nombre: "Sofía", 
-          estado: "inactiva", 
+          estado: "activa", // 🔄 SIEMPRE ACTIVA
           img: pruebahistorias, 
           image: pruebahistorias,
           mime_type: 'image/jpeg',
@@ -230,7 +230,7 @@ useEffect(() => {
         { 
           id: 'prueba5', 
           nombre: "Camila", 
-          estado: "activa", 
+          estado: "activa", // 🔄 SIEMPRE ACTIVA
           img: pruebahistorias, 
           image: pruebahistorias,
           mime_type: 'image/jpeg',
@@ -245,7 +245,7 @@ useEffect(() => {
         const historiasData = response.data.map(story => ({
           id: story.id,
           nombre: story.user?.display_name || story.user?.nickname || story.user?.name || 'Usuario',
-          estado: story.user?.is_online ? "activa" : "inactiva",
+          estado: "activa", // 🔄 SIEMPRE MOSTRAR COMO ACTIVA
           img: story.file_path ? `${API_BASE_URL}/storage/${story.file_path}` : pruebahistorias,
           image: story.file_path ? `${API_BASE_URL}/storage/${story.file_path}` : pruebahistorias,
           mime_type: story.mime_type,
@@ -379,6 +379,21 @@ useEffect(() => {
 
         // 🔥 PASO 2: Si hay token, verificar sesión inmediatamente
         try {
+          // Si acabamos de registrar, NO redirigir desde aquí, dejar que RegistrationProtectedPage maneje
+          // NO limpiar la bandera aquí, dejarla para que useRegistrationAccess la maneje
+          if (localStorage.getItem("just_registered") === "true") {
+            setIsCheckingSession(false);
+            setLoading(false);
+            return;
+          }
+
+          // Si acabamos de verificar email, NO redirigir desde aquí
+          if (localStorage.getItem("email_just_verified") === "true") {
+            setIsCheckingSession(false);
+            setLoading(false);
+            return;
+          }
+
           const res = await api.get(`${API_BASE_URL}/api/profile`, {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -783,9 +798,9 @@ useEffect(() => {
   return (
     <>
       <SessionSuspendedModal />
-    <div className="bg-ligand-mix-dark min-h-screen px-4">
+    <div className="bg-ligand-mix-dark h-screen flex flex-col px-2 sm:px-4">
       {/* Header para escritorio */}
-      <header className="hidden sm:flex justify-between items-center p-3 gap-0">
+      <header className="hidden sm:flex justify-between items-center p-3 gap-0 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <span className="text-[19px] font-semibold" style={{ color: '#ff007a' }}>
             {t('idioma')}:
@@ -816,57 +831,57 @@ useEffect(() => {
       </header>
 
       {/* Header para móvil - EXACTO COMO EN LA IMAGEN */}
-      <header className="flex sm:hidden justify-between items-center p-4">
+      <header className="flex sm:hidden justify-between items-center p-3 sm:p-4 flex-shrink-0">
         {/* Logo + Ligand */}
         <div className="flex items-center">
-          <img src={logoproncipal} alt="Logo" className="w-8 h-8 mr-2" />
-          <span className="text-lg text-zorrofucsia font-pacifico ml-[-5px]">Ligando</span>
+          <img src={logoproncipal} alt="Logo" className="w-7 h-7 sm:w-8 sm:h-8 mr-1.5 sm:mr-2" />
+          <span className="text-base sm:text-lg text-zorrofucsia font-pacifico ml-[-3px] sm:ml-[-5px]">Ligando</span>
         </div>
 
-        {/* Iniciar Sesión + Dropdown */}
-        <div className="flex items-center gap-3">
+        {/* Iniciar Sesión + Selector de Idioma */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
-            className="bg-fucsia text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium text-sm"
+            className="bg-fucsia text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-pink-600 transition-colors font-medium text-xs sm:text-sm"
             onClick={() => navigate("/home?auth=login")}
           >
             {t('iniciarSesion')}
           </button>
           
-          <MobileDropdownMenu onHelpClick={() => setShowHelpModal(true)} />
+          <LanguageSelector />
         </div>
       </header>
       {/* Contenido principal */}
-      <div className="flex flex-col lg:flex-row items-start justify-between py-10 sm:py-12 max-w-7xl mx-auto gap-10">
+      <div className="flex flex-col lg:flex-row items-start justify-between py-2 sm:py-3 md:py-4 lg:py-6 max-w-7xl mx-auto gap-0 sm:gap-2 md:gap-4 lg:gap-8 xl:gap-10 flex-1 overflow-y-auto px-2 sm:px-4 main-content-container">
         {/* Lado Izquierdo */}
         <div className="w-full lg:max-w-lg">
-          <div className="text-center mb-6 sm:mb-8">
-            <h1 className="font-pacifico text-fucsia text-8xl sm:text-11xl bg-backgroundDark rounded-lg">Ligando</h1>
-            <p className="text-lg sm:text-4xl text-pink-200 mt-4 sm:mt-[30px] font-semibold italic">{t('frasePrincipal')}</p>
+          <div className="text-center mb-4 sm:mb-5 md:mb-6 lg:mb-8">
+            <h1 className="font-pacifico text-fucsia text-[3.5rem] sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl 2xl:text-11xl leading-tight sm:leading-none bg-backgroundDark rounded-lg px-4 sm:px-5 md:px-6 lg:px-4 inline-block">Ligando</h1>
+            <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl text-pink-200 mt-3 sm:mt-4 md:mt-5 lg:mt-[30px] font-semibold italic px-2 break-words">{t('frasePrincipal')}</p>
           </div>
 
-          <div className="text-center mb-6">
+          <div className="text-center mb-4 sm:mb-5 md:mb-6">
             <button
-              className="w-full py-3 sm:py-4 px-6 sm:px-8 rounded-full text-white font-bold text-base sm:text-xl bg-fucsia hover:bg-fucsia-400 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+              className="w-full max-w-[320px] sm:max-w-md md:max-w-sm mx-auto py-3.5 sm:py-4 md:py-3 lg:py-4 px-6 sm:px-7 md:px-6 lg:px-8 rounded-full text-white font-bold text-lg sm:text-xl md:text-xl lg:text-xl bg-fucsia hover:bg-fucsia-400 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
               onClick={() => navigate("/home?auth=register")}
             >
               {t('comenzar')}
             </button>
           </div>
 
-          <div className="text-center mb-8">
-            <p className="text-white text-sm sm:text-lg leading-relaxed">
+          <div className="text-center mb-4 sm:mb-5 md:mb-6 lg:mb-8 px-2">
+            <p className="text-white text-base sm:text-lg md:text-base lg:text-lg leading-relaxed">
               {t('subtitulo')}
             </p>
           </div>
 
-          <div className="flex justify-center space-x-6">
+          <div className="flex justify-center items-center space-x-4 sm:space-x-5 md:space-x-6 px-2 mb-0 sm:mb-1 md:mb-2 lg:mb-0">
             {['Femenino', 'Masculino'].map((gender) => (
               <label key={gender} className="flex items-center cursor-pointer group">
                 <div className="relative">
                   <input type="radio" name="gender" value={gender.toLowerCase()} className="sr-only" />
-                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-gray-400 group-hover:border-red-400 flex items-center justify-center transition-all duration-200" />
+                  <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-400 group-hover:border-red-400 flex items-center justify-center transition-all duration-200" />
                 </div>
-                <span className="ml-2 sm:ml-3 text-sm sm:text-lg font-medium text-gray-300 transition-colors duration-200">
+                <span className="ml-1.5 sm:ml-2 md:ml-3 text-xs sm:text-sm md:text-base lg:text-lg font-medium text-gray-300 transition-colors duration-200">
                   {t(`genero.${gender.toLowerCase()}`)}
                 </span>
               </label>
@@ -875,15 +890,15 @@ useEffect(() => {
         </div>
 
         {/* Lado derecho */}
-        <div className="w-full lg:ml-16">
-          <div className="text-center text-white italic text-xl sm:text-3xl mb-6 font-semibold">
+        <div className="w-full lg:ml-16 -mt-1 sm:mt-0 md:mt-1 lg:mt-0">
+          <div className="text-center text-white italic text-base sm:text-lg md:text-xl lg:text-3xl mb-0 sm:mb-1 md:mb-2 lg:mb-6 font-semibold px-2">
             {t(`chicasRelevantes`)}
           </div>
 
           {/* Carrusel mejorado */}
           {historias.length > 0 ? (
             <div className="bg-gradient-to-b flex items-center justify-center">
-              <div className="relative w-full max-w-full overflow-hidden py-8 px-2">
+              <div className="relative w-full max-w-full overflow-hidden py-0 sm:py-0 md:py-1 lg:py-8 px-2 sm:px-4">
                 <motion.div 
                   className="flex justify-center gap-4"
                   initial={{ opacity: 0 }}
@@ -902,7 +917,7 @@ useEffect(() => {
                           className={`relative cursor-pointer rounded-2xl overflow-hidden shadow-lg flex-shrink-0 ${
                             isExpanded
                               ? "z-50 fixed inset-0 w-screen h-screen rounded-none bg-black/40 backdrop-blur-md"
-                              : "w-[150px] md:w-[180px] aspect-[9/16]"
+                              : "w-[100px] sm:w-[120px] md:w-[140px] lg:w-[160px] xl:w-[180px] aspect-[9/16]"
                           } ${
                             isCenter && !isExpanded
                               ? "border-4 border-fuchsia-500 box-content"
@@ -1015,12 +1030,8 @@ useEffect(() => {
                                 />
                               )}
 
-                              <div className={`absolute top-3 right-3 text-xs md:text-sm px-2 md:px-3 py-1 rounded-full font-semibold ${
-                                historia.estado === "activa"
-                                  ? "bg-green-500 text-white"
-                                  : "bg-red-500 text-white"
-                              }`}>
-                                {historia.estado === "activa" ? t('activa') : t('inactiva')}
+                              <div className="absolute top-3 right-3 text-xs md:text-sm px-2 md:px-3 py-1 rounded-full font-semibold bg-green-500 text-white">
+                                {t('activa')}
                               </div>
                             </motion.div>
                           ) : (
@@ -1071,12 +1082,8 @@ useEffect(() => {
                                       />
                                     )}
 
-                                    <div className={`absolute bottom-3 right-3 z-40 text-xs px-2 py-1 rounded-full font-semibold ${
-                                      historia.estado === "activa"
-                                        ? "bg-green-600 text-white"
-                                        : "bg-red-600 text-white"
-                                    }`}>
-                                      {historia.estado === "activa" ? t('activa') : t('inactiva')}
+                                    <div className="absolute bottom-3 right-3 z-40 text-xs px-2 py-1 rounded-full font-semibold bg-green-600 text-white">
+                                      {t('activa')}
                                     </div>
 
                                     <div className="absolute bottom-3 left-3 text-white text-sm font-bold bg-black/60 px-2 py-1 rounded-lg backdrop-blur-sm">
@@ -1142,6 +1149,20 @@ useEffect(() => {
           )}
 
           <style>{`
+            /* Estilos personalizados para el contenedor principal en móvil */
+            @media (max-width: 1023px) {
+              .main-content-container {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+                padding-left: 0.2rem !important;
+                padding-right: 1.5rem !important;
+                overflow-y: auto !important;
+                gap: 50px !important;
+                justify-content: flex-start !important;
+                align-items: flex-start !important;
+              }
+            }
+
             @keyframes slideUp {
               from {
                 transform: translateY(100px);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { register } from "/src/utils/auth.js";
 import ReCAPTCHA from "react-google-recaptcha";
@@ -15,7 +15,19 @@ export default function Register({ onClose, onShowLogin }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
+  const [retryAfter, setRetryAfter] = useState(null);
+  const countdownRef = useRef(null);
   const { t } = useTranslation();
+
+  // Limpiar el countdown cuando el componente se desmonte
+  useEffect(() => {
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,11 +40,105 @@ export default function Register({ onClose, onShowLogin }) {
 
     try {
       setLoading(true);
-      await register(email, password, recaptchaToken);
+      const result = await register(email, password, recaptchaToken);
+      
+      // El token ya se guarda en la función register, solo verificar que esté presente
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No se pudo guardar el token de autenticación");
+      }
+      
       localStorage.setItem("emailToVerify", email);
-      navigate("/verificaremail", { state: { email } });
+      // Marcar que acabamos de registrar para evitar que los hooks redirijan antes de tiempo
+      localStorage.setItem("just_registered", "true");
+      // No limpiar la bandera aquí, dejarla para que el hook la maneje
+      navigate("/verificaremail", { state: { email }, replace: false });
     } catch (err) {
-      setError(t("register.errorGeneric"));
+      // Mostrar mensaje específico para errores 429
+      if (err.response?.status === 429) {
+        const retrySeconds = parseInt(err.response?.headers?.['retry-after'] || err.response?.headers?.['x-ratelimit-retry-after'] || 60);
+        setRateLimited(true);
+        setRetryAfter(retrySeconds);
+        setError(t("register.errors.errorRateLimit") || t("register.errors.tooManyAttempts") || `Demasiados intentos. Por favor espera ${retrySeconds} segundos antes de intentar nuevamente.`);
+        
+        // Deshabilitar el botón por el tiempo de retry
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current);
+        }
+        countdownRef.current = setInterval(() => {
+          setRetryAfter((prev) => {
+            if (prev <= 1) {
+              if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+              }
+              setRateLimited(false);
+              setRetryAfter(null);
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else if (err.message && err.message.includes("Demasiados intentos")) {
+        setError(err.message);
+        setRateLimited(true);
+      } else {
+        setRateLimited(false);
+        
+        // Manejar errores 422 (validación)
+        if (err.response?.status === 422) {
+          const errors = err.response?.data?.errors || {};
+          const errorMessages = err.response?.data?.message || '';
+          
+          console.log('Error 422:', { errors, errorMessages }); // Debug
+          
+          // Priorizar mensajes específicos de validación
+          if (errors.email) {
+            const emailError = Array.isArray(errors.email) ? errors.email[0] : errors.email;
+            // Detectar si el email ya está registrado (diferentes formatos de mensaje)
+            if (emailError.includes('taken') || 
+                emailError.includes('ya existe') || 
+                emailError.includes('already been taken') ||
+                emailError.includes('has already been taken') ||
+                emailError === 'validation.unique' ||
+                emailError.includes('validation.unique')) {
+              setError(t("register.errors.emailExists") || "Este correo electrónico ya está registrado. Por favor usa otro o intenta iniciar sesión.");
+            } else if (emailError.includes('invalid') || emailError.includes('válido') || emailError.includes('validation.email')) {
+              setError(t("register.errors.emailInvalid") || "Por favor ingresa un correo válido.");
+            } else {
+              // Si es una clave de validación sin traducir, usar mensaje genérico traducido
+              if (emailError.startsWith('validation.')) {
+                setError(t("register.errors.emailExists") || "Este correo electrónico ya está registrado. Por favor usa otro o intenta iniciar sesión.");
+              } else {
+                setError(emailError);
+              }
+            }
+          } else if (errors.password) {
+            const passwordError = Array.isArray(errors.password) ? errors.password[0] : errors.password;
+            if (passwordError.includes('min') || passwordError.includes('mínimo')) {
+              setError(t("register.errors.passwordTooShort") || "La contraseña debe tener al menos 6 caracteres.");
+            } else {
+              setError(passwordError);
+            }
+          } else if (errorMessages) {
+            setError(errorMessages);
+          } else {
+            setError(t("register.errorGeneric") || "Ocurrió un error. Por favor intenta nuevamente.");
+          }
+        } else {
+          const errorMsg = err.response?.data?.message || err.message || '';
+          console.log('Otro error:', errorMsg); // Debug
+          // Mapear errores comunes a traducciones
+          if (errorMsg && (errorMsg.includes("email") || errorMsg.includes("correo")) && 
+              (errorMsg.includes("already been taken") || errorMsg.includes("ya existe") || errorMsg.includes("taken"))) {
+            setError(t("register.errors.emailExists") || "Este correo electrónico ya está registrado. Por favor usa otro o intenta iniciar sesión.");
+          } else if (errorMsg && errorMsg.includes("password") && (errorMsg.includes("min") || errorMsg.includes("mínimo"))) {
+            setError(t("register.errors.passwordTooShort") || "La contraseña debe tener al menos 6 caracteres.");
+          } else {
+            setError(errorMsg || t("register.errorGeneric") || "Ocurrió un error. Por favor intenta nuevamente.");
+          }
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -112,10 +218,14 @@ export default function Register({ onClose, onShowLogin }) {
 
           <button
             type="submit"
-            disabled={loading || googleLoading}
+            disabled={loading || googleLoading || rateLimited}
             className="w-full py-3 bg-[#ff007a] text-white font-bold rounded-xl hover:bg-[#e6006e] transition disabled:opacity-50"
           >
-            {loading ? t("register.loading") : t("register.button")}
+            {loading 
+              ? t("register.loading") 
+              : rateLimited && retryAfter 
+                ? `${t("register.errors.tooManyAttempts") || "Espera"} (${retryAfter}s)` 
+                : t("register.button")}
           </button>
 
           <div className="text-center text-white/80 mt-6">

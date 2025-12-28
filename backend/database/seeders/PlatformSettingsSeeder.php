@@ -14,12 +14,22 @@ class PlatformSettingsSeeder extends Seeder
     {
         $settings = [
             // Configuraciones de ganancias
+            // 🔥 ACTUALIZADO: 30 USD/hora = 0.50 USD/minuto
+            // 20 USD para modelo = 0.333 USD/minuto (20/60)
+            // 10 USD para plataforma = 0.167 USD/minuto (10/60)
             [
                 'key' => 'earnings_per_minute',
-                'value' => '0.24',
+                'value' => '0.333',
                 'type' => 'decimal',
                 'category' => 'earnings',
-                'description' => 'Ganancias por minuto para modelos en videollamadas'
+                'description' => 'Ganancias por minuto para modelos en videollamadas (20 USD/hora = 0.333 USD/minuto)'
+            ],
+            [
+                'key' => 'platform_earnings_per_minute',
+                'value' => '0.167',
+                'type' => 'decimal',
+                'category' => 'earnings',
+                'description' => 'Ganancias por minuto para la plataforma (10 USD/hora = 0.167 USD/minuto)'
             ],
             [
                 'key' => 'coins_per_minute',

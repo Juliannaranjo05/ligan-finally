@@ -35,6 +35,7 @@ import Favoritesboy from "./components/client/favoritesclient.jsx"
 import ResetPasswordPage from './components/verificacion/login/ResetPasswordPage.jsx';
 
 import RouteGuard from "./routes/blockchat";
+import './components/hooks/debugLogs'; // Cargar funciones de debug
 import VerificacionesAdmin from "./components/admin/adminverification";
 import { AdminCodeVerification } from "./components/admin/AdminCodeVerification";
 import AdminDashboardLayout from "./components/admin/dashboard";

@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParticipants, VideoTrack, useTracks, useRoomContext } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Camera, CameraOff, Loader2, Users, Eye } from "lucide-react";
+import { Camera, CameraOff, Loader2, Users, Eye, Gift, MessageSquare, MessageSquareOff, MoreVertical } from "lucide-react";
+import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
+import { getTranslatedGiftName, getGiftCardText } from '../../GiftSystem/giftTranslations';
+import { getVideoChatText } from '../../videochatTranslations';
 
 const VideoDisplayImproved = ({ 
   onCameraSwitch, 
@@ -11,12 +14,431 @@ const VideoDisplayImproved = ({
   otherUser,
   isDetectingUser,
   cameraEnabled,
-  t 
+  t,
+  // 🔥 PROPS PARA CHAT INTEGRADO
+  messages = [],
+  userData = null,
+  chatVisible = true,
+  setChatVisible = () => {}
 }) => {
   const participants = useParticipants();
   const localParticipant = participants.find(p => p.isLocal);
   const remoteParticipant = participants.find(p => !p.isLocal);
   const room = useRoomContext();
+  
+  // 🔥 OBTENER CONTEXTO GLOBAL DE TRADUCCIÓN
+  const { 
+    translateGlobalText, 
+    isEnabled: translationEnabled,
+    getExistingTranslation,
+    currentLanguage: globalCurrentLanguage
+  } = useGlobalTranslation();
+  
+  // 🔥 OBTENER IDIOMA ACTUAL (usar estado local para detectar cambios)
+  const [currentLanguage, setCurrentLanguage] = useState(() => globalCurrentLanguage || 'es');
+  
+  // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA
+  useEffect(() => {
+    if (globalCurrentLanguage && globalCurrentLanguage !== currentLanguage) {
+      setCurrentLanguage(globalCurrentLanguage);
+    }
+  }, [globalCurrentLanguage, currentLanguage]);
+  
+  // 🔥 ESTADOS PARA CHAT INTEGRADO
+  const [chatOpacity, setChatOpacity] = useState(1);
+  const lastMessageTimeRef = useRef(Date.now());
+  const chatTimeoutRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const [translations, setTranslations] = useState(new Map());
+  const [translatingIds, setTranslatingIds] = useState(new Set());
+  
+  // 🔥 EFECTO PARA MOSTRAR CHAT POR 3 SEGUNDOS Y LUEGO OPACAR
+  useEffect(() => {
+    if (!chatVisible) {
+      setChatOpacity(0);
+      if (chatTimeoutRef.current) {
+        clearTimeout(chatTimeoutRef.current);
+      }
+      return;
+    }
+
+    if (messages && messages.length > 0) {
+      // Cuando chat se vuelve visible, mostrar todos los mensajes inmediatamente
+      setChatOpacity(1);
+      if (chatTimeoutRef.current) {
+        clearTimeout(chatTimeoutRef.current);
+      }
+      chatTimeoutRef.current = setTimeout(() => {
+        setChatOpacity(0.3);
+      }, 3000);
+    }
+    
+    return () => {
+      if (chatTimeoutRef.current) {
+        clearTimeout(chatTimeoutRef.current);
+      }
+    };
+  }, [messages, chatVisible]);
+
+  // 🔥 EFECTO PARA SCROLL AUTOMÁTICO AL FINAL (ÚLTIMO MENSAJE)
+  useEffect(() => {
+    if (messagesEndRef.current && chatVisible) {
+      messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  }, [messages, chatVisible]);
+
+  // 🔥 REFS PARA TRADUCCIONES
+  const translationsRef = useRef(new Map());
+  const translatingIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
+
+  useEffect(() => {
+    translatingIdsRef.current = translatingIds;
+  }, [translatingIds]);
+
+  // 🔥 FUNCIÓN PARA TRADUCIR MENSAJES
+  const translateMessage = useCallback(async (message) => {
+    if (!translationEnabled || !message?.id) return;
+    
+    const originalText = message.text || message.message;
+    if (!originalText || originalText.trim() === '') return;
+
+    if (translationsRef.current.has(message.id) || translatingIdsRef.current.has(message.id)) return;
+
+    setTranslatingIds(prev => new Set(prev).add(message.id));
+
+    try {
+      let result = null;
+      
+      if (typeof translateGlobalText === 'function') {
+        try {
+          result = await translateGlobalText(originalText, message.id);
+        } catch (error) {
+          console.warn('Error traduciendo mensaje:', error);
+        }
+      }
+      
+      if (result && result !== originalText && result.trim() !== '') {
+        setTranslations(prev => new Map(prev).set(message.id, result));
+      } else {
+        setTranslations(prev => new Map(prev).set(message.id, null));
+      }
+    } catch (error) {
+      setTranslations(prev => new Map(prev).set(message.id, null));
+    } finally {
+      setTranslatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(message.id);
+        return newSet;
+      });
+    }
+  }, [translationEnabled, translateGlobalText]);
+
+  // 🔥 EFECTO PARA TRADUCIR MENSAJES AUTOMÁTICAMENTE
+  useEffect(() => {
+    if (!translationEnabled) return;
+
+    const messagesToTranslate = messages.filter(message => {
+      return (
+        message &&
+        (message.text || message.message) &&
+        !translationsRef.current.has(message.id) &&
+        !translatingIdsRef.current.has(message.id)
+      );
+    });
+
+    messagesToTranslate.forEach(translateMessage);
+  }, [messages, translationEnabled, translateMessage]);
+
+  // 🔥 EFECTO PARA RE-TRADUCIR MENSAJES CUANDO CAMBIA EL IDIOMA
+  useEffect(() => {
+    if (!translationEnabled || !currentLanguage) return;
+
+    // Limpiar traducciones existentes cuando cambia el idioma
+    setTranslations(new Map());
+    setTranslatingIds(new Set());
+    translationsRef.current = new Map();
+    translatingIdsRef.current = new Set();
+
+    // Re-traducir todos los mensajes con el nuevo idioma
+    const messagesToRetranslate = messages.filter(message => {
+      return (
+        message &&
+        (message.text || message.message) &&
+        (message.text || message.message).trim() !== ''
+      );
+    });
+
+    // Re-traducir con un pequeño delay para asegurar que el contexto global se actualizó
+    setTimeout(() => {
+      messagesToRetranslate.forEach((message, index) => {
+        setTimeout(() => {
+          translateMessage(message);
+        }, index * 100);
+      });
+    }, 200);
+  }, [currentLanguage, translationEnabled, translateMessage]);
+
+  // 🔥 EFECTO PARA ESCUCHAR CAMBIOS DE IDIOMA GLOBAL (eventos personalizados)
+  useEffect(() => {
+    const handleGlobalLanguageChange = (event) => {
+      const newLanguage = event.detail?.language || event.detail;
+      if (newLanguage && newLanguage !== currentLanguage) {
+        setCurrentLanguage(newLanguage);
+        // Limpiar traducciones existentes
+        setTranslations(new Map());
+        setTranslatingIds(new Set());
+        translationsRef.current = new Map();
+        translatingIdsRef.current = new Set();
+        
+        // Re-traducir mensajes con el nuevo idioma
+        setTimeout(() => {
+          const messagesToRetranslate = messages.filter(message => {
+            return (
+              message &&
+              (message.text || message.message) &&
+              (message.text || message.message).trim() !== ''
+            );
+          });
+          
+          messagesToRetranslate.forEach((message, index) => {
+            setTimeout(() => {
+              translateMessage(message);
+            }, index * 100);
+          });
+        }, 200);
+      }
+    };
+
+    // Escuchar eventos de cambio de idioma global
+    window.addEventListener('globalLanguageChanged', handleGlobalLanguageChange);
+    
+    return () => {
+      window.removeEventListener('globalLanguageChanged', handleGlobalLanguageChange);
+    };
+  }, [currentLanguage, translationEnabled, translateMessage, messages]);
+
+  // 🔥 FUNCIÓN PARA RENDERIZAR MENSAJE CON TRADUCCIÓN
+  const renderMessageWithTranslation = useCallback((message) => {
+    const originalText = message.text || message.message;
+    const translatedText = translations.get(message.id);
+    const isTranslating = translatingIds.has(message.id);
+    
+    const hasTranslation = translatedText && translatedText !== originalText && translatedText.trim() !== '';
+
+    // 🔥 SI HAY TRADUCCIÓN, MOSTRAR OVERLAY FLOTANTE COMO EN LA IMAGEN
+    if (hasTranslation) {
+      return (
+        <div 
+          style={{ 
+            maxWidth: '100%', 
+            width: '100%', 
+            wordBreak: 'break-word', 
+            overflowWrap: 'break-word', 
+            boxSizing: 'border-box',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}
+        >
+          {/* TEXTO ORIGINAL ARRIBA */}
+          <div 
+            style={{ 
+              wordBreak: 'break-word', 
+              overflowWrap: 'break-word', 
+              whiteSpace: 'pre-wrap',
+              color: '#e5e7eb',
+              fontSize: '14px',
+              lineHeight: '1.4',
+              marginBottom: '4px'
+            }}
+          >
+            {originalText}
+            {isTranslating && (
+              <span className="ml-2 inline-flex items-center">
+                <div className="animate-spin rounded-full h-2 w-2 border-b border-current opacity-50"></div>
+              </span>
+            )}
+          </div>
+
+          {/* TRADUCCIÓN ABAJO CON LÍNEA VERTICAL */}
+          <div 
+            style={{ 
+              wordBreak: 'break-word', 
+              overflowWrap: 'break-word', 
+              whiteSpace: 'pre-wrap',
+              color: '#9ca3af',
+              fontSize: '12px',
+              lineHeight: '1.4',
+              paddingLeft: '8px',
+              borderLeft: '2px solid rgba(156, 163, 175, 0.5)',
+              marginTop: '4px'
+            }}
+          >
+            {translatedText}
+          </div>
+        </div>
+      );
+    }
+
+    // 🔥 SI NO HAY TRADUCCIÓN, MOSTRAR SOLO EL TEXTO ORIGINAL
+    return (
+      <div style={{ maxWidth: '100%', width: '100%', wordBreak: 'break-word', overflowWrap: 'break-word', boxSizing: 'border-box' }}>
+        <div style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+          {originalText}
+          {isTranslating && (
+            <span className="ml-2 inline-flex items-center">
+              <div className="animate-spin rounded-full h-2 w-2 border-b border-current opacity-50"></div>
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }, [translations, translatingIds]);
+
+  // 🔥 FUNCIONES PARA DETECTAR Y PARSEAR REGALOS
+  const isGiftMessage = useCallback((msg) => {
+    if (!msg) return false;
+    
+    // 🔥 PRIMERO: Verificar si tiene datos de regalo en extra_data o gift_data
+    let hasGiftData = false;
+    if (msg.extra_data) {
+      try {
+        const extraData = typeof msg.extra_data === 'string' ? JSON.parse(msg.extra_data) : msg.extra_data;
+        if (extraData && (extraData.gift_name || extraData.gift_image || extraData.gift_price)) {
+          hasGiftData = true;
+        }
+      } catch (e) {
+        // Si no se puede parsear, continuar con otras verificaciones
+      }
+    }
+    if (msg.gift_data) {
+      try {
+        const giftData = typeof msg.gift_data === 'string' ? JSON.parse(msg.gift_data) : msg.gift_data;
+        if (giftData && (giftData.gift_name || giftData.gift_image || giftData.gift_price)) {
+          hasGiftData = true;
+        }
+      } catch (e) {
+        // Si no se puede parsear, continuar con otras verificaciones
+      }
+    }
+    
+    const text = msg.text || msg.message || '';
+    return msg.type === 'gift' || 
+           msg.type === 'gift_sent' || 
+           msg.type === 'gift_received' ||
+           msg.type === 'gift_request' ||
+           hasGiftData ||
+           text.includes('Regalo') ||
+           text.includes('regalo') ||
+           text.includes('Enviaste:') ||
+           text.includes('Recibiste:') ||
+           text.includes('para ti') ||
+           text.includes('para ti!');
+  }, []);
+
+  const parseGiftData = useCallback((msg) => {
+    let giftData = {};
+    
+    // Intentar obtener de extra_data primero
+    if (msg.extra_data) {
+      try {
+        if (typeof msg.extra_data === 'string') {
+          giftData = JSON.parse(msg.extra_data);
+        } else if (typeof msg.extra_data === 'object') {
+          giftData = { ...msg.extra_data };
+        }
+      } catch (e) {
+        console.warn('Error parsing extra_data:', e);
+      }
+    }
+    
+    // Fallback a gift_data (combinar, no reemplazar)
+    if (msg.gift_data) {
+      try {
+        let parsedGiftData = {};
+        if (typeof msg.gift_data === 'string') {
+          parsedGiftData = JSON.parse(msg.gift_data);
+        } else if (typeof msg.gift_data === 'object') {
+          parsedGiftData = msg.gift_data;
+        }
+        // Combinar datos, dando prioridad a extra_data pero preservando gift_data
+        giftData = { ...parsedGiftData, ...giftData };
+      } catch (e) {
+        console.warn('Error parsing gift_data:', e);
+      }
+    }
+    
+    // Buscar gift_image en múltiples campos
+    const giftImage = giftData.gift_image || 
+                      giftData.image || 
+                      giftData.image_path || 
+                      giftData.gift_image_path || 
+                      null;
+    
+    const text = msg.text || msg.message || '';
+    if (text && (!giftData.gift_name || !giftImage)) {
+      const giftNameMatch = text.match(/(?:¡|!)?([A-Za-záéíóúñÁÉÍÓÚÑ\s]+?)(?:\s+para\s+ti[!:]|$)/);
+      if (giftNameMatch) {
+        giftData.gift_name = giftNameMatch[1].trim();
+      }
+      
+      const sentReceivedMatch = text.match(/(?:Enviaste:|Recibiste:)\s*(.+?)(?:\s*[!💝❤️]|$)/);
+      if (sentReceivedMatch) {
+        giftData.gift_name = sentReceivedMatch[1].trim();
+      }
+    }
+    
+    return {
+      gift_name: giftData.gift_name || 'Regalo Especial',
+      gift_price: giftData.gift_price || 10,
+      gift_image: giftImage,
+      request_id: giftData.request_id || giftData.transaction_id || msg.id,
+      transaction_id: giftData.transaction_id || giftData.request_id || null,
+      ...giftData
+    };
+  }, []);
+
+  const buildCompleteImageUrl = useCallback((imagePath) => {
+    if (!imagePath) return null;
+    
+    const baseUrl = import.meta.env.VITE_API_BASE_URL;
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath.includes('?') ? imagePath : imagePath;
+    }
+    
+    const cleanPath = imagePath.replace(/\\/g, '/');
+    let finalUrl;
+    let fileName;
+    
+    if (cleanPath.startsWith('storage/')) {
+      const pathParts = cleanPath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
+    } else if (cleanPath.startsWith('/')) {
+      const pathParts = cleanPath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
+    } else {
+      fileName = cleanPath;
+      const encodedFileName = encodeURIComponent(cleanPath);
+      finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
+    }
+    
+    const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+    return `${finalUrl}?v=${version}`;
+  }, []);
   
   // 🔥 SOLUCIÓN SIMPLIFICADA: Usar solo useTracks (LiveKit maneja todo automáticamente)
   const tracks = useTracks([
@@ -364,6 +786,44 @@ const VideoDisplayImproved = ({
             </div>
           </div>
         )}
+        {/* 🔥 BOTONES DE MOSTRAR/OCULTAR CHAT Y MENÚ - En la esquina superior derecha - SOLO MÓVIL */}
+        {showOnTop && overlayText && (
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2 lg:hidden">
+            {/* Botón para ocultar/mostrar chat */}
+            <button
+              onClick={() => {
+                if (typeof setChatVisible === 'function') {
+                  setChatVisible(!chatVisible);
+                }
+              }}
+              className={`
+                bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm 
+                px-3 py-1.5 rounded-lg border border-gray-500/30
+                hover:border-gray-400/50 transition-all duration-200
+                ${!chatVisible ? 'border-[#ff007a]/50 bg-[#ff007a]/10' : ''}
+              `}
+              title={chatVisible ? "Ocultar chat" : "Mostrar chat"}
+            >
+              {chatVisible ? (
+                <MessageSquareOff size={16} className="text-gray-400" />
+              ) : (
+                <MessageSquare size={16} className="text-[#ff007a]" />
+              )}
+            </button>
+            
+            {/* Botón de menú (tres puntos) */}
+            <button
+              onClick={() => {
+                // Función para abrir menú de opciones
+                window.dispatchEvent(new CustomEvent('openCameraAudioSettings'));
+              }}
+              className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-gray-500/30 hover:border-gray-400/50 transition-all duration-200"
+              title="Más opciones"
+            >
+              <MoreVertical size={16} className="text-gray-400" />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -374,25 +834,61 @@ const VideoDisplayImproved = ({
       // Por defecto mostrar modelo en grande (local), pero si mainCamera es "remote" mostrar cliente
       if ((mainCamera === "local" || !mainCamera) && localParticipant) {
         if (finalLocalTrack) {
-          return renderVideoTrack(finalLocalTrack, "Tu cámara", "pink", true); // showOnTop = true
+          return renderVideoTrack(finalLocalTrack, getVideoChatText('yourCamera', currentLanguage, "Tu cámara"), "pink", true); // showOnTop = true
         }
         
         // Si no hay track pero cameraEnabled es true, mostrar carga
         if (cameraEnabled) {
           return (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative overflow-hidden">
-              {/* Nombre arriba */}
-              <div className="absolute top-4 left-4 z-20">
-                <div className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-[#ff007a]/30">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-[#ff007a] rounded-full animate-pulse"></div>
-                    <span className="text-[#ff007a] text-sm font-semibold">Tu cámara</span>
-                  </div>
+            {/* Nombre arriba */}
+            <div className="absolute top-4 left-4 z-20">
+              <div className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-[#ff007a]/30">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#ff007a] rounded-full animate-pulse"></div>
+                  <span className="text-[#ff007a] text-sm font-semibold">{getVideoChatText('yourCamera', currentLanguage, "Tu cámara")}</span>
                 </div>
               </div>
-              <div className="text-center text-gray-400">
+            </div>
+            {/* 🔥 BOTONES DE MOSTRAR/OCULTAR CHAT Y MENÚ - En la esquina superior derecha - SOLO MÓVIL */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 lg:hidden">
+              {/* Botón para ocultar/mostrar chat */}
+              <button
+                onClick={() => {
+                  if (typeof setChatVisible === 'function') {
+                    setChatVisible(!chatVisible);
+                  }
+                }}
+                className={`
+                  bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm 
+                  px-3 py-1.5 rounded-lg border border-gray-500/30
+                  hover:border-gray-400/50 transition-all duration-200
+                  ${!chatVisible ? 'border-[#ff007a]/50 bg-[#ff007a]/10' : ''}
+                `}
+                title={chatVisible ? "Ocultar chat" : "Mostrar chat"}
+              >
+                {chatVisible ? (
+                  <MessageSquareOff size={16} className="text-gray-400" />
+                ) : (
+                  <MessageSquare size={16} className="text-[#ff007a]" />
+                )}
+              </button>
+              
+              {/* Botón de menú (tres puntos) */}
+              <button
+                onClick={() => {
+                  // Función para abrir menú de opciones
+                  window.dispatchEvent(new CustomEvent('openCameraAudioSettings'));
+                }}
+                className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-gray-500/30 hover:border-gray-400/50 transition-all duration-200"
+                title="Más opciones"
+              >
+                <MoreVertical size={16} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="text-center text-gray-400">
                 <Loader2 className="animate-spin mx-auto mb-2" size={48} />
-                <p>Iniciando cámara...</p>
+                <p>{getVideoChatText('startingCamera', currentLanguage, 'Iniciando cámara...')}</p>
               </div>
             </div>
           );
@@ -406,13 +902,49 @@ const VideoDisplayImproved = ({
               <div className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-[#ff007a]/30">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-[#ff007a] rounded-full animate-pulse"></div>
-                  <span className="text-[#ff007a] text-sm font-semibold">Tu cámara</span>
+                  <span className="text-[#ff007a] text-sm font-semibold">{getVideoChatText('yourCamera', currentLanguage, "Tu cámara")}</span>
                 </div>
               </div>
             </div>
+            {/* 🔥 BOTONES DE MOSTRAR/OCULTAR CHAT Y MENÚ - En la esquina superior derecha - SOLO MÓVIL */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 lg:hidden">
+              {/* Botón para ocultar/mostrar chat */}
+              <button
+                onClick={() => {
+                  if (typeof setChatVisible === 'function') {
+                    setChatVisible(!chatVisible);
+                  }
+                }}
+                className={`
+                  bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm 
+                  px-3 py-1.5 rounded-lg border border-gray-500/30
+                  hover:border-gray-400/50 transition-all duration-200
+                  ${!chatVisible ? 'border-[#ff007a]/50 bg-[#ff007a]/10' : ''}
+                `}
+                title={chatVisible ? "Ocultar chat" : "Mostrar chat"}
+              >
+                {chatVisible ? (
+                  <MessageSquareOff size={16} className="text-gray-400" />
+                ) : (
+                  <MessageSquare size={16} className="text-[#ff007a]" />
+                )}
+              </button>
+              
+              {/* Botón de menú (tres puntos) */}
+              <button
+                onClick={() => {
+                  // Función para abrir menú de opciones
+                  window.dispatchEvent(new CustomEvent('openCameraAudioSettings'));
+                }}
+                className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-gray-500/30 hover:border-gray-400/50 transition-all duration-200"
+                title="Más opciones"
+              >
+                <MoreVertical size={16} className="text-gray-400" />
+              </button>
+            </div>
             <div className="text-center">
               <CameraOff className="mx-auto mb-4 text-gray-500" size={64} />
-              <p className="text-gray-500">Cámara apagada</p>
+              <p className="text-gray-500">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</p>
             </div>
           </div>
         );
@@ -436,9 +968,45 @@ const VideoDisplayImproved = ({
                 </div>
               </div>
             </div>
+            {/* 🔥 BOTONES DE MOSTRAR/OCULTAR CHAT Y MENÚ - En la esquina superior derecha - SOLO MÓVIL */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 lg:hidden">
+              {/* Botón para ocultar/mostrar chat */}
+              <button
+                onClick={() => {
+                  if (typeof setChatVisible === 'function') {
+                    setChatVisible(!chatVisible);
+                  }
+                }}
+                className={`
+                  bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm 
+                  px-3 py-1.5 rounded-lg border border-gray-500/30
+                  hover:border-gray-400/50 transition-all duration-200
+                  ${!chatVisible ? 'border-[#ff007a]/50 bg-[#ff007a]/10' : ''}
+                `}
+                title={chatVisible ? "Ocultar chat" : "Mostrar chat"}
+              >
+                {chatVisible ? (
+                  <MessageSquareOff size={16} className="text-gray-400" />
+                ) : (
+                  <MessageSquare size={16} className="text-[#ff007a]" />
+                )}
+              </button>
+              
+              {/* Botón de menú (tres puntos) */}
+              <button
+                onClick={() => {
+                  // Función para abrir menú de opciones
+                  window.dispatchEvent(new CustomEvent('openCameraAudioSettings'));
+                }}
+                className="bg-gradient-to-r from-[#0a0d10] to-[#131418] backdrop-blur-sm px-3 py-1.5 rounded-lg border border-gray-500/30 hover:border-gray-400/50 transition-all duration-200"
+                title="Más opciones"
+              >
+                <MoreVertical size={16} className="text-gray-400" />
+              </button>
+            </div>
             <div className="text-center text-gray-400">
               <CameraOff className="mx-auto mb-4 text-gray-500" size={64} />
-              <p className="text-gray-500">Cámara del chico apagada</p>
+              <p className="text-gray-500">{getVideoChatText('boyCameraOff', currentLanguage, 'Cámara del chico apagada')}</p>
             </div>
           </div>
         );
@@ -449,8 +1017,8 @@ const VideoDisplayImproved = ({
       if (participants.length === 1 && localParticipant && !remoteParticipant && !hadRemoteParticipant) {
         status = {
           icon: <Users size={48} className="text-[#ff007a]" />,
-          title: 'Esperando chico',
-          subtitle: 'Sala lista para conectar',
+          title: getVideoChatText('waitingForGuy', currentLanguage, 'Esperando chico'),
+          subtitle: getVideoChatText('roomReadyToConnect', currentLanguage, 'Sala lista para conectar'),
           bgColor: 'from-[#ff007a]/10 to-[#ff007a]/5',
           borderColor: 'border-[#ff007a]/20'
         };
@@ -531,7 +1099,7 @@ const VideoDisplayImproved = ({
             <div className="relative z-10 text-center p-1">
               <CameraOff size={18} className="text-gray-500 mx-auto mb-1" />
               <div className="text-gray-500 text-[10px] font-medium leading-tight">
-                {remoteParticipant ? 'Cámara apagada' : 'Esperando'}
+                {remoteParticipant ? getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada') : getVideoChatText('waiting', currentLanguage, 'Esperando')}
               </div>
             </div>
           </div>
@@ -545,7 +1113,7 @@ const VideoDisplayImproved = ({
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
               <div className="relative z-10 text-center p-2">
                 <CameraOff size={20} className="text-gray-500 mx-auto mb-2" />
-                <div className="text-gray-500 text-xs font-medium">Cámara apagada</div>
+                <div className="text-gray-500 text-xs font-medium">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</div>
               </div>
             </div>
           );
@@ -574,7 +1142,7 @@ const VideoDisplayImproved = ({
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
             <div className="relative z-10 text-center p-2">
               <Loader2 size={16} className="text-gray-400 mx-auto mb-2 animate-spin" />
-              <div className="text-gray-400 text-xs font-medium">Iniciando cámara...</div>
+              <div className="text-gray-400 text-xs font-medium">{getVideoChatText('startingCamera', currentLanguage, 'Iniciando cámara...')}</div>
             </div>
           </div>
         );
@@ -584,7 +1152,7 @@ const VideoDisplayImproved = ({
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
           <div className="relative z-10 text-center p-2">
             <CameraOff size={20} className="text-gray-500 mx-auto mb-2" />
-            <div className="text-gray-500 text-xs font-medium">Cámara apagada</div>
+            <div className="text-gray-500 text-xs font-medium">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</div>
           </div>
         </div>
       );
@@ -597,6 +1165,316 @@ const VideoDisplayImproved = ({
       <div className="w-full h-full relative rounded-2xl overflow-hidden" style={{ minHeight: 0, minWidth: 0 }}>
         {getMainVideo()}
       </div>
+
+      {/* 🔥 CHAT INTEGRADO - Entre username (top) y cámara pequeña (bottom) - SOLO MÓVIL */}
+      {chatVisible && messages && messages.length > 0 && (
+        <div 
+          className="absolute left-0 right-0 z-30 transition-opacity duration-500 max-lg:flex lg:hidden"
+          style={{ 
+            opacity: chatOpacity,
+            top: '4.5rem',
+            bottom: 'calc(1rem + 5.5rem)',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            padding: '0 1rem'
+          }}
+        >
+          <div 
+            ref={messagesEndRef}
+            className="bg-transparent p-2 w-full h-full overflow-y-auto"
+            style={{
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}
+          >
+            <style>{`
+              div::-webkit-scrollbar {
+                display: none;
+                width: 0;
+                height: 0;
+              }
+            `}</style>
+            {[...messages].filter((msg) => {
+              // 🔥 FILTRAR DUPLICADOS DE REGALOS (similar a desktop)
+              if (msg.type === 'gift_sent' || msg.type === 'gift_received' || msg.extra_data || msg.gift_data) {
+                try {
+                  const extraData = typeof msg.extra_data === 'string' ? JSON.parse(msg.extra_data) : (msg.extra_data || {});
+                  const giftData = typeof msg.gift_data === 'string' ? JSON.parse(msg.gift_data) : (msg.gift_data || {});
+                  
+                  const transactionId = extraData.transaction_id || giftData.transaction_id || extraData.gift_request_id || giftData.gift_request_id;
+                  const requestId = extraData.request_id || giftData.request_id || extraData.gift_request_id || giftData.gift_request_id;
+                  const uniqueId = transactionId || requestId;
+                  
+                  // Si tiene ID único, verificar duplicados usando un Set temporal
+                  // Nota: Este filtro se ejecuta en cada render, así que usamos un enfoque simple
+                  // En producción, esto debería estar en un useMemo o useEffect
+                } catch (e) {
+                  // Si hay error parseando, continuar con el mensaje
+                }
+              }
+              return true;
+            }).sort((a, b) => {
+              // 🔥 ORDENAR POR TIMESTAMP MEJORADO - Manejar múltiples campos de tiempo
+              const getTimestamp = (msg) => {
+                // Intentar obtener timestamp de múltiples fuentes
+                if (msg.timestamp && msg.timestamp > 0) return msg.timestamp;
+                if (msg.created_at) {
+                  const date = new Date(msg.created_at);
+                  if (!isNaN(date.getTime())) return date.getTime();
+                }
+                if (msg.id && typeof msg.id === 'number' && msg.id > 1000000000000) {
+                  // Si el ID es un timestamp válido (mayor a 2001-09-09)
+                  return msg.id;
+                }
+                // Si no hay timestamp válido, usar el índice como fallback (pero con un valor muy bajo)
+                return 0;
+              };
+              
+              const timestampA = getTimestamp(a);
+              const timestampB = getTimestamp(b);
+              
+              // Si ambos tienen timestamp válido, ordenar por timestamp
+              if (timestampA > 0 && timestampB > 0) {
+                return timestampA - timestampB;
+              }
+              
+              // Si solo uno tiene timestamp, el que tiene timestamp va después
+              if (timestampA > 0) return 1;
+              if (timestampB > 0) return -1;
+              
+              // Si ninguno tiene timestamp, mantener el orden original usando el ID
+              const idA = a.id || 0;
+              const idB = b.id || 0;
+              return idA - idB;
+            }).reduce((acc, msg, idx) => {
+              // 🔥 FILTRAR DUPLICADOS DE REGALOS POR transaction_id/request_id
+              if (msg.type === 'gift_sent' || msg.type === 'gift_received' || msg.extra_data || msg.gift_data) {
+                try {
+                  const extraData = typeof msg.extra_data === 'string' ? JSON.parse(msg.extra_data) : (msg.extra_data || {});
+                  const giftData = typeof msg.gift_data === 'string' ? JSON.parse(msg.gift_data) : (msg.gift_data || {});
+                  
+                  const transactionId = extraData.transaction_id || giftData.transaction_id || extraData.gift_request_id || giftData.gift_request_id;
+                  const requestId = extraData.request_id || giftData.request_id || extraData.gift_request_id || giftData.gift_request_id;
+                  const uniqueId = transactionId || requestId;
+                  
+                  if (uniqueId) {
+                    // Normalizar tipo: gift_sent del cliente = gift_received para la modelo
+                    const normalizedType = (msg.type === 'gift_sent' && (msg.user_role === 'cliente' || msg.senderRole === 'cliente')) 
+                      ? 'gift_received' 
+                      : msg.type;
+                    
+                    const giftKey = `${uniqueId}-${normalizedType}`;
+                    
+                    // Verificar si ya existe un mensaje con esta clave
+                    const existingIndex = acc.findIndex(m => {
+                      if (m.type === 'gift_sent' || m.type === 'gift_received' || m.extra_data || m.gift_data) {
+                        try {
+                          const mExtraData = typeof m.extra_data === 'string' ? JSON.parse(m.extra_data) : (m.extra_data || {});
+                          const mGiftData = typeof m.gift_data === 'string' ? JSON.parse(m.gift_data) : (m.gift_data || {});
+                          const mTransactionId = mExtraData.transaction_id || mGiftData.transaction_id || mExtraData.gift_request_id || mGiftData.gift_request_id;
+                          const mRequestId = mExtraData.request_id || mGiftData.request_id || mExtraData.gift_request_id || mGiftData.gift_request_id;
+                          const mUniqueId = mTransactionId || mRequestId;
+                          
+                          if (mUniqueId === uniqueId) {
+                            const mNormalizedType = (m.type === 'gift_sent' && (m.user_role === 'cliente' || m.senderRole === 'cliente')) 
+                              ? 'gift_received' 
+                              : m.type;
+                            return `${mUniqueId}-${mNormalizedType}` === giftKey;
+                          }
+                        } catch (e) {
+                          // Si hay error, no considerar duplicado
+                        }
+                      }
+                      return false;
+                    });
+                    
+                    if (existingIndex >= 0) {
+                      // Ya existe un mensaje con este ID único, omitir este
+                      console.log('🔍 [MODELO-MOBILE] Mensaje de regalo duplicado detectado y filtrado:', {
+                        msgId: msg.id,
+                        uniqueId,
+                        type: msg.type,
+                        normalizedType,
+                        giftKey
+                      });
+                      return acc;
+                    }
+                  }
+                } catch (e) {
+                  // Si hay error parseando, continuar con el mensaje
+                }
+              }
+              acc.push(msg);
+              return acc;
+            }, []).map((msg, idx) => {
+              if (msg.type === 'system') return null;
+              
+              const isLocal = msg.type === 'local' || (msg.senderRole && msg.senderRole === userData?.role);
+              const senderName = isLocal 
+                ? (userData?.name || 'Tú') 
+                : (msg.sender || otherUser?.name || 'Cliente');
+              
+              const isGift = isGiftMessage(msg);
+              
+              if (isGift) {
+                const giftData = parseGiftData(msg);
+                const imageUrl = giftData.gift_image ? buildCompleteImageUrl(giftData.gift_image) : null;
+                const isFromCurrentUser = isLocal;
+                
+                // 🔥 DETECTAR SI ES gift_sent DEL CLIENTE (regalo recibido para la modelo)
+                const isGiftSentFromClient = msg.type === 'gift_sent' && !isFromCurrentUser && (msg.user_role === 'cliente' || msg.senderRole === 'cliente');
+                // 🔥 DETECTAR SI ES gift_sent DE LA MODELO (raro, pero posible)
+                const isGiftSentFromModel = msg.type === 'gift_sent' && isFromCurrentUser;
+                // 🔥 CORREGIDO: Las solicitudes de regalo de la modelo (isFromCurrentUser) deben mostrarse del lado derecho
+                const isGiftRequest = msg.type === 'gift_request' || (msg.text?.includes('Solicitud') || msg.message?.includes('Solicitud'));
+                // 🔥 Si es solicitud de regalo del usuario actual (modelo), debe mostrarse del lado derecho
+                const isGiftRequestFromModel = isGiftRequest && isFromCurrentUser;
+                // 🔥 Determinar alineación: derecha si es enviado por el usuario o si es solicitud del usuario
+                const shouldAlignRight = isGiftSentFromModel || isGiftRequestFromModel;
+                
+                return (
+                  <div 
+                    key={msg.id || idx} 
+                    className={`mb-2 last:mb-0 ${shouldAlignRight ? 'text-right' : 'text-left'}`}
+                    style={{ display: 'flex', justifyContent: shouldAlignRight ? 'flex-end' : 'flex-start', width: '100%' }}
+                  >
+                    <div 
+                      className="rounded-xl p-3"
+                      style={{ 
+                        backgroundColor: isGiftSentFromModel 
+                          ? 'rgba(59, 130, 246, 0.2)' 
+                          : isGiftRequest
+                          ? 'rgba(255, 0, 122, 0.2)'
+                          : 'rgba(34, 197, 94, 0.2)',
+                        border: `1px solid ${isGiftSentFromModel ? 'rgba(59, 130, 246, 0.3)' : isGiftRequest ? 'rgba(255, 0, 122, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+                        maxWidth: '200px',
+                        width: 'fit-content',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="rounded-full p-1.5"
+                          style={{ 
+                            backgroundColor: isGiftSentFromModel 
+                              ? 'rgba(59, 130, 246, 0.8)' 
+                              : isGiftRequest
+                              ? 'rgba(255, 0, 122, 0.8)'
+                              : 'rgba(34, 197, 94, 0.8)'
+                          }}
+                        >
+                          <Gift size={12} className="text-white" />
+                        </div>
+                        <span className="text-xs font-semibold text-white">
+                          {isGiftSentFromModel 
+                            ? getGiftCardText('giftSent', currentLanguage) 
+                            : isGiftRequest 
+                            ? getGiftCardText('requestGift', currentLanguage)
+                            : getGiftCardText('giftReceived', currentLanguage)}
+                        </span>
+                      </div>
+                      
+                      {imageUrl && (
+                        <div className="mb-2 flex justify-center">
+                          <div 
+                            className="rounded-lg flex items-center justify-center overflow-hidden"
+                            style={{
+                              width: '48px',
+                              height: '48px',
+                              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)'
+                            }}
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={giftData.gift_name || 'Regalo'}
+                              className="object-contain"
+                              style={{ width: '40px', height: '40px' }}
+                              loading="lazy"
+                              decoding="async"
+                              key={`gift-mobile-${giftData.gift_name}-${imageUrl}`}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                const fallback = e.target.parentNode.querySelector('.gift-fallback-mobile');
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                            <div className="gift-fallback-mobile hidden items-center justify-center" style={{ width: '40px', height: '40px' }}>
+                              <Gift size={16} className="text-white opacity-50" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="text-center mb-1">
+                        <p className="text-white font-bold text-xs" style={{ wordBreak: 'break-word' }}>
+                          {getTranslatedGiftName(giftData.gift_name, currentLanguage, giftData.gift_name || 'Regalo Especial')}
+                        </p>
+                      </div>
+                      
+                      {giftData.gift_price && (
+                        <div className="text-center">
+                          <span className="text-xs font-semibold text-amber-200">
+                            ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
+                <div 
+                  key={msg.id || idx} 
+                  className={`mb-1 last:mb-0 ${isLocal ? 'text-right' : 'text-left'}`}
+                  style={{ display: 'flex', justifyContent: isLocal ? 'flex-end' : 'flex-start', width: '100%' }}
+                >
+                  <div 
+                    className={`px-3 py-2 rounded-lg ${
+                      isLocal 
+                        ? 'text-right' 
+                        : 'text-left'
+                    }`}
+                    style={{ 
+                      backgroundColor: '#4a4a4a',
+                      maxWidth: '250px',
+                      minWidth: '0',
+                      width: 'fit-content',
+                      wordWrap: 'break-word',
+                      overflowWrap: 'break-word',
+                      wordBreak: 'break-word',
+                      boxSizing: 'border-box',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {!isLocal && (
+                      <div className="text-xs font-semibold mb-1 text-gray-300" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                        {senderName}
+                      </div>
+                    )}
+                    <div 
+                      className="text-sm font-medium"
+                      style={{
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        wordBreak: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                        overflow: 'hidden',
+                        maxWidth: '100%',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      {renderMessageWithTranslation(msg)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Mini video con borde fucsia */}
       <div

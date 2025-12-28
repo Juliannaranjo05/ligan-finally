@@ -54,7 +54,7 @@ const SessionSuspendedModal = () => {
     checkPersistedState();
   }, []);
 
-  // 🔥 FUNCIÓN PARA CERRAR MODAL Y LIMPIAR TODO
+  // 🔥 FUNCIÓN PARA CERRAR MODAL Y LIMPIAR TODO (cerrar sesión definitivamente)
   const handleClose = React.useCallback(() => {
     // Limpiar timeout si existe
     if (timeoutRef.current) {
@@ -80,11 +80,9 @@ const SessionSuspendedModal = () => {
     modalVisibleRef.current = false;
     setShowModal(false);
     
-    // 🔥 FORZAR RECARGA COMPLETA - usar reload para cerrar completamente la sesión
-    // Usar setTimeout para asegurar que el localStorage se limpie antes de recargar
+    // 🔥 REDIRIGIR A /home - El usuario decidió cerrar la sesión
     setTimeout(() => {
-      // Forzar recarga completa de la página para cerrar la sesión completamente
-      window.location.reload();
+      window.location.href = '/home';
     }, 100);
   }, []);
 
@@ -393,10 +391,10 @@ const SessionSuspendedModal = () => {
           
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-white mb-2">
-              {t('sessionSuspended.title') || 'Se abrió una nueva sesión en otro dispositivo'}
+              {t('sessionSuspended.title') || 'Tu cuenta ha sido abierta en otro dispositivo'}
             </h3>
             <p className="text-white/80 text-sm mb-4">
-              {t('sessionSuspended.message') || 'Tu sesión actual ha sido suspendida porque se abrió una nueva sesión en otro dispositivo. Puedes continuar con esta sesión haciendo clic en el botón de abajo.'}
+              {t('sessionSuspended.message') || 'Tu cuenta ha sido abierta en otro dispositivo, entonces te la suspendimos esta sesión temporalmente.'}
             </p>
             
             {errorMessage && (

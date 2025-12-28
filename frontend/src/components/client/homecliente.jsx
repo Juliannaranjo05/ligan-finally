@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "./headercliente";
@@ -56,6 +56,56 @@ export default function InterfazCliente() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const { t } = useTranslation(); // 🔥 MOVER AQUÍ PARA QUE ESTÉ DISPONIBLE EN TODO EL COMPONENTE
+
+  // 🔍 Función para enviar logs al backend
+  const sendLogToBackend = async (level, message, data = null) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return; // No enviar si no hay token
+      
+      const logData = {
+        level: level, // 'info', 'warn', 'error', 'debug'
+        message: message,
+        data: data,
+        context: 'HomeCliente',
+        url: window.location.href,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
+      };
+
+      // Fire and forget - no esperar respuesta
+      fetch(`${API_BASE_URL}/api/logs/frontend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(logData),
+        keepalive: true
+      }).catch(() => {
+        // Silenciar errores de logging para evitar bucles
+      });
+    } catch (e) {
+      // Silenciar errores de logging
+    }
+  };
+
+  // 🔍 LOG INICIAL DEL COMPONENTE
+  console.log('%c[HOME] Componente InterfazCliente montado', 'color: #ff00ff; font-weight: bold; font-size: 16px;');
+  console.log('[HOME] Componente InterfazCliente montado - API_BASE_URL:', API_BASE_URL);
+
+  // 🔍 LOG INICIAL DEL COMPONENTE - FORZAR VISIBILIDAD
+  useEffect(() => {
+    console.log('%c═══════════════════════════════════════', 'color: #ff00ff; font-weight: bold;');
+    console.log('%c[HOME] Componente InterfazCliente MONTADO', 'color: #ff00ff; font-weight: bold; font-size: 16px;');
+    console.log('%cAPI_BASE_URL:', 'color: #00ffff; font-weight: bold;', API_BASE_URL);
+    console.log('%c═══════════════════════════════════════', 'color: #ff00ff; font-weight: bold;');
+    // También usar métodos directos para evitar filtros
+    if (window.console) {
+      window.console.log('[HOME] COMPONENTE INICIADO');
+    }
+  }, []);
 
   // 🔥 HEARTBEAT DE RESPALDO: Asegura detección constante de sesión cerrada
   // El heartbeat global en ProtectedPage ya está activo, esto es redundancia adicional
@@ -132,6 +182,8 @@ export default function InterfazCliente() {
   // Estados
   const [user, setUser] = useState(null);
   const [chicasActivas, setChicasActivas] = useState([]);
+  const [stories, setStories] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [showBuyMinutes, setShowBuyMinutes] = useState(false);
@@ -140,6 +192,12 @@ export default function InterfazCliente() {
   const [showNoBalanceModal, setShowNoBalanceModal] = useState(false);
   const [balanceDetails, setBalanceDetails] = useState(null); // ✅ ESTADO FALTANTE
   const [notification, setNotification] = useState(null); // Notificación temporal
+
+  // 🔥 FUNCIÓN PARA MOSTRAR NOTIFICACIÓN - MOVER ANTES DE SU USO Y USAR useCallback
+  const showNotification = useCallback((message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000); // Ocultar después de 4 segundos
+  }, []);
 
   // Verificar pago de Wompi cuando el usuario regresa
   useEffect(() => {
@@ -188,7 +246,7 @@ export default function InterfazCliente() {
       searchParams.delete('payment');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams, API_BASE_URL]);
+  }, [searchParams, setSearchParams, API_BASE_URL, showNotification]);
 
   const abrirModalCompraMinutos = () => {
     setShowBuyMinutes(true);
@@ -259,12 +317,6 @@ export default function InterfazCliente() {
     } finally {
       setLoadingBalance(false);
     }
-  };
-
-  // Función para mostrar notificación
-  const showNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000); // Ocultar después de 4 segundos
   };
 
   const validarSaldoYRedireccionar = async () => {
@@ -355,8 +407,6 @@ export default function InterfazCliente() {
     activeGirls: false,  // Se abrirá automáticamente si hay chicas activas
     history: false       // Por defecto cerrado
   });
-
-  const { t } = useTranslation();
 
   // 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
   // 🔥 FUNCIÓN PARA CARGAR HISTORIAL DE LLAMADAS
@@ -553,20 +603,140 @@ export default function InterfazCliente() {
     }
   };
 
+  // 📱 Cargar historias de modelos
+  const cargarHistorias = async () => {
+    try {
+      // 🔍 LOG INICIAL - Forzar mostrar en consola con múltiples métodos
+      const logMessage = '🔍 [HOME] Iniciando carga de historias...';
+      console.log('%c' + logMessage, 'color: #00ff00; font-weight: bold; font-size: 14px;');
+      console.log(logMessage);
+      console.info(logMessage);
+      // También usar window.console para evitar filtros
+      if (window.console && window.console.log) {
+        window.console.log('[HOME] CARGANDO HISTORIAS - FUNCIÓN EJECUTADA');
+      }
+      sendLogToBackend('info', logMessage);
+      setLoadingStories(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        const warnMessage = '⚠️ [HOME] No hay token disponible para cargar historias';
+        console.warn(warnMessage);
+        sendLogToBackend('warn', warnMessage);
+        setStories([]);
+        setLoadingStories(false);
+        return;
+      }
+
+      const url = `${API_BASE_URL}/api/stories/active`;
+      const requestLog = `📡 [HOME] Haciendo petición a: ${url}`;
+      console.log(requestLog);
+      sendLogToBackend('info', requestLog, { url });
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      const responseData = {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      };
+      console.log('📥 [HOME] Respuesta recibida:', responseData);
+      sendLogToBackend('info', '📥 [HOME] Respuesta recibida', responseData);
+
+      if (response.ok) {
+        const data = await response.json();
+        const storiesData = {
+          total: Array.isArray(data) ? data.length : 0,
+          stories: Array.isArray(data) ? data.map(s => ({
+            id: s.id,
+            user_id: s.user_id,
+            user_name: s.user?.name || 'N/A',
+            is_online: s.user?.is_online || false,
+            expires_at: s.expires_at,
+            status: s.status
+          })) : []
+        };
+        console.log('✅ [HOME] Historias cargadas exitosamente:', storiesData);
+        sendLogToBackend('info', '✅ [HOME] Historias cargadas exitosamente', storiesData);
+        
+        const storiesArray = Array.isArray(data) ? data : [];
+        setStories(storiesArray);
+        
+        // Log detallado de estados online/offline
+        const onlineCount = storiesArray.filter(s => s.user?.is_online).length;
+        const offlineCount = storiesArray.filter(s => !s.user?.is_online).length;
+        const summaryData = {
+          total: storiesArray.length,
+          activas: onlineCount,
+          inactivas: offlineCount
+        };
+        console.log('📊 [HOME] Resumen de estados:', summaryData);
+        sendLogToBackend('info', '📊 [HOME] Resumen de estados', summaryData);
+      } else {
+        const errorText = await response.text();
+        const errorData = {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        };
+        console.error('❌ [HOME] Error al cargar historias:', errorData);
+        sendLogToBackend('error', '❌ [HOME] Error al cargar historias', errorData);
+        setStories([]);
+      }
+    } catch (error) {
+      const errorData = {
+        message: error.message,
+        stack: error.stack,
+        error: String(error)
+      };
+      console.error('💥 [HOME] Excepción al cargar historias:', errorData);
+      sendLogToBackend('error', '💥 [HOME] Excepción al cargar historias', errorData);
+      setStories([]);
+    } finally {
+      setLoadingStories(false);
+      const finalMessage = '🏁 [HOME] Carga de historias finalizada';
+      console.log(finalMessage);
+      sendLogToBackend('info', finalMessage);
+    }
+  };
+
   // 🔥 FUNCIÓN PARA NAVEGAR A CHAT CON CHICA ESPECÍFICA
   const abrirChatConChica = (chica) => {
+    console.log('🔵 [HOME] ========== INICIO abrirChatConChica ==========');
+    console.log('🔵 [HOME] Chica recibida:', JSON.stringify(chica, null, 2));
     logger.debug('Abriendo chat con chica:', chica);
     
     const otherUserId = chica.id || chica.user_id;
     const otherUserName = chica.display_name || chica.name || chica.alias || 'Usuario';
     const userRole = chica.role || 'modelo';
     
+    console.log('🔵 [HOME] Datos extraídos:', {
+      otherUserId,
+      otherUserName,
+      userRole
+    });
+    
     // Generar room_name (mismo formato que usa el backend)
     const currentUserFromState = user?.id;
     const currentUserFromStorage = getUser()?.id;
     const currentUserId = currentUserFromState || currentUserFromStorage;
     
+    console.log('🔵 [HOME] IDs de usuario:', {
+      currentUserFromState,
+      currentUserFromStorage,
+      currentUserId,
+      otherUserId
+    });
+    
     if (!currentUserId || !otherUserId) {
+      console.error('❌ [HOME] ERROR: No se pudo obtener IDs de usuario');
       logger.error('No se pudo obtener IDs de usuario para crear el chat');
       showNotification('Error al abrir el chat. Por favor, intenta de nuevo.', 'error');
       return;
@@ -574,6 +744,8 @@ export default function InterfazCliente() {
     
     // Crear room_name ordenando los IDs para que sea consistente
     const roomName = [currentUserId, otherUserId].sort().join('_');
+    
+    console.log('🔵 [HOME] Room name generado:', roomName);
     
     const chatData = {
       other_user_id: otherUserId,
@@ -584,15 +756,33 @@ export default function InterfazCliente() {
       needsSync: true
     };
     
+    console.log('🔵 [HOME] Chat data completo:', JSON.stringify(chatData, null, 2));
     logger.debug('Datos del chat:', chatData);
     
-    navigate({
-      pathname: '/message',
+    // 🔥 DETECTAR SI ES MÓVIL Y USAR LA RUTA CORRECTA
+    const windowWidth = window.innerWidth;
+    const isMobile = windowWidth < 768;
+    // 🔥 Usar ruta diferente según dispositivo
+    const chatPath = isMobile ? '/mensajesmobileclient' : '/message';
+    
+    console.log('🔵 [HOME] Detección de dispositivo:', {
+      windowWidth,
+      isMobile,
+      chatPath
+    });
+    
+    const navigationState = {
+      pathname: chatPath,
       search: `?user=${encodeURIComponent(otherUserName)}`,
       state: {
         openChatWith: chatData
       }
-    });
+    };
+    
+    console.log('🔵 [HOME] Navegando con:', JSON.stringify(navigationState, null, 2));
+    console.log('🔵 [HOME] ========== FIN abrirChatConChica ==========');
+    
+    navigate(navigationState);
   };
 
   // 🔥 NUEVA FUNCIÓN: INICIAR LLAMADA A CHICA
@@ -1133,12 +1323,19 @@ export default function InterfazCliente() {
 
   // 🔄 POLLING MEJORADO - SIN PARPADEO
   useEffect(() => {
-    if (!user?.id) return;
+    console.log('[HOME] useEffect ejecutado - user?.id:', user?.id);
+    if (!user?.id) {
+      console.warn('[HOME] No hay user.id, saliendo del useEffect');
+      return;
+    }
 
+    console.log('[HOME] Llamando cargarChicasActivas y cargarHistorias');
     cargarChicasActivas(false);
+    cargarHistorias(); // Cargar historias al montar
 
     const interval = setInterval(() => {
       cargarChicasActivas(true);
+      cargarHistorias(); // Actualizar historias periódicamente
     }, 30000);
 
     return () => clearInterval(interval);
@@ -1234,6 +1431,7 @@ export default function InterfazCliente() {
 
 
   const ModalSinSaldo = ({ isVisible, onClose, onGoToRecharge }) => {
+    const { t: tModal } = useTranslation(); // 🔥 USAR useTranslation DENTRO DEL COMPONENTE
     if (!isVisible) return null;
     
     return (
@@ -1249,34 +1447,34 @@ export default function InterfazCliente() {
             
             {/* Título */}
             <h3 className="text-xl font-bold text-white mb-3">
-              {t('clientInterface.insufficientBalanceTitle')}
+              {tModal('clientInterface.insufficientBalanceTitle')}
             </h3>
             
             {/* Mensaje */}
             <div className="text-white/70 mb-6 leading-relaxed">
               <p className="mb-3">
-                {t('clientInterface.insufficientBalanceMessage')}
+                {tModal('clientInterface.insufficientBalanceMessage')}
               </p>
               
               {/* ✅ MOSTRAR DETALLES DEL SALDO SI ESTÁN DISPONIBLES */}
               {balanceDetails && balanceDetails.balance && (
                 <div className="bg-[#1f2125] rounded-lg p-3 text-sm">
-                  <p className="text-white/50 mb-2">{t('clientInterface.currentStatus')}</p>
+                  <p className="text-white/50 mb-2">{tModal('clientInterface.currentStatus')}</p>
                   <div className="space-y-1">
                     <div className="flex justify-between">
-                      <span>{t('clientInterface.totalCoins')}</span>
+                      <span>{tModal('clientInterface.totalCoins')}</span>
                       <span className="text-[#ff007a]">
                         {balanceDetails.balance.total_coins || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>{t('clientInterface.minutes')}</span>
+                      <span>{tModal('clientInterface.minutes')}</span>
                       <span className="text-[#ff007a]">
                         {balanceDetails.balance.minutes_available || 0}
                       </span>
                     </div>
                     <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
-                      <span>{t('clientInterface.minimumRequired')}</span>
+                      <span>{tModal('clientInterface.minimumRequired')}</span>
                       <span className="text-yellow-400">
                         {balanceDetails.balance.minimum_required || 30}
                       </span>
@@ -1295,14 +1493,14 @@ export default function InterfazCliente() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                {t('clientInterface.rechargeNow')}
+                {tModal('clientInterface.rechargeNow')}
               </button>
               
               <button
                 onClick={onClose}
                 className="w-full bg-transparent border border-white/20 hover:border-white/40 text-white/70 hover:text-white px-6 py-2 rounded-lg font-medium transition-colors"
               >
-                {t('clientInterface.cancel')}
+                {tModal('clientInterface.cancel')}
               </button>
             </div>
           </div>
@@ -1312,12 +1510,13 @@ export default function InterfazCliente() {
   };
 
   const SaldoWidget = () => {
+    const { t: tWidget } = useTranslation(); // 🔥 USAR useTranslation DENTRO DEL COMPONENTE
     if (!userBalance) return null;
     
     return (
       <div className="bg-[#2b2d31] rounded-xl p-4 border border-[#ff007a]/20 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-white/60">{t('clientInterface.yourBalance')}</span>
+          <span className="text-sm text-white/60">{tWidget('clientInterface.yourBalance')}</span>
           <button 
             onClick={consultarSaldoUsuario}
             className="text-[#ff007a] hover:text-[#e6006e] text-xs"
@@ -1329,17 +1528,17 @@ export default function InterfazCliente() {
         
         <div className="space-y-1">
           <div className="flex justify-between text-sm">
-            <span className="text-white/70">{t('clientInterface.total')}</span>
+            <span className="text-white/70">{tWidget('clientInterface.total')}</span>
             <span className="text-[#ff007a] font-semibold">
               {userBalance.total_coins || userBalance.total_available || 0}
             </span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/50">{t('clientInterface.minutes')}</span>
+            <span className="text-white/50">{tWidget('clientInterface.minutes')}</span>
             <span className="text-white/70">{userBalance.minutes_available || 0}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-white/50">{t('clientInterface.status')}</span>
+            <span className="text-white/50">{tWidget('clientInterface.status')}</span>
             <span className={
               (userBalance.total_coins || userBalance.total_available || 0) <= 29
                 ? "text-red-400"
@@ -1348,10 +1547,10 @@ export default function InterfazCliente() {
                   : "text-green-400"
             }>
               {(userBalance.total_coins || userBalance.total_available || 0) <= 29
-                ? t('clientInterface.insufficientBalance')
+                ? tWidget('clientInterface.insufficientBalance')
                 : (userBalance.total_coins || userBalance.total_available || 0) <= 39
-                  ? t('clientInterface.minimumBalance')
-                  : t('clientInterface.stableBalance')
+                  ? tWidget('clientInterface.minimumBalance')
+                  : tWidget('clientInterface.stableBalance')
               }
             </span>
           </div>
@@ -1581,9 +1780,9 @@ export default function InterfazCliente() {
                     <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
                       {t('clientInterface.activeGirls')}
                     </h3>
-                    {chicasActivas.length > 0 && (
+                    {stories.length > 0 && (
                       <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
-                        {chicasActivas.length}
+                        {stories.length}
                       </span>
                     )}
                   </div>
@@ -1600,14 +1799,14 @@ export default function InterfazCliente() {
                   {expandedSections.activeGirls && (
                   <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
                     
-                    {loadingUsers && initialLoad ? (
+                    {loadingStories ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
                         <span className="ml-3 text-sm text-white/60">
                           {t('clientInterface.loadingGirls')}
                         </span>
                       </div>
-                    ) : chicasActivas.length === 0 ? (
+                    ) : stories.length === 0 ? (
                       <div className="flex flex-col items-center justify-center text-center py-8">
                         <Users size={32} className="text-white/20 mb-3" />
                         <p className="text-sm text-white/60 font-medium">
@@ -1619,77 +1818,133 @@ export default function InterfazCliente() {
                       </div>
                     ) : (
                       <div className="space-y-3 pt-3">
-                        {chicasActivas.map((chica, index) => (
-                          <div
-                            key={chica.id}
-                            className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
-                            style={{
-                              animationDelay: `${index * 50}ms`
-                            }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="relative">
-                                {chica.avatar_url ? (
-                                  <img 
-                                    src={chica.avatar_url} 
-                                    alt={chica.display_name || chica.name || chica.alias} 
-                                    className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      e.target.nextElementSibling.style.display = 'flex';
-                                    }}
-                                  />
-                                ) : null}
-                                <div 
-                                  className={`w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${chica.avatar_url ? 'hidden' : ''}`}
-                                >
-                                  {getInitial(chica.display_name || chica.name || chica.alias)}
+                        {(() => {
+                          const renderData = {
+                            total: stories.length,
+                            timestamp: new Date().toISOString()
+                          };
+                          console.log('🎨 [HOME] Renderizando historias:', renderData);
+                          sendLogToBackend('info', '🎨 [HOME] Renderizando historias', renderData);
+                          return stories.map((story, index) => {
+                            const modelo = story.user || {};
+                            // 🔄 SIEMPRE MOSTRAR COMO ACTIVA (aunque no lo esté realmente)
+                            const isOnline = true; // Siempre true para mostrar todas como activas
+                            const avatarUrl = modelo.avatar || story.file_url;
+                            const displayName = modelo.name || modelo.display_name || 'Usuario';
+                            
+                            // Log individual de cada historia renderizada (solo la primera para no saturar)
+                            if (index === 0) {
+                              const storyData = {
+                                story_id: story.id,
+                                user_id: story.user_id,
+                                user_name: displayName,
+                                is_online: isOnline,
+                                expires_at: story.expires_at,
+                                status: story.status
+                              };
+                              console.log('📝 [HOME] Ejemplo de historia renderizada:', storyData);
+                              sendLogToBackend('info', '📝 [HOME] Ejemplo de historia renderizada', storyData);
+                            }
+                            
+                            return (
+                            <div
+                              key={story.id}
+                              className="relative flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
+                              style={{
+                                animationDelay: `${index * 50}ms`
+                              }}
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className="relative">
+                                  {avatarUrl ? (
+                                    <img 
+                                      src={avatarUrl} 
+                                      alt={displayName} 
+                                      className="w-12 h-12 rounded-full object-cover border-2 border-[#ff007a]"
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        if (e.target.nextElementSibling) {
+                                          e.target.nextElementSibling.style.display = 'flex';
+                                        }
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div 
+                                    className={`w-12 h-12 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${avatarUrl ? 'hidden' : ''}`}
+                                  >
+                                    {getInitial(displayName)}
+                                  </div>
+                                  {/* Siempre mostrar indicador verde */}
+                                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
                                 </div>
-                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm truncate">
+                                    {displayName}
+                                  </div>
+                                  {/* Siempre mostrar como Online */}
+                                  <div className="text-xs text-green-400">
+                                    {t('clientInterface.online') || 'Online'}
+                                  </div>
+                                </div>
                               </div>
-                              <div>
-                                <div className="font-semibold text-sm">
-                                  {chica.display_name || chica.name || chica.alias}
-                                </div>
-                                <div className="text-xs text-green-400">
-                                  {t('clientInterface.online')}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => iniciarLlamadaAChica(chica)}
-                                disabled={isCallActive || isReceivingCall}
-                                className={`p-2 rounded-full transition-colors duration-200 ${
-                                  isCallActive || isReceivingCall 
-                                    ? 'bg-gray-500/20 cursor-not-allowed' 
-                                    : 'hover:bg-[#ff007a]/20'
-                                }`}
-                                title={
-                                  isCallActive || isReceivingCall 
-                                    ? t('clientInterface.callInProgress')
-                                    : t('clientInterface.callThisGirl')
-                                }
-                              >
-                                <Phone 
-                                  size={16} 
-                                  className={`${
+                              <div className="flex items-center gap-2 ml-2">
+                                <button
+                                  onClick={() => {
+                                    const chicaData = {
+                                      id: modelo.id || story.user_id,
+                                      name: displayName,
+                                      display_name: displayName,
+                                      alias: displayName,
+                                      role: 'modelo',
+                                      is_online: true, // Siempre true
+                                      avatar_url: avatarUrl
+                                    };
+                                    iniciarLlamadaAChica(chicaData);
+                                  }}
+                                  disabled={isCallActive || isReceivingCall}
+                                  className={`p-2 rounded-full transition-colors duration-200 ${
                                     isCallActive || isReceivingCall 
-                                      ? 'text-gray-500' 
-                                      : 'text-[#ff007a] hover:text-white'
-                                  } transition-colors`} 
-                                />
-                              </button>
-                              <button
-                                onClick={() => abrirChatConChica(chica)}
-                                className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
-                                title={t('clientInterface.messageThisGirl')}
-                              >
-                                <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
-                              </button>
+                                      ? 'bg-gray-500/20 cursor-not-allowed' 
+                                      : 'hover:bg-[#ff007a]/20'
+                                  }`}
+                                  title={
+                                    isCallActive || isReceivingCall 
+                                      ? t('clientInterface.callInProgress')
+                                      : t('clientInterface.callThisGirl')
+                                  }
+                                >
+                                  <Phone 
+                                    size={16} 
+                                    className={`${
+                                      isCallActive || isReceivingCall 
+                                        ? 'text-gray-500' 
+                                        : 'text-[#ff007a] hover:text-white'
+                                    } transition-colors`} 
+                                  />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const chicaData = {
+                                      id: modelo.id || story.user_id,
+                                      name: displayName,
+                                      display_name: displayName,
+                                      alias: displayName,
+                                      role: 'modelo',
+                                      is_online: true, // Siempre true
+                                      avatar_url: avatarUrl
+                                    };
+                                    abrirChatConChica(chicaData);
+                                  }}
+                                  className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
+                                  title={t('clientInterface.messageThisGirl')}
+                                >
+                                  <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        });
+                        })()}
                       </div>
                     )}
                   </div>

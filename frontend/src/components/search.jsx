@@ -646,7 +646,19 @@ const UserSearch = () => {
     isMountedRef.current = false;
     window.__USERSEARCH_ACTIVE = null;
     
-    // 🔥 LIMPIAR DATOS DE SESIÓN COMPLETAMENTE
+    // 🔥 SI VIENE DE DESCONEXIÓN DEL CLIENTE, NO LIMPIAR SESIÓN Y VOLVER A HOME
+    // Detectar si viene de partner_left_session o client_stopped_session
+    const fromPartnerDisconnect = from === 'partner_left_session' || 
+                                  from === 'client_stopped_session' ||
+                                  from === 'previous_client_left';
+    
+    if (fromPartnerDisconnect && role === 'modelo') {
+      // 🔥 NO LIMPIAR DATOS DE SESIÓN - Solo ir a homellamadas
+      navigate('/homellamadas', { replace: true });
+      return;
+    }
+    
+    // 🔥 LIMPIAR DATOS DE SESIÓN COMPLETAMENTE (solo si no es desde desconexión)
     localStorage.removeItem('inCall');
     localStorage.removeItem('videochatActive');
     localStorage.removeItem('roomName');

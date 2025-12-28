@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "./headercliente";
 import { useTranslation } from "react-i18next";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 import { useSearching } from '../../contexts/SearchingContext.jsx';
 import { useSessionValidation } from '../hooks/useSessionValidation';
@@ -34,7 +34,9 @@ export default function PreCallLobbyClient() {
   const isNavigatingRef = useRef(false);
   
   const { startSearching, stopSearching } = useSearching();
-  const { t } = useTranslation();
+  const translationResult = useTranslation();
+  // 🔥 Safe fallback for translation function to prevent "t is not defined" errors
+  const t = translationResult?.t || ((key) => key);
   const navigate = useNavigate();
 
   // 🔥 FUNCIÓN PARA VERIFICAR SI PUEDE INICIAR VIDEOLLAMADA
@@ -343,15 +345,14 @@ export default function PreCallLobbyClient() {
 
   return (
     <div className="h-screen overflow-hidden bg-ligand-mix-dark from-[#0a0d10] to-[#131418] text-white flex flex-col">
-      <div className="flex-shrink-0 w-full px-2 sm:px-4 md:px-6 pt-2 sm:pt-3 md:pt-4">
+      <div className="flex-shrink-0 w-full px-2 sm:px-4 pt-2 sm:pt-3">
         <Header />
       </div>
-
-      <div className="flex-1 flex justify-center items-center px-3 sm:px-4 md:px-6 pb-2 sm:pb-3 min-h-0 overflow-hidden">
-        <div className="bg-[#1f2125] rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col items-center max-w-md sm:max-w-lg w-full max-h-full justify-center">
+      <div className="flex-1 flex justify-center items-center px-3 sm:px-4 min-h-0 overflow-hidden pb-2">
+        <div className="bg-[#1f2125] rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col items-center max-w-md sm:max-w-lg w-full justify-center">
           
           {/* Video container con overlay de estado */}
-          <div className="w-full aspect-square max-w-[180px] sm:max-w-[200px] md:max-w-[220px] mx-auto rounded-lg sm:rounded-xl overflow-hidden mb-1.5 sm:mb-2 bg-black relative flex-shrink-0 border-2 border-[#ff007a]/20">
+          <div className="w-full aspect-video max-w-[240px] sm:max-w-[280px] md:max-w-[320px] mx-auto rounded-lg sm:rounded-xl overflow-hidden mb-1 sm:mb-1.5 bg-black relative flex-shrink-0 border-2 border-[#ff007a]/20">
             <video
               ref={videoRef}
               autoPlay
@@ -390,8 +391,8 @@ export default function PreCallLobbyClient() {
           </div>
 
           {/* Título y estado */}
-          <div className="text-center mb-1.5 sm:mb-2 w-full flex-shrink-0">
-            <h2 className="text-sm sm:text-base font-semibold mb-1 text-white">
+          <div className="text-center mb-1 sm:mb-1.5 w-full flex-shrink-0">
+            <h2 className="text-sm sm:text-base font-semibold mb-0.5 sm:mb-1 text-white">
               {t("preCallLobby.title")}
             </h2>
             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
@@ -410,10 +411,10 @@ export default function PreCallLobbyClient() {
           </div>
 
           {/* Controles */}
-          <div className="w-full space-y-1.5 sm:space-y-2 flex-shrink-0">
+          <div className="w-full space-y-1 sm:space-y-1.5 flex-shrink-0">
             {/* Selector de cámara */}
             <div className="flex-shrink-0">
-              <label className="block text-xs font-medium text-white mb-1">
+              <label className="block text-xs font-medium text-white mb-0.5">
                 {t("preCallLobby.devices.camera")}
               </label>
               <select
@@ -433,7 +434,7 @@ export default function PreCallLobbyClient() {
 
             {/* Selector de micrófono */}
             <div className="flex-shrink-0">
-              <label className="block text-xs font-medium text-white mb-1">
+              <label className="block text-xs font-medium text-white mb-0.5">
                 {t("preCallLobby.devices.microphone")}
               </label>
               <select
@@ -474,14 +475,14 @@ export default function PreCallLobbyClient() {
 
           {/* Error message */}
           {cameraError && cameraPermission !== 'denied' && (
-            <div className="w-full mt-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex-shrink-0">
+            <div className="w-full mt-1 p-1.5 bg-red-500/10 border border-red-500/20 rounded-lg flex-shrink-0">
               <p className="text-red-400 text-xs text-center">{cameraError}</p>
             </div>
           )}
 
           {/* Botón principal */}
           <button
-            className={`mt-1.5 w-full px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 flex-shrink-0 shadow-md ${
+            className={`mt-1 w-full px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 flex-shrink-0 shadow-md ${
               canStartVideoCall() && !loading
                 ? 'bg-[#ff007a] hover:bg-[#e6006e] text-white hover:scale-[1.02] active:scale-[0.98]'
                 : 'bg-gray-600 text-gray-300 cursor-not-allowed'
@@ -514,7 +515,7 @@ export default function PreCallLobbyClient() {
           </button>
 
           {/* Texto informativo */}
-          <div className="mt-1 text-center text-[10px] text-white/50 px-2 flex-shrink-0">
+          <div className="mt-0.5 text-center text-[10px] text-white/50 px-2 flex-shrink-0">
             <p>{t('preCallLobby.notices.checkDevices')}</p>
           </div>
         </div>

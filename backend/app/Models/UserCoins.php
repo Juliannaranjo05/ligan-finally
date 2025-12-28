@@ -47,11 +47,12 @@ class UserCoins extends Model
     }
 
     /**
-     * Obtener minutos disponibles basado en saldo total
+     * Obtener minutos disponibles basado SOLO en purchased_balance
+     * gift_balance es solo para regalos, no para llamadas
      */
     public function getAvailableMinutesAttribute()
     {
-        return floor($this->total_balance / 10); // 10 monedas = 1 minuto
+        return floor($this->purchased_balance / 10); // 10 monedas = 1 minuto, solo purchased
     }
 
     /**

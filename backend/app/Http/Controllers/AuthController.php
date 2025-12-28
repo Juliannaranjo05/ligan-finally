@@ -23,47 +23,63 @@ class AuthController extends Controller
 {
     public function registerModel(Request $request)
     {
-        $request->validate([
-            'email' => 'required|string|email|unique:users',
-            'password' => 'required|string|min:6',
-        ]);
-
-    
-
-        // ✅ Luego crear el usuario
-        $code = random_int(100000, 999999);
-        $expiration = Carbon::now()->addMinutes(15);
-         $locationData = $this->detectarPais();
-
-        $user = User::create([
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'code_verify' => $code,
-            'code_expires_at' => $expiration,
-            'verification_expires_at' => Carbon::now()->addHours(24), // ⏳ expira en 24 horas
-
-        ]);
-
-        $token = $user->createToken('ligand-token')->plainTextToken;
-
-        if ($user->code_expires_at && now()->greaterThan($user->code_expires_at)) {
-            return response()->json(['message' => 'El código ha expirado.'], 422);
-        }
-
         try {
-            Log::info('📤 Enviando correo a ' . $user->email);
-            Mail::to($user->email)->send(new VerifyCode($code));
-            Log::info('✅ Correo enviado');
-        } catch (\Throwable $mailError) {
-            Log::error('❌ Error enviando correo: ' . $mailError->getMessage());
-        }
+            $request->validate([
+                'email' => 'required|string|email|unique:users',
+                'password' => 'required|string|min:6',
+            ]);
 
-        return response()->json([
-            'message' => 'Registro exitoso',
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'user' => $user->toArray()
-        ]);
+            // ✅ Luego crear el usuario
+            $code = random_int(100000, 999999);
+            $expiration = Carbon::now()->addMinutes(15);
+            
+            // Detectar país (sin bloquear si falla)
+            try {
+                $locationData = $this->detectarPais();
+            } catch (\Exception $locationError) {
+                Log::warning('Error detectando país en registro: ' . $locationError->getMessage());
+                $locationData = null;
+            }
+
+            $user = User::create([
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'code_verify' => $code,
+                'code_expires_at' => $expiration,
+                'verification_expires_at' => Carbon::now()->addHours(24), // ⏳ expira en 24 horas
+            ]);
+
+            $token = $user->createToken('ligand-token')->plainTextToken;
+
+            // Enviar correo de verificación (no bloquear si falla)
+            try {
+                Log::info('📤 Enviando correo a ' . $user->email);
+                Mail::to($user->email)->send(new VerifyCode($code));
+                Log::info('✅ Correo enviado');
+            } catch (\Throwable $mailError) {
+                Log::error('❌ Error enviando correo: ' . $mailError->getMessage());
+                // No lanzar error, el registro fue exitoso aunque el correo falle
+            }
+
+            return response()->json([
+                'message' => 'Registro exitoso',
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'user' => $user->toArray()
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('❌ Error en registro: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'message' => 'Error al registrar usuario. Por favor intenta nuevamente.',
+                'error' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor'
+            ], 500);
+        }
     }
 
     public function detectarPais($ip = null)
@@ -192,117 +208,138 @@ class AuthController extends Controller
     
     public function asignarRol(Request $request)
     {
-        $user = $request->user(); 
-        
-        if (!$user->email_verified_at) {
-            return response()->json(['message' => 'Correo no verificado.'], 403);
-        }
+        try {
+            $user = $request->user(); 
+            
+            if (!$user) {
+                return response()->json(['message' => 'Usuario no autenticado.'], 401);
+            }
+            
+            if (!$user->email_verified_at) {
+                return response()->json(['message' => 'Correo no verificado.'], 403);
+            }
 
-        // 🔥 VALIDACIÓN DIFERENTE SEGÚN EL ORIGEN DEL USUARIO
-        if ($user->google_id) {
+            // 🔥 VALIDACIÓN DIFERENTE SEGÚN EL ORIGEN DEL USUARIO
+            if ($user->google_id) {
             // 👤 USUARIO DE GOOGLE: Solo validar que no tenga ROL
             if ($user->rol) {
                 return response()->json(['message' => 'Ya tienes un rol asignado.'], 403);
             }
             
-            Log::info('🔵 Usuario de Google asignando rol', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'name_google' => $user->name, // Ya viene de Google
-                'rol_actual' => $user->rol
-            ]);
-            
-        } else {
-            // 📧 USUARIO NORMAL: 
-            // - Si tiene rol Y nombre: rechazar (ya completo)
-            // - Si tiene rol pero NO nombre: permitir completar nombre (y validar que el rol coincida)
-            // - Si no tiene rol ni nombre: permitir asignar ambos
-            
-            if ($user->rol && $user->name) {
-                return response()->json(['message' => 'Ya tienes un rol asignado.'], 403);
+                Log::info('🔵 Usuario de Google asignando rol', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'name_google' => $user->name, // Ya viene de Google
+                    'rol_actual' => $user->rol
+                ]);
+                
+            } else {
+                    // 📧 USUARIO NORMAL: 
+                // - Si tiene rol Y nombre: rechazar (ya completo)
+                // - Si tiene rol pero NO nombre: permitir completar nombre (y validar que el rol coincida)
+                // - Si no tiene rol ni nombre: permitir asignar ambos
+                
+                if ($user->rol && $user->name) {
+                    return response()->json(['message' => 'Ya tienes un rol asignado.'], 403);
+                }
+                
+                // Si tiene rol pero no nombre, validar que el rol enviado coincida
+                if ($user->rol && !$user->name) {
+                    $request->validate([
+                        'rol' => 'required|in:modelo,cliente',
+                        'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s]+$/u'],
+                    ]);
+                    
+                    // Validar que el rol enviado coincida con el rol existente
+                    if ($request->rol !== $user->rol) {
+                        return response()->json(['message' => 'El rol enviado no coincide con tu rol actual.'], 403);
+                    }
+                    
+                    // Solo actualizar el nombre, mantener el rol existente
+                    $user->update([
+                        'name' => $request->name,
+                    ]);
+                    
+                    Log::info('📧 Usuario normal completando nombre', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'rol_actual' => $user->rol,
+                        'name_anterior' => null,
+                        'name_nuevo' => $request->name
+                    ]);
+                    
+                    return response()->json([
+                        'message' => 'Nombre actualizado correctamente.',
+                        'user' => [
+                            'id' => $user->id,
+                            'email' => $user->email,
+                            'name' => $user->name,
+                            'rol' => $user->rol,
+                            'is_google_user' => false
+                        ]
+                    ]);
+                }
+                
+                Log::info('📧 Usuario normal asignando rol', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'rol_actual' => $user->rol,
+                    'name_actual' => $user->name
+                ]);
             }
-            
-            // Si tiene rol pero no nombre, validar que el rol enviado coincida
-            if ($user->rol && !$user->name) {
+
+            // 🔥 VALIDACIÓN DE REQUEST DIFERENTE
+            if ($user->google_id) {
+                // Usuario de Google: Solo validar ROL (ya tiene nombre)
+                $request->validate([
+                    'rol' => 'required|in:modelo,cliente',
+                ]);
+                
+                // Solo actualizar el rol, mantener el nombre de Google
+                $user->update([
+                    'rol' => $request->rol,
+                ]);
+                
+            } else {
+                // Usuario normal: Validar ROL y NAME
                 $request->validate([
                     'rol' => 'required|in:modelo,cliente',
                     'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s]+$/u'],
                 ]);
                 
-                // Validar que el rol enviado coincida con el rol existente
-                if ($request->rol !== $user->rol) {
-                    return response()->json(['message' => 'El rol enviado no coincide con tu rol actual.'], 403);
-                }
-                
-                // Solo actualizar el nombre, mantener el rol existente
+                // Actualizar ambos campos
                 $user->update([
+                    'rol' => $request->rol,
                     'name' => $request->name,
                 ]);
-                
-                Log::info('📧 Usuario normal completando nombre', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'rol_actual' => $user->rol,
-                    'name_anterior' => null,
-                    'name_nuevo' => $request->name
-                ]);
-                
-                return response()->json([
-                    'message' => 'Nombre actualizado correctamente.',
-                    'user' => [
-                        'id' => $user->id,
-                        'email' => $user->email,
-                        'name' => $user->name,
-                        'rol' => $user->rol,
-                        'is_google_user' => false
-                    ]
-                ]);
             }
-            
-            Log::info('📧 Usuario normal asignando rol', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'rol_actual' => $user->rol,
-                'name_actual' => $user->name
-            ]);
-        }
 
-        // 🔥 VALIDACIÓN DE REQUEST DIFERENTE
-        if ($user->google_id) {
-            // Usuario de Google: Solo validar ROL (ya tiene nombre)
-            $request->validate([
-                'rol' => 'required|in:modelo,cliente',
+            return response()->json([
+                'message' => 'Rol asignado correctamente.',
+                'user' => [
+                    'id' => $user->id,
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'rol' => $user->rol,
+                    'is_google_user' => !is_null($user->google_id)
+                ]
             ]);
-            
-            // Solo actualizar el rol, mantener el nombre de Google
-            $user->update([
-                'rol' => $request->rol,
-            ]);
-            
-        } else {
-            // Usuario normal: Validar ROL y NAME
-            $request->validate([
-                'rol' => 'required|in:modelo,cliente',
-                'name' => ['required', 'string', 'max:255', 'regex:/^[\pL\s]+$/u'],
-            ]);
-            
-            // Actualizar ambos campos
-            $user->update([
-                'rol' => $request->rol,
-                'name' => $request->name,
-            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('❌ Error en asignarRol: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('Request data: ' . json_encode($request->all()));
+            $userId = $request->user() ? $request->user()->id : 'null';
+            Log::error('User ID: ' . $userId);
+            return response()->json([
+                'message' => 'Error al asignar rol. Por favor intenta nuevamente.',
+                'error' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor'
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Rol asignado correctamente.',
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'name' => $user->name,
-                'rol' => $user->rol,
-                'is_google_user' => !is_null($user->google_id)
-            ]
-        ]);
     }
     public function verifyCode(Request $request)
     {
@@ -392,8 +429,16 @@ class AuthController extends Controller
             Mail::to($user->email)->send(new VerifyCode($newCode));
             Log::info('✅ Código reenviado');
         } catch (\Throwable $e) {
-            Log::error('❌ Error reenviando código: ' . $e->getMessage());
-            return response()->json(['message' => 'Error al reenviar el código.'], 500);
+            Log::error('❌ Error reenviando código', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'email' => $user->email,
+                'code' => $newCode
+            ]);
+            return response()->json([
+                'message' => 'Error al reenviar el código.',
+                'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
         }
 
         return response()->json(['message' => 'Código reenviado correctamente.']);

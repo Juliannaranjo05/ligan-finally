@@ -408,7 +408,90 @@ export default function VideoChat() {
   const [disconnectionType, setDisconnectionType] = useState('');
   const [redirectCountdown, setRedirectCountdown] = useState(0);
 
-  const { translateGlobalText, isEnabled: translationEnabled } = useGlobalTranslation();
+  const { 
+    translateGlobalText, 
+    isEnabled: translationEnabled,
+    currentLanguage: globalCurrentLanguage,
+    changeGlobalLanguage
+  } = useGlobalTranslation();
+  
+  // 🔥 OBTENER i18n PARA SINCRONIZAR CON EL IDIOMA GLOBAL
+  const { i18n: i18nInstance } = useTranslation();
+  
+  // 🔥 SINCRONIZAR EL IDIOMA DEL VIDEOCHAT CON EL SELECTOR GLOBAL
+  useEffect(() => {
+    // Obtener el idioma actual de i18n (tiene prioridad)
+    const i18nLang = i18nInstance.language?.split('-')[0] || i18nInstance.language;
+    
+    // También verificar localStorage como respaldo
+    const userLang = localStorage.getItem('userPreferredLanguage') || 
+                    localStorage.getItem('selectedLanguage') || 
+                    localStorage.getItem('lang');
+    
+    // Usar el idioma de i18n si está disponible, sino usar localStorage o el global
+    const finalLang = i18nLang || userLang || globalCurrentLanguage || 'es';
+    
+    // 🔥 INICIALIZAR EL IDIOMA AL CARGAR EL COMPONENTE
+    // Si el idioma es diferente al global o a i18n, sincronizar ambos
+    if (finalLang) {
+      // Sincronizar i18n si es diferente
+      if (i18nInstance.language !== finalLang) {
+        try {
+          i18nInstance.changeLanguage(finalLang);
+        } catch (error) {
+          console.warn('Error cambiando idioma en i18n al inicializar:', error);
+        }
+      }
+      
+      // Sincronizar contexto global si es diferente
+      if (finalLang !== globalCurrentLanguage) {
+        if (typeof changeGlobalLanguage === 'function') {
+          try {
+            changeGlobalLanguage(finalLang);
+          } catch (error) {
+            console.warn('Error sincronizando idioma al inicializar:', error);
+          }
+        }
+      }
+    }
+    
+    // Listener para cambios en i18n
+    const handleI18nLanguageChange = (lng) => {
+      const langCode = lng?.split('-')[0] || lng;
+      if (langCode && typeof changeGlobalLanguage === 'function') {
+        try {
+          changeGlobalLanguage(langCode);
+        } catch (error) {
+          console.warn('Error sincronizando idioma desde i18n:', error);
+        }
+      }
+    };
+    
+    // Escuchar cambios en i18n
+    i18nInstance.on('languageChanged', handleI18nLanguageChange);
+    
+    // También escuchar el evento global de cambio de idioma
+    const handleGlobalLanguageChange = (event) => {
+      const { newLanguage } = event.detail || {};
+      if (newLanguage) {
+        const langCode = newLanguage?.split('-')[0] || newLanguage;
+        if (langCode && i18nInstance.language !== langCode) {
+          try {
+            i18nInstance.changeLanguage(langCode);
+          } catch (error) {
+            console.warn('Error cambiando idioma en i18n desde evento global:', error);
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('globalLanguageChanged', handleGlobalLanguageChange);
+    
+    return () => {
+      i18nInstance.off('languageChanged', handleI18nLanguageChange);
+      window.removeEventListener('globalLanguageChanged', handleGlobalLanguageChange);
+    };
+  }, [i18nInstance, globalCurrentLanguage, changeGlobalLanguage]);
 
   // Estados de detección
   const [isDetectingUser, setIsDetectingUser] = useState(() => {
@@ -1736,7 +1819,21 @@ export default function VideoChat() {
   // 🔥 handleRateLimit ya está definido arriba, antes del useEffect para obtener token
 
   // ========== FUNCIONES DE DESCONEXIÓN ==========
-  const handleClientDisconnected = (reason = 'stop', customMessage = '') => {
+  const startRedirectCountdown = useCallback(() => {
+    let timeLeft = 3;
+    setRedirectCountdown(timeLeft);
+
+    const countdownInterval = setInterval(() => {
+      timeLeft--;
+      setRedirectCountdown(timeLeft);
+
+      if (timeLeft <= 0) {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+  }, []);
+
+  const handleClientDisconnected = useCallback((reason = 'stop', customMessage = '') => {
     setLoading(false);
     setConnected(false);
     detenerTiempoReal();
@@ -1752,21 +1849,7 @@ export default function VideoChat() {
     }
 
     startRedirectCountdown();
-  };
-
-  const startRedirectCountdown = () => {
-    let timeLeft = 3;
-    setRedirectCountdown(timeLeft);
-
-    const countdownInterval = setInterval(() => {
-      timeLeft--;
-      setRedirectCountdown(timeLeft);
-
-      if (timeLeft <= 0) {
-        clearInterval(countdownInterval);
-      }
-    }, 1000);
-  };
+  }, [detenerTiempoReal, startRedirectCountdown]);
 
   // ========== FUNCIONES DE CONTROLES ==========
   const toggleMic = useCallback(async () => {
@@ -1863,7 +1946,41 @@ export default function VideoChat() {
                   ...(msg.gift_data && { gift_data: msg.gift_data }),
                   ...(msg.extra_data && { extra_data: msg.extra_data })
                 };
-              }).sort((a, b) => b.timestamp - a.timestamp);
+              }).sort((a, b) => {
+                // 🔥 ORDENAMIENTO MEJORADO - Usar múltiples fuentes de timestamp
+                const getTimestamp = (msg) => {
+                  if (msg.timestamp && typeof msg.timestamp === 'number' && msg.timestamp > 0) {
+                    return msg.timestamp;
+                  }
+                  if (msg.created_at) {
+                    const date = new Date(msg.created_at);
+                    if (!isNaN(date.getTime()) && date.getTime() > 0) {
+                      return date.getTime();
+                    }
+                  }
+                  if (msg.id) {
+                    const idNum = typeof msg.id === 'string' ? parseInt(msg.id) : msg.id;
+                    if (typeof idNum === 'number' && idNum > 1000000000000) {
+                      return idNum;
+                    }
+                  }
+                  return 0;
+                };
+                
+                const timeA = getTimestamp(a);
+                const timeB = getTimestamp(b);
+                
+                // Orden descendente (más recientes primero) para este caso específico
+                if (timeA !== timeB && timeA > 0 && timeB > 0) {
+                  return timeB - timeA;
+                }
+                if (timeA > 0 && timeB === 0) return -1;
+                if (timeA === 0 && timeB > 0) return 1;
+                
+                const idA = typeof a.id === 'string' ? parseInt(a.id) || 0 : (a.id || 0);
+                const idB = typeof b.id === 'string' ? parseInt(b.id) || 0 : (b.id || 0);
+                return idB - idA;
+              });
 
               setMessages(formattedMessages);
             }
@@ -2367,6 +2484,55 @@ export default function VideoChat() {
     setRedirectCountdown(0);
   }, [roomName, clientDisconnected, disconnectionReason]);
 
+  // 🔥 EFECTO PARA DETECTAR DESCONEXIÓN DEL CLIENTE (similar al cliente detectando modelo)
+  useEffect(() => {
+    if (!connected || !window.livekitRoom || clientDisconnected || (disconnectionReason && redirectCountdown > 0)) {
+      return;
+    }
+
+    const room = window.livekitRoom;
+    let isActive = true;
+
+    const handleParticipantDisconnected = (participant) => {
+      if (!isActive) return;
+      
+      const remoteCount = room?.remoteParticipants?.size || 0;
+      
+      // 🔥 SOLO DETECTAR DESCONEXIÓN SI YA HABÍA UNA SESIÓN ACTIVA
+      const hadActiveSession = tiempo > 0 || !!otherUser;
+      
+      // 🔥 DETECTAR SI ES EL CLIENTE Y MANEJAR INMEDIATAMENTE
+      if (participant && participant.identity) {
+        const participantIdentity = participant.identity.toLowerCase();
+        const isClient = participantIdentity.includes('cliente') || 
+                        participantIdentity.includes('client') ||
+                        (otherUser && otherUser.role === 'cliente' && participantIdentity.includes(otherUser.name?.toLowerCase()));
+        
+        if (isClient && remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
+          // 🔥 CAMBIO: Cuando el cliente se desconecta, mostrar pantalla de desconexión
+          handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+          return;
+        }
+      }
+      
+      // Si no hay participantes remotos y había sesión activa, también detectar desconexión
+      if (remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
+        handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+      }
+    };
+
+    if (room) {
+      room.on('participantDisconnected', handleParticipantDisconnected);
+    }
+
+    return () => {
+      isActive = false;
+      if (room) {
+        room.off('participantDisconnected', handleParticipantDisconnected);
+      }
+    };
+  }, [connected, clientDisconnected, disconnectionReason, redirectCountdown, tiempo, otherUser, handleClientDisconnected]);
+
   // 🔥 EFECTO PARA TIMER LEGACY - OPTIMIZADO PARA EVITAR RE-RENDERS
   useEffect(() => {
     // Solo ejecutar si estamos conectados y no hay modelo parada
@@ -2670,6 +2836,29 @@ export default function VideoChat() {
           onParticipantConnected={(participant) => {
           }}
           onParticipantDisconnected={(participant) => {
+            const remoteCount = window.livekitRoom?.remoteParticipants?.size || 0;
+            
+            // 🔥 SOLO DETECTAR DESCONEXIÓN SI YA HABÍA UNA SESIÓN ACTIVA
+            const hadActiveSession = tiempo > 0 || !!otherUser;
+            
+            // 🔥 DETECTAR SI ES EL CLIENTE Y MANEJAR INMEDIATAMENTE
+            if (participant && participant.identity) {
+              const participantIdentity = participant.identity.toLowerCase();
+              const isClient = participantIdentity.includes('cliente') || 
+                              participantIdentity.includes('client') ||
+                              (otherUser && otherUser.role === 'cliente' && participantIdentity.includes(otherUser.name?.toLowerCase()));
+              
+              if (isClient && remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
+                // 🔥 CAMBIO: Cuando el cliente se desconecta, mostrar pantalla de desconexión
+                handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+                return;
+              }
+            }
+            
+            // Si no hay participantes remotos y había sesión activa, también detectar desconexión
+            if (remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
+              handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+            }
           }}
           onTrackPublished={(pub, participant) => {
           }}

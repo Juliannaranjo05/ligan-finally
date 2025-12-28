@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Clock, Wifi, WifiOff, User, Signal, Coins, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical } from 'lucide-react';
+import { Wifi, WifiOff, User, Signal, Coins, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
+import { getVideoChatText } from '../../videochatTranslations';
 import ClientRemainingMinutes from '../../ClientRemainingMinutes';
 
 const TimeDisplayImprovedClient = ({ 
-  tiempo = 0,       // 🔥 TIEMPO DE SESIÓN EN SEGUNDOS
   connected, 
   otherUser, 
   roomName, 
@@ -29,54 +30,30 @@ const TimeDisplayImprovedClient = ({
   const { t } = useTranslation();
   const finalT = propT || t;
   
-  // 🔥 FALLBACK A TEXTO EN ESPAÑOL SI NO HAY hardcodedTexts
+  // 🔥 OBTENER IDIOMA ACTUAL
+  const { currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
+  const currentLanguage = globalCurrentLanguage || 'es';
+  
+  // 🔥 USAR TRADUCCIONES HARDCODEADAS
   const texts = {
-    gifts: hardcodedTexts.gifts || "Regalos:",
-    minutes: hardcodedTexts.minutes || "Minutos:",
-    connected: hardcodedTexts.connected || "Conectado",
-    online: hardcodedTexts.online || "En línea",
-    info: hardcodedTexts.info || "Info",
-    system: hardcodedTexts.system || "Sistema"
+    gifts: getVideoChatText('gifts', currentLanguage, hardcodedTexts.gifts || "Regalos:"),
+    minutes: getVideoChatText('minutes', currentLanguage, hardcodedTexts.minutes || "Minutos:"),
+    connected: getVideoChatText('connected', currentLanguage, hardcodedTexts.connected || "Conectado"),
+    online: getVideoChatText('online', currentLanguage, hardcodedTexts.online || "En línea"),
+    info: getVideoChatText('info', currentLanguage, hardcodedTexts.info || "Info"),
+    system: getVideoChatText('system', currentLanguage, hardcodedTexts.system || "Sistema")
   };
   
-  // 🔥 FUNCIÓN PARA FORMATEAR TIEMPO - MEMOIZADA PARA EVITAR RECÁLCULOS
-  const formatoTiempo = useMemo(() => {
-    const minutos = Math.floor(tiempo / 60).toString().padStart(2, "0");
-    const segundos = (tiempo % 60).toString().padStart(2, "0");
-    const formatted = `${minutos}:${segundos}`;
-    // 🔥 DEBUG: Log cada vez que cambia el tiempo (solo primeros 10 segundos)
-    if (tiempo <= 10 || tiempo % 5 === 0) {
-      console.log('⏱️ [TimeDisplayImprovedClient] Formato calculado, tiempo:', tiempo, 'formateado:', formatted);
-    }
-    return formatted;
-  }, [tiempo]);
-  
-  // 🔥 DEBUG: Log cuando cambia la prop tiempo (solo primeros 10 segundos)
+  // 🔥 DEBUG: Log cuando se reciben los props de balance
   useEffect(() => {
-    if (tiempo <= 10 || tiempo % 5 === 0) {
-      console.log('⏱️ [TimeDisplayImprovedClient] Prop tiempo recibida:', tiempo, 'formateado:', formatoTiempo);
-    }
-  }, [tiempo, formatoTiempo]);
+    console.log('💰 [TimeDisplayImprovedClient] PROPS recibidas:', {
+      userBalance,
+      giftBalance,
+      remainingMinutes
+    });
+  }, [userBalance, giftBalance, remainingMinutes]);
   
-  // 🔥 DEBUG: Verificar que el componente se está renderizando
-  useEffect(() => {
-    console.log('⏱️ [TimeDisplayImprovedClient] Componente montado/actualizado, tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
-  }, []);
-  
-  // 🔥 DEBUG: Log cuando cambia la prop tiempo (solo cada 5 segundos y solo en desarrollo)
-  const lastLoggedTime = useRef(0);
-  useEffect(() => {
-    if (import.meta.env.DEV && tiempo > 0 && tiempo - lastLoggedTime.current >= 5) {
-      console.log('⏱️ [TimeDisplayImprovedClient] Prop tiempo cambió a:', tiempo, 'formateado:', formatoTiempo);
-      lastLoggedTime.current = tiempo;
-    }
-  }, [tiempo, formatoTiempo]);
-  
-  // 🔥 REMOVIDO: Log en cada render (causaba demasiado spam)
-  const [currentCoinsBalance, setCurrentCoinsBalance] = useState(userBalance || 0);
-  const [currentGiftBalance, setCurrentGiftBalance] = useState(giftBalance || 0);
-  const [currentMinutes, setCurrentMinutes] = useState(remainingMinutes || 0);
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  // 🔥 USAR LOS PROPS DIRECTAMENTE EN LUGAR DE ESTADOS LOCALES PARA MOSTRAR VALORES REALES
   
   // 🔥 ESTADOS PARA MODAL DE INFORMACIÓN
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -90,109 +67,7 @@ const TimeDisplayImprovedClient = ({
     }
   }, [connected, otherUser]);
 
-  // 🔄 Actualizar ambos balances cada 5 minutos - CON MANEJO DE ERRORES 500
-  useEffect(() => {
-    let consecutiveErrors = 0;
-    let isMounted = true;
-    let errorBackoffMs = 0;
-
-    const updateBalances = async () => {
-      if (!isMounted) return;
-      
-      try {
-        const authToken = localStorage.getItem('token');
-        if (!authToken) return;
-
-        // 🔥 SI HAY ERRORES CONSECUTIVOS 500, ESPERAR ANTES DE REINTENTAR
-        if (errorBackoffMs > 0) {
-          await new Promise(resolve => setTimeout(resolve, errorBackoffMs));
-        }
-
-        // 1️⃣ Balance de COINS
-        const coinsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/client-balance/my-balance/quick`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (coinsResponse.ok) {
-          const coinsData = await coinsResponse.json();
-          if (coinsData.success) {
-            setCurrentCoinsBalance(coinsData.total_coins);
-            setCurrentMinutes(coinsData.remaining_minutes);
-            consecutiveErrors = 0; // Reset en éxito
-            errorBackoffMs = 0;
-          }
-        } else if (coinsResponse.status === 500) {
-          consecutiveErrors++;
-          // Backoff exponencial
-          errorBackoffMs = Math.min(10000 * Math.pow(2, consecutiveErrors - 1), 120000); // Máx 2 minutos
-          if (consecutiveErrors >= 3) {
-            return; // No continuar si hay muchos errores
-          }
-        }
-
-        // 2️⃣ Balance de GIFTS (solo si no hay muchos errores)
-        if (consecutiveErrors < 3) {
-          const giftsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/gifts/balance`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (giftsResponse.ok) {
-            const giftsData = await giftsResponse.json();
-            if (giftsData.success) {
-              setCurrentGiftBalance(giftsData.gift_balance);
-            }
-          } else if (giftsResponse.status === 500) {
-            consecutiveErrors++;
-            errorBackoffMs = Math.min(10000 * Math.pow(2, consecutiveErrors - 1), 120000);
-          }
-        }
-
-        setLastUpdate(Date.now());
-      } catch (error) {
-        consecutiveErrors++;
-        errorBackoffMs = Math.min(10000 * Math.pow(2, consecutiveErrors - 1), 120000);
-      }
-    };
-
-    // Actualizar inmediatamente
-    updateBalances();
-
-    // Actualizar cada 5 minutos (aumentado a 10 minutos si hay errores)
-    const baseInterval = consecutiveErrors >= 3 ? 10 * 60 * 1000 : 5 * 60 * 1000;
-    const interval = setInterval(updateBalances, baseInterval);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Actualizar cuando cambien las props
-  useEffect(() => {
-    if (userBalance !== undefined) {
-      setCurrentCoinsBalance(userBalance);
-    }
-  }, [userBalance]);
-
-  useEffect(() => {
-    if (giftBalance !== undefined) {
-      setCurrentGiftBalance(giftBalance);
-    }
-  }, [giftBalance]);
-
-  useEffect(() => {
-    if (remainingMinutes !== undefined) {
-      setCurrentMinutes(remainingMinutes);
-    }
-  }, [remainingMinutes]);
+  // 🔥 LOS VALORES SE OBTIENEN DIRECTAMENTE DE LOS PROPS (manejados por el componente padre)
 
   // 🔥 FUNCIÓN PARA TRUNCAR NOMBRES
   function truncateName(name, maxLength = 8) {
@@ -200,17 +75,6 @@ const TimeDisplayImprovedClient = ({
     return name.length > maxLength ? name.substring(0, maxLength) + '…' : name;
   }
 
-  // 🔥 DEBUG: Log directo en el render para verificar que se está renderizando
-  useEffect(() => {
-    console.log('⏱️ [TimeDisplayImprovedClient] Componente montado/actualizado, tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
-  }, [tiempo, formatoTiempo]);
-  
-  // 🔥 DEBUG: Log cada vez que tiempo cambia (primeros 10 segundos o cada 5)
-  useEffect(() => {
-    if ((tiempo <= 10 || tiempo % 5 === 0) && tiempo > 0) {
-      console.log('⏱️ [TimeDisplayImprovedClient] RENDER - tiempo:', tiempo, 'formatoTiempo:', formatoTiempo);
-    }
-  }, [tiempo, formatoTiempo]);
   
   return (
     <>
@@ -220,27 +84,14 @@ const TimeDisplayImprovedClient = ({
         {/* 🔥 VERSIÓN MÓVIL - FULL RESPONSIVE */}
         <div className="mobile-version">
           <div className="mobile-content">
-            {/* 🔥 TIEMPO DE SESIÓN */}
-            <div className="balance-section tiempo-section">
-              <div className="balance-icon-wrapper tiempo-icon">
-                <Clock className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">Tiempo:</div>
-                <div className="balance-value tiempo-value" data-tiempo={tiempo} data-formato={formatoTiempo}>
-                  {formatoTiempo || '00:00'}
-                </div>
-              </div>
-            </div>
-
-            {/* 🔥 SALDO DE REGALOS (en lugar de monedas) */}
+            {/* 🔥 SALDO DE REGALOS */}
             <div className="balance-section gifts-section">
               <div className="balance-icon-wrapper gifts-icon">
                 <Gift className="balance-icon" />
               </div>
               <div className="balance-info">
                 <div className="balance-label">{texts.gifts}</div>
-                <div className="balance-value gifts-value">{currentGiftBalance}</div>
+                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
               </div>
             </div>
 
@@ -251,7 +102,7 @@ const TimeDisplayImprovedClient = ({
               </div>
               <div className="balance-info">
                 <div className="balance-label">{texts.minutes}</div>
-                <div className="balance-value minutes-value">{currentMinutes}</div>
+                <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
               </div>
             </div>
             
@@ -265,7 +116,7 @@ const TimeDisplayImprovedClient = ({
               ) : (
                 <div className="connection-status disconnected">
                   <div className="connection-dot"></div>
-                  <span className="connection-text">Desconectado</span>
+                  <span className="connection-text">{getVideoChatText('disconnected', currentLanguage, 'Desconectado')}</span>
                 </div>
               )}
               
@@ -359,38 +210,25 @@ const TimeDisplayImprovedClient = ({
           {/* Panel izquierdo - Balances */}
           <div className="left-panel">
             
-            {/* 🔥 TIEMPO DE SESIÓN */}
-            <div className="balance-item tiempo-item">
-              <div className="balance-icon-wrapper tiempo-icon">
-                <Clock className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">Tiempo:</div>
-                <div className="balance-value tiempo-value" data-tiempo={tiempo} data-formato={formatoTiempo}>
-                  {formatoTiempo || '00:00'}
-                </div>
-              </div>
-            </div>
-
-            {/* 🔥 Saldo de REGALOS (en lugar de monedas) */}
+            {/* 🔥 Saldo de REGALOS */}
             <div className="balance-item gifts-item">
               <div className="balance-icon-wrapper gifts-icon">
                 <Gift className="balance-icon" />
               </div>
               <div className="balance-info">
                 <div className="balance-label">{texts.gifts}</div>
-                <div className="balance-value gifts-value">{currentGiftBalance}</div>
+                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
               </div>
             </div>
 
-            {/* 🔥 MINUTOS RESTANTES (en lugar de regalos) */}
+            {/* 🔥 MINUTOS RESTANTES */}
             <div className="balance-item minutes-item">
               <div className="balance-icon-wrapper minutes-icon">
                 <Timer className="balance-icon" />
               </div>
               <div className="balance-info">
                 <div className="balance-label">{texts.minutes}</div>
-                <div className="balance-value minutes-value">{currentMinutes}</div>
+                <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
               </div>
             </div>
           </div>
@@ -498,8 +336,8 @@ const TimeDisplayImprovedClient = ({
                     <div className="connection-dot"></div>
                   </div>
                   <div className="status-info">
-                    <div className="status-title">Desconectado</div>
-                    <div className="status-subtitle">Fuera de línea</div>
+                    <div className="status-title">{getVideoChatText('disconnected', currentLanguage, 'Desconectado')}</div>
+                    <div className="status-subtitle">{getVideoChatText('offline', currentLanguage, 'Fuera de línea')}</div>
                   </div>
                 </div>
               )}
@@ -537,7 +375,7 @@ const TimeDisplayImprovedClient = ({
                 <div className="modal-icon-wrapper">
                   <Info size={16} className="modal-icon" />
                 </div>
-                <h2 className="modal-title">Sistema de Descuentos</h2>
+                <h2 className="modal-title">{getVideoChatText('discountSystemTitle', currentLanguage, 'Sistema de Descuentos')}</h2>
               </div>
               <button
                 onClick={() => setShowInfoModal(false)}
@@ -555,36 +393,36 @@ const TimeDisplayImprovedClient = ({
                   <span className="beta-icon">β</span>
                 </div>
                 <div className="beta-content">
-                  <h4 className="beta-title">FASE BETA</h4>
+                  <h4 className="beta-title">{getVideoChatText('betaPhase', currentLanguage, 'FASE BETA')}</h4>
                   <p className="beta-text">
-                    Esta función está en pruebas y puede tener errores. Reporta cualquier problema.
+                    {getVideoChatText('betaText', currentLanguage, 'Esta función está en pruebas y puede tener errores. Reporta cualquier problema.')}
                   </p>
                 </div>
               </div>
 
               {/* Sistema de descuentos */}
               <div className="system-info">
-                <h3 className="section-title">💰 Sistema de Descuentos</h3>
+                <h3 className="section-title">{getVideoChatText('discountSystemSection', currentLanguage, '💰 Sistema de Descuentos')}</h3>
                 
                 <div className="discount-rules">
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">10 monedas por minuto</span> - Costo base por cada minuto de videollamada
+                      <span className="rule-highlight">{getVideoChatText('rule1Title', currentLanguage, '10 monedas por minuto')}</span> - {getVideoChatText('rule1Desc', currentLanguage, 'Costo base por cada minuto de videollamada')}
                     </p>
                   </div>
                   
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">20 monedas después del minuto</span> - Tarifa incrementada tras el primer minuto
+                      <span className="rule-highlight">{getVideoChatText('rule2Title', currentLanguage, '20 monedas después del minuto')}</span> - {getVideoChatText('rule2Desc', currentLanguage, 'Tarifa incrementada tras el primer minuto')}
                     </p>
                   </div>
 
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">Descuento cada 30 segundos</span> - Se descuentan 5 monedas automáticamente
+                      <span className="rule-highlight">{getVideoChatText('rule3Title', currentLanguage, 'Descuento cada 30 segundos')}</span> - {getVideoChatText('rule3Desc', currentLanguage, 'Se descuentan 5 monedas automáticamente')}
                     </p>
                   </div>
                 </div>
@@ -592,7 +430,7 @@ const TimeDisplayImprovedClient = ({
 
               {/* Información de balances */}
               <div className="balance-info-section">
-                <h3 className="section-title">💎 Información de Balances</h3>
+                <h3 className="section-title">{getVideoChatText('balanceInfoSection', currentLanguage, '💎 Información de Balances')}</h3>
                 
                 <div className="balance-rules">
                   <div className="balance-rule">
@@ -600,8 +438,8 @@ const TimeDisplayImprovedClient = ({
                       <Coins size={16} className="coins-color" />
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Saldo de Monedas</h4>
-                      <p className="balance-rule-text">Se usa para pagar videollamadas y servicios premium</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('coinsBalanceTitle', currentLanguage, 'Saldo de Monedas')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('coinsBalanceText', currentLanguage, 'Se usa para pagar videollamadas y servicios premium')}</p>
                     </div>
                   </div>
 
@@ -610,8 +448,8 @@ const TimeDisplayImprovedClient = ({
                       <Gift size={16} className="gifts-color" />
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Saldo de Regalos</h4>
-                      <p className="balance-rule-text">Exclusivo para enviar regalos a las chicas</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('giftsBalanceTitle', currentLanguage, 'Saldo de Regalos')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('giftsBalanceText', currentLanguage, 'Exclusivo para enviar regalos a las chicas')}</p>
                     </div>
                   </div>
                 </div>
@@ -619,12 +457,12 @@ const TimeDisplayImprovedClient = ({
 
               {/* Recomendaciones */}
               <div className="recommendations">
-                <h4 className="recommendations-title">💡 Recomendaciones</h4>
+                <h4 className="recommendations-title">{getVideoChatText('recommendationsTitle', currentLanguage, '💡 Recomendaciones')}</h4>
                 <ul className="recommendations-list">
-                  <li>• Recarga monedas antes de iniciar videollamadas</li>
-                  <li>• Los regalos no afectan tu saldo de monedas</li>
-                  <li>• Mantén conexión estable para evitar cobros extra</li>
-                  <li>• Reporta cualquier descuento incorrecto</li>
+                  <li>{getVideoChatText('recommendation1', currentLanguage, '• Recarga monedas antes de iniciar videollamadas')}</li>
+                  <li>{getVideoChatText('recommendation2', currentLanguage, '• Los regalos no afectan tu saldo de monedas')}</li>
+                  <li>{getVideoChatText('recommendation3', currentLanguage, '• Mantén conexión estable para evitar cobros extra')}</li>
+                  <li>{getVideoChatText('recommendation4', currentLanguage, '• Reporta cualquier descuento incorrecto')}</li>
                 </ul>
               </div>
             </div>
@@ -635,7 +473,7 @@ const TimeDisplayImprovedClient = ({
                 onClick={() => setShowInfoModal(false)}
                 className="modal-confirm-button"
               >
-                Entendido
+                {getVideoChatText('understood', currentLanguage, 'Entendido')}
               </button>
             </div>
           </div>
@@ -650,15 +488,15 @@ const TimeDisplayImprovedClient = ({
               <div className="warning-icon-wrapper">
                 <Info size={32} className="warning-icon" />
               </div>
-              <h3 className="warning-title">¡Importante!</h3>
+              <h3 className="warning-title">{getVideoChatText('important', currentLanguage, '¡Importante!')}</h3>
               <p className="warning-text">
-                Conoce el sistema de descuentos antes de comenzar. Haz clic en el botón de información (ℹ️) para más detalles.
+                {getVideoChatText('warningTextClient', currentLanguage, 'Conoce el sistema de descuentos antes de comenzar. Haz clic en el botón de información (ℹ️) para más detalles.')}
               </p>
               <button
                 onClick={() => setShowInitialWarning(false)}
                 className="warning-button"
               >
-                Entendido
+                {getVideoChatText('understood', currentLanguage, 'Entendido')}
               </button>
             </div>
           </div>
@@ -684,8 +522,8 @@ const TimeDisplayImprovedClient = ({
         .mobile-version {
           display: flex;
           flex-direction: column;
-          width: calc(100vw - 32px) !important;
-          max-width: calc(100vw - 32px) !important;
+          width: 100% !important;
+          max-width: 100% !important;
           margin: 0 auto;
           background: transparent;
           backdrop-filter: blur(12px);
@@ -703,10 +541,11 @@ const TimeDisplayImprovedClient = ({
           width: 100% !important;
           max-width: 100% !important;
           min-width: 0;
-          gap: 4px;
+          gap: 6px;
           margin-bottom: 8px;
           overflow: hidden;
           box-sizing: border-box;
+          padding: 0 4px;
         }
 
         .desktop-version {
@@ -720,7 +559,8 @@ const TimeDisplayImprovedClient = ({
           gap: 4px;
           flex-shrink: 1;
           min-width: 0;
-          max-width: 30% !important;
+          flex: 1 1 auto;
+          max-width: 32% !important;
           overflow: hidden;
         }
 
@@ -787,22 +627,24 @@ const TimeDisplayImprovedClient = ({
         }
 
         .balance-label {
-          font-size: 0.7rem;
+          font-size: 0.65rem;
           color: rgb(209, 213, 219);
           font-weight: 500;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          line-height: 1.2;
         }
 
         .balance-value {
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           font-weight: 700;
           font-family: monospace;
           letter-spacing: 0.05em;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          line-height: 1.2;
         }
 
         .coins-value {
@@ -818,9 +660,9 @@ const TimeDisplayImprovedClient = ({
           display: flex;
           align-items: center;
           gap: 4px;
-          flex-shrink: 1;
-          min-width: 0;
-          max-width: 35% !important;
+          flex-shrink: 0;
+          min-width: fit-content;
+          max-width: 36% !important;
           overflow: hidden;
         }
 
@@ -862,9 +704,10 @@ const TimeDisplayImprovedClient = ({
         }
 
         .connection-text {
-          font-size: 0.7rem;
+          font-size: 0.65rem;
           font-weight: 500;
           white-space: nowrap;
+          line-height: 1.2;
         }
 
         .connected .connection-text {

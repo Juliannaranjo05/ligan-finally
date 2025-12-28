@@ -10,6 +10,70 @@ use Illuminate\Support\Facades\Validator;
 class ErrorLogController extends Controller
 {
     /**
+     * Recibir y almacenar logs del frontend (info, warn, error, debug)
+     */
+    public function storeFrontendLog(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'message' => 'required|string|max:2000',
+                'data' => 'nullable|array',
+                'context' => 'nullable|string|max:255',
+                'url' => 'nullable|string|max:500',
+                'userAgent' => 'nullable|string|max:500',
+                'level' => 'required|string|in:info,warn,warning,error,debug',
+                'timestamp' => 'nullable|string',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $user = $request->user();
+            $userId = $user?->id;
+
+            // Log en Laravel con formato estructurado
+            $logContext = [
+                'user_id' => $userId,
+                'context' => $request->context ?? 'Frontend',
+                'url' => $request->url,
+                'user_agent' => $request->userAgent,
+                'level' => $request->level,
+                'data' => $request->data,
+                'timestamp' => $request->timestamp ?? now()->toISOString(),
+            ];
+
+            $level = $request->level;
+            $message = "[FRONTEND] {$request->message}";
+
+            if ($level === 'error') {
+                Log::error($message, $logContext);
+            } elseif (in_array($level, ['warn', 'warning'])) {
+                Log::warning($message, $logContext);
+            } elseif ($level === 'debug') {
+                Log::debug($message, $logContext);
+            } else {
+                Log::info($message, $logContext);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Log stored successfully'
+            ], 200);
+
+        } catch (\Exception $e) {
+            // No loguear errores de logging para evitar bucles
+            return response()->json([
+                'success' => false,
+                'message' => 'Error processing log'
+            ], 500);
+        }
+    }
+
+    /**
      * Recibir y almacenar errores del frontend
      */
     public function store(Request $request)

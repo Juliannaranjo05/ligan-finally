@@ -84,6 +84,16 @@ export const useSessionValidation = (requiredRole, enabled = true) => {
         
         console.log('✅ [useSessionValidation] Sesión validada correctamente', { userRole, requiredRole });
       } catch (err) {
+        // Verificar si es SESSION_SUSPENDED - NO redirigir, dejar que el modal lo maneje
+        const errorCode = err.response?.data?.code || err.response?.data?.codigo || '';
+        const sessionSuspendedFlag = localStorage.getItem('session_suspended');
+        
+        if (errorCode === 'SESSION_SUSPENDED' || sessionSuspendedFlag === 'true') {
+          console.log('⏸️ [useSessionValidation] Sesión suspendida detectada - no redirigiendo, el modal se encargará');
+          // NO hacer nada, el modal SessionSuspendedModal se encargará de mostrar el modal
+          return;
+        }
+        
         // Si hay error, verificar si es por sesión cerrada
         const sessionClosedFlag = localStorage.getItem('session_closed_by_other_device');
         if (sessionClosedFlag !== 'true') {

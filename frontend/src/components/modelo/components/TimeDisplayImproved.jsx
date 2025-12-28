@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, Info, X, Mic, MicOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, Gift, Timer } from 'lucide-react';
+import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
+import { getVideoChatText } from '../../videochatTranslations';
 
 const TimeDisplayImproved = ({ 
  tiempo = 0,  // 🔥 TIEMPO DE SESIÓN EN SEGUNDOS (igual que en cliente)
@@ -24,6 +26,34 @@ const TimeDisplayImproved = ({
  loading = false,
  userData = {}
 }) => {
+  // 🔥 DEBUG: Log cuando se reciben los props
+  useEffect(() => {
+    console.log('💰 [TimeDisplayImproved] ===== PROPS RECIBIDAS =====');
+    console.log('💰 [TimeDisplayImproved] Valores recibidos:', {
+      tiempo: tiempo,
+      remainingMinutes: remainingMinutes,
+      giftBalance: giftBalance,
+      userBalance: userBalance
+    });
+    console.log('💰 [TimeDisplayImproved] Tipos de datos:', {
+      tiempo_type: typeof tiempo,
+      remainingMinutes_type: typeof remainingMinutes,
+      giftBalance_type: typeof giftBalance,
+      userBalance_type: typeof userBalance
+    });
+    console.log('💰 [TimeDisplayImproved] Valores que se mostrarán en UI:', {
+      tiempo_formato: `${Math.floor(tiempo / 60).toString().padStart(2, "0")}:${(tiempo % 60).toString().padStart(2, "0")}`,
+      remainingMinutes_display: remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0,
+      giftBalance_display: giftBalance !== undefined && giftBalance !== null ? giftBalance : 0,
+      userBalance_display: userBalance !== undefined && userBalance !== null ? userBalance : 0
+    });
+    console.log('💰 [TimeDisplayImproved] ============================');
+  }, [tiempo, remainingMinutes, giftBalance, userBalance]);
+  
+  // 🔥 OBTENER IDIOMA ACTUAL
+  const { currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
+  const currentLanguage = globalCurrentLanguage || 'es';
+  
   // 🔥 FUNCIÓN PARA FORMATEAR TIEMPO - MEMOIZADA PARA EVITAR RECÁLCULOS
   const formatoTiempo = useMemo(() => {
     const minutos = Math.floor(tiempo / 60).toString().padStart(2, "0");
@@ -64,7 +94,7 @@ const TimeDisplayImproved = ({
                 <Clock className="balance-icon" />
               </div>
               <div className="balance-info">
-                <div className="balance-label">Tiempo:</div>
+                <div className="balance-label">{getVideoChatText('time', currentLanguage, 'Tiempo:')}</div>
                 <div className="balance-value tiempo-value">{formatoTiempo}</div>
               </div>
             </div>
@@ -75,7 +105,7 @@ const TimeDisplayImproved = ({
                 <Timer className="balance-icon" />
                 </div>
               <div className="balance-info">
-                <div className="balance-label">Minutos:</div>
+                <div className="balance-label">{getVideoChatText('minutes', currentLanguage, 'Minutos:')}</div>
                 <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
                 </div>
               </div>
@@ -86,7 +116,7 @@ const TimeDisplayImproved = ({
                 <Gift className="balance-icon" />
                 </div>
               <div className="balance-info">
-                <div className="balance-label">Regalos:</div>
+                <div className="balance-label">{getVideoChatText('gifts', currentLanguage, 'Regalos:')}</div>
                 <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
               </div>
             </div>
@@ -177,7 +207,7 @@ const TimeDisplayImproved = ({
                 <Clock className="balance-icon" />
               </div>
               <div className="balance-info">
-                <div className="balance-label">Tiempo:</div>
+                <div className="balance-label">{getVideoChatText('time', currentLanguage, 'Tiempo:')}</div>
                 <div className="balance-value tiempo-value">{formatoTiempo}</div>
               </div>
             </div>
@@ -188,7 +218,7 @@ const TimeDisplayImproved = ({
                 <Timer className="balance-icon" />
               </div>
               <div className="balance-info">
-                <div className="balance-label">Minutos:</div>
+                <div className="balance-label">{getVideoChatText('minutes', currentLanguage, 'Minutos:')}</div>
                 <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
               </div>
             </div>
@@ -199,7 +229,7 @@ const TimeDisplayImproved = ({
                 <Gift className="balance-icon" />
               </div>
               <div className="balance-info">
-                <div className="balance-label">Regalos:</div>
+                <div className="balance-label">{getVideoChatText('gifts', currentLanguage, 'Regalos:')}</div>
                 <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
               </div>
             </div>
@@ -288,8 +318,8 @@ const TimeDisplayImproved = ({
                   </button>
                 </div>
                 <div className="info-details">
-                  <div className="info-title">Info</div>
-                  <div className="info-subtitle">Sistema</div>
+                  <div className="info-title">{getVideoChatText('info', currentLanguage, 'Info')}</div>
+                  <div className="info-subtitle">{getVideoChatText('system', currentLanguage, 'Sistema')}</div>
                   </div>
               </div>
                   </div>
@@ -307,7 +337,7 @@ const TimeDisplayImproved = ({
                 <div className="modal-icon-wrapper">
                   <Info size={16} className="modal-icon" />
                   </div>
-                <h2 className="modal-title">Sistema de Ganancias</h2>
+                <h2 className="modal-title">{getVideoChatText('earningsSystemTitle', currentLanguage, 'Sistema de Ganancias')}</h2>
                       </div>
               <button
                 onClick={() => setShowInfoModal(false)}
@@ -325,29 +355,29 @@ const TimeDisplayImproved = ({
                   <span className="beta-icon">β</span>
                   </div>
                 <div className="beta-content">
-                  <h4 className="beta-title">FASE BETA</h4>
+                  <h4 className="beta-title">{getVideoChatText('betaPhase', currentLanguage, 'FASE BETA')}</h4>
                   <p className="beta-text">
-                    Esta función está en pruebas y puede tener errores. Reporta cualquier problema.
+                    {getVideoChatText('betaText', currentLanguage, 'Esta función está en pruebas y puede tener errores. Reporta cualquier problema.')}
                   </p>
                 </div>
               </div>
 
               {/* Sistema de ganancias */}
               <div className="system-info">
-                <h3 className="section-title">💰 Sistema de Ganancias</h3>
+                <h3 className="section-title">{getVideoChatText('earningsSystemSection', currentLanguage, '💰 Sistema de Ganancias')}</h3>
                 
                 <div className="discount-rules">
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">$0.25 por minuto</span> - Pago fijo por cada minuto de videollamada
+                      <span className="rule-highlight">{getVideoChatText('earningsRule1Title', currentLanguage, '$0.25 por minuto')}</span> - {getVideoChatText('earningsRule1Desc', currentLanguage, 'Pago fijo por cada minuto de videollamada')}
                     </p>
                 </div>
                   
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">60% de regalos</span> - Comisión de cada regalo recibido
+                      <span className="rule-highlight">{getVideoChatText('earningsRule2Title', currentLanguage, '60% de regalos')}</span> - {getVideoChatText('earningsRule2Desc', currentLanguage, 'Comisión de cada regalo recibido')}
                     </p>
                   </div>
                 </div>
@@ -355,7 +385,7 @@ const TimeDisplayImproved = ({
 
               {/* Consideraciones importantes */}
               <div className="balance-info-section">
-                <h3 className="section-title">⚠️ Consideraciones Importantes</h3>
+                <h3 className="section-title">{getVideoChatText('importantConsiderations', currentLanguage, '⚠️ Consideraciones Importantes')}</h3>
                 
                 <div className="balance-rules">
                   <div className="balance-rule">
@@ -363,8 +393,8 @@ const TimeDisplayImproved = ({
                       <span style={{color: 'rgb(239, 68, 68)'}}>1</span>
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Chico con menos de 2 minutos</h4>
-                      <p className="balance-rule-text">Finalizar la sala porque ya no cuenta con saldo y el tiempo transcurrido no se reflejará</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('consideration1Title', currentLanguage, 'Chico con menos de 2 minutos')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('consideration1Desc', currentLanguage, 'Finalizar la sala porque ya no cuenta con saldo y el tiempo transcurrido no se reflejará')}</p>
               </div>
             </div>
 
@@ -373,8 +403,8 @@ const TimeDisplayImproved = ({
                       <span style={{color: 'rgb(239, 68, 68)'}}>2</span>
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Tiempo no inicia en 0</h4>
-                      <p className="balance-rule-text">Si al iniciar el tiempo no está en 00:00, finalizar y volver a iniciar otra sala</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('consideration2Title', currentLanguage, 'Tiempo no inicia en 0')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('consideration2Desc', currentLanguage, 'Si al iniciar el tiempo no está en 00:00, finalizar y volver a iniciar otra sala')}</p>
                     </div>
                   </div>
 
@@ -383,8 +413,8 @@ const TimeDisplayImproved = ({
                       <span style={{color: 'rgb(239, 68, 68)'}}>3</span>
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Chico se desconecta durante la llamada</h4>
-                      <p className="balance-rule-text">Si sale conectado y no regresa después de 1 minuto, finalizar la sala. Si no lo haces, no se reflejará nada en el saldo</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('consideration3Title', currentLanguage, 'Chico se desconecta durante la llamada')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('consideration3Desc', currentLanguage, 'Si sale conectado y no regresa después de 1 minuto, finalizar la sala. Si no lo haces, no se reflejará nada en el saldo')}</p>
                     </div>
                   </div>
 
@@ -393,8 +423,8 @@ const TimeDisplayImproved = ({
                       <span style={{color: 'rgb(239, 68, 68)'}}>4</span>
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">Aparece "Conectando" en pantalla</h4>
-                      <p className="balance-rule-text">Si sale conectando después de 1 minuto, finalizar la sala. Si no lo haces, no se reflejará nada en el saldo</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('consideration4Title', currentLanguage, 'Aparece "Conectando" en pantalla')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('consideration4Desc', currentLanguage, 'Si sale conectando después de 1 minuto, finalizar la sala. Si no lo haces, no se reflejará nada en el saldo')}</p>
                     </div>
                   </div>
                 </div>
@@ -402,12 +432,12 @@ const TimeDisplayImproved = ({
 
               {/* Recomendaciones */}
               <div className="recommendations">
-                <h4 className="recommendations-title">💡 Consejos</h4>
+                <h4 className="recommendations-title">{getVideoChatText('tipsTitle', currentLanguage, '💡 Consejos')}</h4>
                 <ul className="recommendations-list">
-                  <li>• Mantén conversaciones interesantes</li>
-                  <li>• Anima a los usuarios a enviar regalos</li>
-                  <li>• No cierres las salas muy rápido</li>
-                  <li>• Reporta errores para mejorar el sistema</li>
+                  <li>{getVideoChatText('tip1', currentLanguage, '• Mantén conversaciones interesantes')}</li>
+                  <li>{getVideoChatText('tip2', currentLanguage, '• Anima a los usuarios a enviar regalos')}</li>
+                  <li>{getVideoChatText('tip3', currentLanguage, '• No cierres las salas muy rápido')}</li>
+                  <li>{getVideoChatText('tip4', currentLanguage, '• Reporta errores para mejorar el sistema')}</li>
                 </ul>
               </div>
             </div>
@@ -418,7 +448,7 @@ const TimeDisplayImproved = ({
                 onClick={() => setShowInfoModal(false)}
                 className="modal-confirm-button"
                 >
-                Entendido
+                {getVideoChatText('understood', currentLanguage, 'Entendido')}
                 </button>
                 </div>
               </div>
@@ -433,15 +463,15 @@ const TimeDisplayImproved = ({
               <div className="warning-icon-wrapper">
                 <Info size={32} className="warning-icon" />
           </div>
-              <h3 className="warning-title">¡Importante!</h3>
+              <h3 className="warning-title">{getVideoChatText('important', currentLanguage, '¡Importante!')}</h3>
               <p className="warning-text">
-                Lee las reglas de ganancias antes de comenzar. Haz clic en el botón de información (ℹ️) para más detalles.
+                {getVideoChatText('warningTextModel', currentLanguage, 'Lee las reglas de ganancias antes de comenzar. Haz clic en el botón de información (ℹ️) para más detalles.')}
               </p>
               <button
                 onClick={() => setShowInitialWarning(false)}
                 className="warning-button"
               >
-                Entendido
+                {getVideoChatText('understood', currentLanguage, 'Entendido')}
               </button>
         </div>
           </div>

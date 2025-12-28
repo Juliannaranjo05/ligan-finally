@@ -17,7 +17,9 @@ class SessionEarningsController extends Controller
 {
     // 🔥 CONSTANTES ACTUALIZADAS - Ahora se obtienen dinámicamente desde PlatformSettingsService
     // Se mantienen como fallback por compatibilidad, pero se usan los valores dinámicos
-    const MODEL_EARNINGS_PER_MINUTE = 0.24; // Fallback
+    // 30 USD/hora = 0.50 USD/minuto total (20 USD modelo + 10 USD plataforma)
+    const MODEL_EARNINGS_PER_MINUTE = 0.333; // Fallback (20 USD/hora / 60 minutos)
+    const PLATFORM_EARNINGS_PER_MINUTE = 0.167; // Fallback (10 USD/hora / 60 minutos)
     const COINS_PER_MINUTE = 10; // Fallback
 
     /**
@@ -25,6 +27,18 @@ class SessionEarningsController extends Controller
      */
     public function processSessionEarnings($sessionId, $modelUserId, $clientUserId, $roomName, $actualDurationSeconds = null)
     {
+        // 🔒 LOCK PARA EVITAR PROCESAMIENTO DUPLICADO
+        $lockKey = "process_earnings_{$sessionId}_{$modelUserId}_{$clientUserId}";
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 30); // 30 segundos de lock
+        
+        if (!$lock->get()) {
+            Log::warning('⚠️ [UNIFICADO] Procesamiento de ganancias ya en curso, ignorando duplicado', [
+                'session_id' => $sessionId,
+                'lock_key' => $lockKey
+            ]);
+            return false;
+        }
+
         try {
             Log::info('🧮 [UNIFICADO] Procesando ganancias de sesión', [
                 'session_id' => $sessionId,
@@ -33,10 +47,24 @@ class SessionEarningsController extends Controller
                 'actual_duration_seconds' => $actualDurationSeconds
             ]);
 
+            // 🔒 VALIDACIONES BÁSICAS
+            if (!$modelUserId || !$clientUserId || !$roomName) {
+                Log::error('❌ [UNIFICADO] Parámetros inválidos', [
+                    'model_user_id' => $modelUserId,
+                    'client_user_id' => $clientUserId,
+                    'room_name' => $roomName
+                ]);
+                return false;
+            }
+
+            // 🔒 TRANSACCIÓN DE BASE DE DATOS PARA GARANTIZAR CONSISTENCIA
+            DB::beginTransaction();
+
             // 🔍 BUSCAR/CREAR SESIÓN
             $session = $this->findOrCreateSession($sessionId, $modelUserId, $clientUserId, $roomName, $actualDurationSeconds);
             
             if (!$session) {
+                DB::rollBack();
                 Log::error('❌ No se pudo crear/encontrar la sesión: ' . $sessionId);
                 return false;
             }
@@ -44,8 +72,26 @@ class SessionEarningsController extends Controller
             // 🔒 PROTECCIÓN: RESPETAR DURACIÓN MANUAL
             $durationSeconds = $this->getDurationSeconds($session, $actualDurationSeconds);
             
+            // 🔒 VALIDAR DURACIÓN
+            if ($durationSeconds <= 0) {
+                DB::rollBack();
+                Log::warning('⚠️ [UNIFICADO] Duración inválida, ignorando', [
+                    'duration_seconds' => $durationSeconds
+                ]);
+                return false;
+            }
+            
             // 💰 CALCULAR GANANCIAS POR TIEMPO
             $timeEarnings = $this->calculateTimeEarnings($durationSeconds);
+            
+            // 🔒 VALIDAR GANANCIAS CALCULADAS
+            if (!isset($timeEarnings['model_earnings']) || !isset($timeEarnings['platform_earnings'])) {
+                DB::rollBack();
+                Log::error('❌ [UNIFICADO] Error calculando ganancias', [
+                    'time_earnings' => $timeEarnings
+                ]);
+                return false;
+            }
             
             // 🔄 CREAR O ACTUALIZAR SESSION_EARNINGS
             $this->createOrUpdateSessionEarning(
@@ -57,20 +103,31 @@ class SessionEarningsController extends Controller
                 $timeEarnings
             );
 
-            // ❌ NO ACTUALIZAR User.balance (se calcula dinámicamente)
+            // 🔒 COMMIT TRANSACCIÓN (la actualización de billetera se hace dentro de createOrUpdateSessionEarning)
+            DB::commit();
             
             Log::info('✅ [UNIFICADO] Ganancias de sesión procesadas', [
                 'session_id' => $session->id,
                 'duration_seconds' => $durationSeconds,
                 'time_earnings' => $timeEarnings['model_earnings'],
+                'platform_earnings' => $timeEarnings['platform_earnings'],
                 'qualifying' => $timeEarnings['qualifying']
             ]);
 
             return true;
 
         } catch (\Exception $e) {
-            Log::error('❌ Error procesando ganancias unificadas: ' . $e->getMessage());
+            DB::rollBack();
+            Log::error('❌ Error procesando ganancias unificadas: ' . $e->getMessage(), [
+                'session_id' => $sessionId,
+                'model_user_id' => $modelUserId,
+                'client_user_id' => $clientUserId,
+                'trace' => $e->getTraceAsString()
+            ]);
             return false;
+        } finally {
+            // 🔒 LIBERAR LOCK
+            $lock->release();
         }
     }
 
@@ -538,24 +595,32 @@ class SessionEarningsController extends Controller
         $payableMinutes = floor($durationSeconds / 60); // Solo minutos completos
         $qualifyingSession = $payableMinutes >= 1;
 
-        // Obtener valores dinámicos desde PlatformSettingsService
-        $earningsPerMinute = PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+        // 🔥 Obtener valores dinámicos desde PlatformSettingsService
+        // 30 USD/hora = 0.50 USD/minuto total
+        // 20 USD/hora para modelo = 0.333 USD/minuto
+        // 10 USD/hora para plataforma = 0.167 USD/minuto
+        $earningsPerMinute = PlatformSettingsService::getDecimal('earnings_per_minute', 0.333);
+        $platformEarningsPerMinute = PlatformSettingsService::getDecimal('platform_earnings_per_minute', 0.167);
         $coinsPerMinute = PlatformSettingsService::getInteger('coins_per_minute', 10);
         
         $modelEarnings = $qualifyingSession ? round($payableMinutes * $earningsPerMinute, 2) : 0;
+        $platformEarnings = $qualifyingSession ? round($payableMinutes * $platformEarningsPerMinute, 2) : 0;
         $theoreticalCoinsConsumed = ceil($payableMinutes * $coinsPerMinute);
         
         return [
             'qualifying' => $qualifyingSession,
             'payable_minutes' => $payableMinutes,
             'model_earnings' => $modelEarnings,
+            'platform_earnings' => $platformEarnings,
             'theoretical_coins' => $theoreticalCoinsConsumed
         ];
     }
 
     private function createOrUpdateSessionEarning($session, $modelUserId, $clientUserId, $roomName, $durationSeconds, $timeEarnings)
     {
-        $existingEarning = SessionEarning::where('session_id', $session->id)
+        // 🔒 USAR LOCK FOR UPDATE PARA EVITAR RACE CONDITIONS
+        $existingEarning = SessionEarning::lockForUpdate()
+            ->where('session_id', $session->id)
             ->where('model_user_id', $modelUserId)
             ->where('client_user_id', $clientUserId)
             ->first();
@@ -566,6 +631,8 @@ class SessionEarningsController extends Controller
             'qualifying_session' => $timeEarnings['qualifying'],
             'model_time_earnings' => $timeEarnings['model_earnings'],
             'model_total_earnings' => $timeEarnings['model_earnings'], // Se suma con regalos si los hay
+            'platform_time_earnings' => $timeEarnings['platform_earnings'],
+            'platform_total_earnings' => $timeEarnings['platform_earnings'], // Se suma con regalos si los hay
             'total_time_coins_spent' => $timeEarnings['theoretical_coins'],
             'total_coins_spent' => $timeEarnings['theoretical_coins'],
             'session_started_at' => $session->started_at,
@@ -576,11 +643,23 @@ class SessionEarningsController extends Controller
         if ($existingEarning) {
             // Mantener ganancias de regalos existentes
             $earningData['model_total_earnings'] = $timeEarnings['model_earnings'] + $existingEarning->model_gift_earnings;
+            $earningData['platform_total_earnings'] = $timeEarnings['platform_earnings'] + ($existingEarning->platform_gift_earnings ?? 0);
+            
+            // 🔥 CALCULAR DIFERENCIA DE GANANCIAS PARA ACTUALIZAR BILLETERA (evitar duplicados)
+            $earningsDifference = $timeEarnings['model_earnings'] - ($existingEarning->model_time_earnings ?? 0);
+            
             $existingEarning->update($earningData);
+            
+            // 🔥 ACTUALIZAR BILLETERA DE LA MODELO SOLO CON LA DIFERENCIA
+            if ($earningsDifference > 0) {
+                $this->updateModelWallet($modelUserId, $earningsDifference);
+            }
             
             Log::info('💰 [UNIFICADO] Session earning actualizado', [
                 'earning_id' => $existingEarning->id,
                 'time_earnings' => $timeEarnings['model_earnings'],
+                'platform_earnings' => $timeEarnings['platform_earnings'],
+                'earnings_difference' => $earningsDifference,
                 'total_earnings' => $earningData['model_total_earnings']
             ]);
         } else {
@@ -590,16 +669,128 @@ class SessionEarningsController extends Controller
                 'client_user_id' => $clientUserId,
                 'room_name' => $roomName,
                 'model_gift_earnings' => 0,
-                'platform_time_earnings' => 0,
                 'platform_gift_earnings' => 0,
-                'platform_total_earnings' => 0,
                 'gift_count' => 0
             ]));
             
+            // 🔥 ACTUALIZAR BILLETERA DE LA MODELO
+            $this->updateModelWallet($modelUserId, $timeEarnings['model_earnings']);
+            
             Log::info('💰 [UNIFICADO] Nuevo session earning creado', [
                 'earning_id' => $newEarning->id,
-                'time_earnings' => $timeEarnings['model_earnings']
+                'time_earnings' => $timeEarnings['model_earnings'],
+                'platform_earnings' => $timeEarnings['platform_earnings']
             ]);
+        }
+    }
+
+    /**
+     * 🔥 ACTUALIZAR BILLETERA DE LA MODELO CON GANANCIAS POR TIEMPO
+     * 🔒 CON LOCK Y VALIDACIONES PARA EVITAR RACE CONDITIONS Y DUPLICADOS
+     */
+    private function updateModelWallet($modelUserId, $earningsAmount)
+    {
+        // 🔒 VALIDACIÓN INICIAL
+        if ($earningsAmount <= 0 || !is_numeric($earningsAmount)) {
+            Log::warning('⚠️ [WALLET] Monto inválido, ignorando actualización', [
+                'model_user_id' => $modelUserId,
+                'earnings_amount' => $earningsAmount
+            ]);
+            return false;
+        }
+
+        // 🔒 LOCK PARA EVITAR RACE CONDITIONS
+        $lockKey = "update_wallet_{$modelUserId}";
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockKey, 10); // 10 segundos de lock
+        
+        if (!$lock->get()) {
+            Log::warning('⚠️ [WALLET] Actualización de billetera ya en curso, reintentando...', [
+                'model_user_id' => $modelUserId
+            ]);
+            // Reintentar después de 100ms
+            usleep(100000);
+            return $this->updateModelWallet($modelUserId, $earningsAmount);
+        }
+
+        try {
+            // 🔒 USAR LOCK FOR UPDATE PARA EVITAR RACE CONDITIONS EN BD
+            $model = User::lockForUpdate()->find($modelUserId);
+            
+            if (!$model) {
+                Log::error('❌ [WALLET] Modelo no encontrada para actualizar billetera', [
+                    'model_user_id' => $modelUserId
+                ]);
+                return false;
+            }
+
+            // 🔒 VALIDAR QUE EL MODELO SEA REALMENTE UNA MODELO
+            if ($model->rol !== 'modelo' && $model->role !== 'modelo') {
+                Log::warning('⚠️ [WALLET] Usuario no es modelo, ignorando actualización', [
+                    'model_user_id' => $modelUserId,
+                    'role' => $model->rol ?? $model->role
+                ]);
+                return false;
+            }
+
+            // 🔒 OBTENER VALORES ACTUALES ANTES DE ACTUALIZAR
+            $oldBalance = $model->balance ?? 0;
+            $oldTotalEarned = $model->total_earned ?? 0;
+
+            // 🔒 ACTUALIZAR CON VALIDACIÓN
+            $model->increment('balance', $earningsAmount);
+            $model->increment('total_earned', $earningsAmount);
+            $model->last_earning_at = now();
+            
+            // 🔒 VALIDAR QUE LA ACTUALIZACIÓN FUE EXITOSA
+            if (!$model->save()) {
+                throw new \Exception('Error al guardar modelo después de actualizar billetera');
+            }
+
+            // 🔒 VERIFICAR QUE LOS VALORES SE ACTUALIZARON CORRECTAMENTE
+            $model->refresh();
+            $newBalance = $model->balance ?? 0;
+            $newTotalEarned = $model->total_earned ?? 0;
+            
+            $actualBalanceIncrease = $newBalance - $oldBalance;
+            $actualEarnedIncrease = $newTotalEarned - $oldTotalEarned;
+
+            // 🔒 VALIDAR QUE EL INCREMENTO FUE CORRECTO (con tolerancia de 0.01 por redondeo)
+            if (abs($actualBalanceIncrease - $earningsAmount) > 0.01 || abs($actualEarnedIncrease - $earningsAmount) > 0.01) {
+                Log::error('❌ [WALLET] Discrepancia en actualización de billetera', [
+                    'model_user_id' => $modelUserId,
+                    'expected_increase' => $earningsAmount,
+                    'actual_balance_increase' => $actualBalanceIncrease,
+                    'actual_earned_increase' => $actualEarnedIncrease,
+                    'old_balance' => $oldBalance,
+                    'new_balance' => $newBalance
+                ]);
+                // No lanzar excepción, solo loguear para no romper el flujo
+            }
+
+            Log::info('💰 [WALLET] Billetera de modelo actualizada exitosamente', [
+                'model_user_id' => $modelUserId,
+                'earnings_added' => $earningsAmount,
+                'old_balance' => $oldBalance,
+                'new_balance' => $newBalance,
+                'old_total_earned' => $oldTotalEarned,
+                'new_total_earned' => $newTotalEarned,
+                'balance_increase' => $actualBalanceIncrease,
+                'earned_increase' => $actualEarnedIncrease
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('❌ [WALLET] Error actualizando billetera de modelo: ' . $e->getMessage(), [
+                'model_user_id' => $modelUserId,
+                'earnings_amount' => $earningsAmount,
+                'error' => $e->getTraceAsString()
+            ]);
+            // 🔒 RE-LANZAR EXCEPCIÓN PARA QUE LA TRANSACCIÓN HAGA ROLLBACK
+            throw $e;
+        } finally {
+            // 🔒 LIBERAR LOCK
+            $lock->release();
         }
     }
 

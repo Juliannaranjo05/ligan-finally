@@ -2,6 +2,52 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+// 🔐 GENERADOR DE TOKENS COMPATIBLE CON EL MIDDLEWARE
+class SessionTokenManager {
+  static async generateSessionToken(userId, userIP = 'web-client') {
+    try {
+      if (!userId) {
+        return null;
+      }
+      
+      const currentHour = new Date().toISOString().slice(0, 13).replace('T', '-');
+      const sessionId = this.getSessionId();
+      
+      // 🔥 STRING EXACTO QUE ESPERA EL MIDDLEWARE
+      const data = [
+        userId.toString(),
+        sessionId,
+        currentHour,
+        'web-app-key', // Clave pública para requests desde web
+        userIP || 'web-client'
+      ].join('|');
+      
+      // Calcular el hash SHA-256
+      const hash = await this.sha256(data);
+      return hash;
+    } catch (error) {
+      console.error('Error generando token de sesión:', error);
+      return null;
+    }
+  }
+  
+  static getSessionId() {
+    let sessionId = localStorage.getItem('app_session_id');
+    if (!sessionId) {
+      sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('app_session_id', sessionId);
+    }
+    return sessionId;
+  }
+  
+  static async sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
 export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
   const [gifts, setGifts] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
@@ -276,6 +322,114 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
     }
   }, [roomName, currentUser, getAuthHeaders]);
 
+  // 💰 Cargar balance del usuario - MOVER ANTES DE acceptGift PARA EVITAR DEPENDENCIA CIRCULAR
+  // 🔥 REF PARA EVITAR MÚLTIPLAS LLAMADAS
+  const loadUserBalanceCallRef = useRef(false);
+  const lastLoadUserBalanceTimeRef = useRef(0);
+
+  const loadUserBalance = useCallback(async () => {
+    // 🔥 PROTECCIÓN CONTRA MÚLTIPLAS EJECUCIONES SIMULTÁNEAS (pero permitir llamadas frecuentes)
+    if (loadUserBalanceCallRef.current) {
+      return { success: false, error: 'Ya hay una petición en curso' };
+    }
+    
+    // 🔥 REDUCIR TIEMPO MÍNIMO A 5 SEGUNDOS (más permisivo)
+    const now = Date.now();
+    if (now - lastLoadUserBalanceTimeRef.current < 5000) {
+      return { success: false, error: 'Demasiado pronto para cargar balance' };
+    }
+    
+    loadUserBalanceCallRef.current = true;
+    lastLoadUserBalanceTimeRef.current = now;
+    
+    try {
+      console.log('🔄 [useVideoChatGifts] Iniciando carga de balance de regalos...');
+      const response = await Promise.race([
+        fetch(`${API_BASE_URL}/api/videochat/gifts/balance`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]);
+      
+      console.log('📡 [useVideoChatGifts] Respuesta recibida, status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('💰 [useVideoChatGifts] Respuesta completa del endpoint:', JSON.stringify(data, null, 2));
+        if (data.success) {
+          // 🔥 MOSTRAR TODOS LOS DATOS REALES DEL BACKEND
+          console.log('🎁 [GIFTS BALANCE] ===== DATOS REALES DEL BACKEND =====');
+          console.log('🎁 [GIFTS BALANCE] Respuesta completa:', JSON.stringify(data, null, 2));
+          console.log('🎁 [GIFTS BALANCE] Valores disponibles:', {
+            balance: data.balance,
+            gift_balance: data.gift_balance,
+            gift_balance_coins: data.gift_balance_coins,
+            purchased_balance: data.purchased_balance,
+            total_consumed: data.total_consumed,
+            user_role: data.user_role,
+            context: data.context
+          });
+          console.log('🎁 [GIFTS BALANCE] Usuario actual:', {
+            id: currentUser?.id,
+            role: currentUser?.role,
+            name: currentUser?.name
+          });
+          
+          // 🔥 LÓGICA MEJORADA PARA DETERMINAR EL BALANCE CORRECTO
+          // Para MODELOS: usar gift_balance (total de regalos recibidos)
+          // Para CLIENTES: usar gift_balance_coins (saldo disponible para enviar regalos)
+          let balance = 0;
+          if (currentUser?.role === 'modelo') {
+            // 🔥 MODELO: Usar gift_balance (total de regalos recibidos)
+            balance = data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0);
+            console.log('🎁 [GIFTS BALANCE] Lógica para MODELO:', {
+              gift_balance: data.gift_balance,
+              balance: data.balance,
+              final_balance: balance
+            });
+          } else {
+            // 🔥 CLIENTE: Usar gift_balance_coins (saldo disponible)
+            balance = data.gift_balance_coins !== undefined 
+              ? data.gift_balance_coins 
+              : (data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0));
+            console.log('🎁 [GIFTS BALANCE] Lógica para CLIENTE:', {
+              gift_balance_coins: data.gift_balance_coins,
+              gift_balance: data.gift_balance,
+              balance: data.balance,
+              final_balance: balance
+            });
+          }
+          setUserBalance(balance);
+          console.log('✅ [useVideoChatGifts] Balance de regalos procesado y actualizado:', {
+            gift_balance_coins: data.gift_balance_coins,
+            gift_balance: data.gift_balance,
+            balance: data.balance,
+            final_balance: balance,
+            user_role: data.user_role,
+            purchased_balance: data.purchased_balance
+          });
+          console.log('🎁 [GIFTS BALANCE] ======================================');
+          return { success: true, balance: balance };
+        } else {
+          console.warn('⚠️ [useVideoChatGifts] Respuesta no exitosa:', data);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ [useVideoChatGifts] Error en respuesta:', response.status, errorText);
+      }
+      
+      return { success: false, error: 'Error cargando balance' };
+    } catch (error) {
+      return { success: false, error: 'Error de conexión' };
+    } finally {
+      // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY MÁS CORTO
+      setTimeout(() => {
+        loadUserBalanceCallRef.current = false;
+      }, 5000); // 🔥 Reducido a 5 segundos
+    }
+  }, [getAuthHeaders, currentUser]);
+
   // ✅ Aceptar regalo (solo clientes)
   const acceptGift = useCallback(async (requestId, securityHash) => {
     if (currentUser?.role !== 'cliente') {
@@ -286,18 +440,155 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
       return { success: false, error: 'Solicitud ya siendo procesada' };
     }
 
+    // 🔥 GUARDAR BALANCE ANTES DE ENVIAR (para verificar después si hay error de red)
+    const balanceBefore = userBalance;
+    // 🔥 GUARDAR SI LA SOLICITUD ESTABA EN PENDIENTES
+    const wasInPending = pendingRequests.some(req => req.id === requestId);
+
     try {
       setProcessingRequest(requestId);
       setLoading(true);
       
             
-      const response = await fetch(`${API_BASE_URL}/api/videochat/gifts/accept/${requestId}`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          security_hash: securityHash
-        })
-      });
+      // 🔐 GENERAR TOKEN DE SESIÓN
+      const sessionToken = await SessionTokenManager.generateSessionToken(currentUser?.id || currentUser?.user_id);
+      
+      // 🔥 TIMEOUT MEJORADO PARA MÓVIL - Aumentar timeout a 45 segundos para conexiones lentas
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 segundos
+      
+      let response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/videochat/gifts/accept/${requestId}`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            security_hash: securityHash,
+            session_token: sessionToken,
+            platform: 'web',
+            session_id: SessionTokenManager.getSessionId()
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // 🔥 Si es timeout o error de red, verificar si el regalo se procesó con múltiples intentos
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+          console.warn('🎁 [ACCEPT GIFT] Error de conexión/timeout detectado, verificando si el regalo se procesó...');
+          
+        // 🔥 ESTRATEGIA DE VERIFICACIÓN MÚLTIPLE CON RETRY
+        let balanceAfter = balanceBefore;
+        let verificationSuccess = false;
+        
+        // Intentar verificar hasta 3 veces con delays crecientes
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const delay = attempt * 2000; // 2s, 4s, 6s
+          console.log(`🔄 [ACCEPT GIFT] Intento ${attempt}/3 de verificación después de ${delay}ms...`);
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Verificar balance
+          try {
+            const balanceResult = await loadUserBalance();
+            if (balanceResult.success && balanceResult.balance !== undefined) {
+              balanceAfter = balanceResult.balance;
+            }
+          } catch (e) {
+            console.warn(`⚠️ [ACCEPT GIFT] Error en intento ${attempt} de verificar balance:`, e);
+          }
+          
+          // Si el balance cambió, el regalo se procesó exitosamente
+          if (balanceAfter < balanceBefore) {
+            verificationSuccess = true;
+            console.log(`✅ [ACCEPT GIFT] Verificación exitosa en intento ${attempt}:`, {
+              balanceChanged: true,
+              balanceBefore,
+              balanceAfter
+            });
+            break;
+          }
+        }
+        
+        // 🔥 Si la verificación fue exitosa, retornar éxito
+        if (verificationSuccess) {
+          console.log('🎁 [ACCEPT GIFT] ✅ Regalo procesado exitosamente a pesar del error de conexión');
+          
+          // Remover de pendientes
+          setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+          
+          // Retornar éxito sin mostrar error
+          return {
+            success: true,
+            networkError: true,
+            balanceChanged: true,
+            newBalance: balanceAfter,
+            message: '¡Regalo enviado exitosamente!'
+          };
+        }
+          
+          // 🔥 ESTRATEGIA OPTIMISTA: Si no pudimos verificar pero había una solicitud pendiente,
+          // asumir que se procesó (es mejor que mostrar error cuando en realidad se envió)
+          if (wasInPending) {
+            console.warn('🎁 [ACCEPT GIFT] No se pudo verificar, pero había solicitud pendiente. Asumiendo éxito optimista.');
+            
+            // Remover de pendientes de todos modos
+            setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+            
+            return {
+              success: true,
+              networkError: true,
+              optimistic: true,
+              message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.'
+            };
+          }
+          
+          // Si no había solicitud pendiente y no se pudo verificar, retornar éxito de todos modos
+          // (mejor que mostrar error cuando puede que sí se haya procesado)
+          console.warn('🎁 [ACCEPT GIFT] No se pudo verificar completamente, pero retornando éxito optimista');
+          return {
+            success: true,
+            networkError: true,
+            optimistic: true,
+            message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.'
+          };
+        }
+        
+        // Si no es un error de red conocido, lanzar el error
+        throw fetchError;
+      }
+
+      // 🔥 MANEJAR 404 ANTES DE PARSEAR JSON (puede que no haya JSON en 404)
+      if (response.status === 404) {
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          // Si no hay JSON, usar mensaje por defecto
+          errorData = { message: 'La solicitud ya fue procesada o no existe', error: 'invalid_request' };
+        }
+        
+        console.warn('⚠️ [ACCEPT GIFT] Solicitud no encontrada (404) - puede que ya fue procesada');
+        
+        // Verificar balance por si acaso se procesó
+        try {
+          const balanceResult = await loadUserBalance();
+          if (balanceResult.success && balanceResult.balance !== undefined && balanceResult.balance < balanceBefore) {
+            // El balance cambió, el regalo se procesó
+            setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+            return { success: true, newBalance: balanceResult.balance };
+          }
+        } catch (e) {
+          console.warn('Error verificando balance después de 404:', e);
+        }
+        
+        return { 
+          success: false, 
+          error: 'request_not_found',
+          message: errorData.message || 'La solicitud ya fue procesada o no existe'
+        };
+      }
 
       const data = await response.json();
             
@@ -315,11 +606,17 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
         const giftName = data.data?.gift?.name || 'regalo';
         const newBalance = data.data?.client_balance?.new_balance;
         
-        if (Notification.permission === 'granted') {
-          new Notification('🎁 Regalo Enviado', {
-            body: `¡${giftName} enviado exitosamente! Saldo restante: ${newBalance || 'N/A'}`,
-            icon: '/favicon.ico'
-          });
+        // 🔥 Verificar que Notification existe antes de usarlo (no disponible en iOS Safari en algunos contextos)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification('🎁 Regalo Enviado', {
+              body: `¡${giftName} enviado exitosamente! Saldo restante: ${newBalance || 'N/A'}`,
+              icon: '/favicon.ico'
+            });
+          } catch (e) {
+            // Ignorar errores de notificación en iOS
+            console.warn('No se pudo mostrar notificación:', e);
+          }
         }
 
         return { 
@@ -334,7 +631,7 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
           }
         };
       } else {
-                
+        // 🔥 El 404 ya fue manejado arriba, aquí solo otros errores
         let errorMessage = data.message || data.error || 'Error desconocido';
         
         if (data.error === 'insufficient_balance') {
@@ -348,83 +645,117 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
         return { success: false, error: errorMessage };
       }
     } catch (error) {
-            return { success: false, error: 'Error de conexión' };
+      // 🔥 Si es un error de red relacionado con 404, no mostrar error genérico
+      if (error.message?.includes('404') || error.status === 404) {
+        console.warn('⚠️ [ACCEPT GIFT] Error 404 en catch - solicitud puede que ya fue procesada');
+        
+        // Verificar balance por si acaso se procesó
+        try {
+          const balanceResult = await loadUserBalance();
+          if (balanceResult.success && balanceResult.balance !== undefined && balanceResult.balance < balanceBefore) {
+            // El balance cambió, el regalo se procesó
+            setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+            return { success: true, newBalance: balanceResult.balance };
+          }
+        } catch (e) {
+          console.warn('Error verificando balance después de 404:', e);
+        }
+        
+        return { 
+          success: false, 
+          error: 'request_not_found',
+          message: 'La solicitud ya fue procesada o no existe'
+        };
+      }
+      
+      // 🔥 Si es un error de red, verificar si el regalo se procesó con múltiples intentos
+      if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        console.warn('🎁 [ACCEPT GIFT] Error de red detectado en catch, verificando si el regalo se procesó...');
+        
+        // 🔥 ESTRATEGIA DE VERIFICACIÓN MÚLTIPLE CON RETRY
+        let balanceAfter = balanceBefore;
+        let verificationSuccess = false;
+        
+        // Intentar verificar hasta 3 veces con delays crecientes
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const delay = attempt * 2000; // 2s, 4s, 6s
+          console.log(`🔄 [ACCEPT GIFT] Intento ${attempt}/3 de verificación después de ${delay}ms...`);
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Verificar balance
+          try {
+            const balanceResult = await loadUserBalance();
+            if (balanceResult.success && balanceResult.balance !== undefined) {
+              balanceAfter = balanceResult.balance;
+            }
+          } catch (e) {
+            console.warn(`⚠️ [ACCEPT GIFT] Error en intento ${attempt} de verificar balance:`, e);
+          }
+          
+          // Si el balance cambió, el regalo se procesó exitosamente
+          if (balanceAfter < balanceBefore) {
+            verificationSuccess = true;
+            console.log(`✅ [ACCEPT GIFT] Verificación exitosa en intento ${attempt}:`, {
+              balanceChanged: true,
+              balanceBefore,
+              balanceAfter
+            });
+            break;
+          }
+        }
+        
+        // 🔥 Si la verificación fue exitosa, retornar éxito
+        if (verificationSuccess) {
+          console.log('🎁 [ACCEPT GIFT] ✅ Regalo procesado exitosamente a pesar del error de conexión');
+          
+          // Remover de pendientes
+          setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+          
+          // Retornar éxito sin mostrar error
+          return {
+            success: true,
+            networkError: true,
+            balanceChanged: true,
+            newBalance: balanceAfter,
+            message: '¡Regalo enviado exitosamente!'
+          };
+        }
+        
+        // 🔥 ESTRATEGIA OPTIMISTA: Si no pudimos verificar pero había una solicitud pendiente,
+        // asumir que se procesó (es mejor que mostrar error cuando en realidad se envió)
+        if (wasInPending) {
+          console.warn('🎁 [ACCEPT GIFT] No se pudo verificar, pero había solicitud pendiente. Asumiendo éxito optimista.');
+          
+          // Remover de pendientes de todos modos
+          setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+          
+          return {
+            success: true,
+            networkError: true,
+            optimistic: true,
+            message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.'
+          };
+        }
+        
+        // Si no había solicitud pendiente y no se pudo verificar, retornar éxito de todos modos
+        // (mejor que mostrar error cuando puede que sí se haya procesado)
+        console.warn('🎁 [ACCEPT GIFT] No se pudo verificar completamente, pero retornando éxito optimista');
+        return {
+          success: true,
+          networkError: true,
+          optimistic: true,
+          message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.'
+        };
+      }
+      
+      console.error('❌ [ACCEPT GIFT] Error real de conexión:', error);
+      return { success: false, error: 'Error de conexión' };
     } finally {
       setProcessingRequest(null);
       setLoading(false);
     }
-  }, [currentUser, getAuthHeaders, processingRequest]);
-
-  // 💰 Cargar balance del usuario - AGREGAR ESTA FUNCIÓN
-// 🔥 REF PARA EVITAR MÚLTIPLAS LLAMADAS
-const loadUserBalanceCallRef = useRef(false);
-const lastLoadUserBalanceTimeRef = useRef(0);
-
-const loadUserBalance = useCallback(async () => {
-  // 🔥 PROTECCIÓN CONTRA MÚLTIPLAS EJECUCIONES SIMULTÁNEAS (pero permitir llamadas frecuentes)
-  if (loadUserBalanceCallRef.current) {
-    return { success: false, error: 'Ya hay una petición en curso' };
-  }
-  
-  // 🔥 REDUCIR TIEMPO MÍNIMO A 5 SEGUNDOS (más permisivo)
-  const now = Date.now();
-  if (now - lastLoadUserBalanceTimeRef.current < 5000) {
-    return { success: false, error: 'Demasiado pronto para cargar balance' };
-  }
-  
-  loadUserBalanceCallRef.current = true;
-  lastLoadUserBalanceTimeRef.current = now;
-  
-  try {
-    console.log('🔄 [useVideoChatGifts] Iniciando carga de balance de regalos...');
-    const response = await Promise.race([
-      fetch(`${API_BASE_URL}/api/videochat/gifts/balance`, {
-        method: 'GET',
-        headers: getAuthHeaders()
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-    ]);
-    
-    console.log('📡 [useVideoChatGifts] Respuesta recibida, status:', response.status);
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log('💰 [useVideoChatGifts] Respuesta completa del endpoint:', JSON.stringify(data, null, 2));
-      if (data.success) {
-        // 🔥 USAR gift_balance_coins (saldo real de regalos) SI ESTÁ DISPONIBLE
-        // gift_balance_coins es el saldo de regalos real del UserCoins
-        // gift_balance es el totalBalance (purchased + gift) para compatibilidad
-        const balance = data.gift_balance_coins !== undefined 
-          ? data.gift_balance_coins 
-          : (data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0));
-        setUserBalance(balance);
-        console.log('✅ [useVideoChatGifts] Balance de regalos procesado y actualizado:', {
-          gift_balance_coins: data.gift_balance_coins,
-          gift_balance: data.gift_balance,
-          balance: data.balance,
-          final_balance: balance,
-          user_role: data.user_role,
-          purchased_balance: data.purchased_balance
-        });
-        return { success: true, balance: balance };
-      } else {
-        console.warn('⚠️ [useVideoChatGifts] Respuesta no exitosa:', data);
-      }
-    } else {
-      const errorText = await response.text();
-      console.error('❌ [useVideoChatGifts] Error en respuesta:', response.status, errorText);
-    }
-    
-    return { success: false, error: 'Error cargando balance' };
-  } catch (error) {
-    return { success: false, error: 'Error de conexión' };
-  } finally {
-    // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY MÁS CORTO
-    setTimeout(() => {
-      loadUserBalanceCallRef.current = false;
-    }, 5000); // 🔥 Reducido a 5 segundos
-  }
-}, [getAuthHeaders]);
+  }, [currentUser, getAuthHeaders, processingRequest, userBalance, loadUserBalance]);
 
   // ❌ Rechazar regalo (solo clientes)
   const rejectGift = useCallback(async (requestId, reason = '') => {
@@ -448,11 +779,17 @@ const loadUserBalance = useCallback(async () => {
         setPendingRequests(prev => prev.filter(req => req.id !== requestId));
         
         // Notificación discreta
-        if (Notification.permission === 'granted') {
-          new Notification('Solicitud Rechazada', {
-            body: 'Has rechazado una solicitud de regalo',
-            icon: '/favicon.ico'
-          });
+        // 🔥 Verificar que Notification existe antes de usarlo (no disponible en iOS Safari en algunos contextos)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification('Solicitud Rechazada', {
+              body: 'Has rechazado una solicitud de regalo',
+              icon: '/favicon.ico'
+            });
+          } catch (e) {
+            // Ignorar errores de notificación en iOS
+            console.warn('No se pudo mostrar notificación:', e);
+          }
         }
         
         return { success: true, message: data.message };

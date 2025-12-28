@@ -689,10 +689,14 @@ class StoryController extends Controller
     public function getActiveStories()
     {
         try {
-            Log::info('🔍 DEBUG: getActiveStories method called');
+            $now = Carbon::now();
+            Log::info('🔍 [STORIES] getActiveStories method called', [
+                'timestamp' => $now->toDateTimeString(),
+                'timezone' => $now->timezone ? $now->timezone->getName() : config('app.timezone', 'UTC')
+            ]);
             
             if (!Schema::hasTable('stories')) {
-                Log::error('❌ Stories table does not exist');
+                Log::error('❌ [STORIES] Stories table does not exist');
                 return response()->json([
                     'error' => 'Tabla de historias no existe',
                     'data' => []
@@ -700,12 +704,28 @@ class StoryController extends Controller
             }
 
             if (!Schema::hasTable('users')) {
-                Log::error('❌ Users table does not exist');
+                Log::error('❌ [STORIES] Users table does not exist');
                 return response()->json([
                     'error' => 'Tabla de usuarios no existe',
                     'data' => []
                 ], 500);
             }
+
+            // 🔍 DEBUG: Contar historias antes de filtrar
+            $totalApproved = Story::where('status', 'approved')->count();
+            $totalExpired = Story::where('status', 'approved')
+                ->where('expires_at', '<=', $now)
+                ->count();
+            $totalActive = Story::where('status', 'approved')
+                ->where('expires_at', '>', $now)
+                ->count();
+            
+            Log::info('📊 [STORIES] Estadísticas de historias', [
+                'total_approved' => $totalApproved,
+                'total_expired' => $totalExpired,
+                'total_active' => $totalActive,
+                'current_time' => $now->toDateTimeString()
+            ]);
 
             $stories = Story::with(['user' => function($query) {
                     $query->select('id', 'name', 'email');
@@ -718,41 +738,97 @@ class StoryController extends Controller
                     }
                 }])
                 ->where('status', 'approved') // 🔄 SOLO HISTORIAS APROBADAS
-                ->where('expires_at', '>', Carbon::now()) // 🔄 Y NO EXPIRADAS
+                ->where('expires_at', '>', $now) // 🔄 SOLO HISTORIAS NO EXPIRADAS (dentro de las 24 horas)
                 ->orderBy('approved_at', 'desc') // 🔄 ORDENAR POR FECHA DE APROBACIÓN
-                ->limit(20)
+                ->limit(50) // 🔄 Aumentar límite para mostrar más historias
                 ->get();
 
-            Log::info('📊 Active stories found: ' . $stories->count());
+            Log::info('📊 [STORIES] Historias encontradas después de filtros', [
+                'count' => $stories->count(),
+                'stories_details' => $stories->map(function($story) use ($now) {
+                    try {
+                        return [
+                            'id' => $story->id,
+                            'user_id' => $story->user_id,
+                            'user_name' => $story->user ? ($story->user->name ?? 'N/A') : 'Usuario no encontrado',
+                            'is_online' => $story->user ? ($story->user->is_online ?? false) : false,
+                            'status' => $story->status,
+                            'approved_at' => $story->approved_at ? $story->approved_at->toDateTimeString() : null,
+                            'expires_at' => $story->expires_at ? $story->expires_at->toDateTimeString() : null,
+                            'is_expired' => $story->expires_at && $story->expires_at->isPast(),
+                            'minutes_until_expiry' => $story->expires_at ? $story->expires_at->diffInMinutes($now) : null
+                        ];
+                    } catch (\Exception $e) {
+                        Log::warning('⚠️ [STORIES] Error al procesar historia en log', [
+                            'story_id' => $story->id ?? 'N/A',
+                            'error' => $e->getMessage()
+                        ]);
+                        return [
+                            'id' => $story->id ?? 'N/A',
+                            'error' => 'Error al procesar'
+                        ];
+                    }
+                })->toArray()
+            ]);
 
             if ($stories->isEmpty()) {
                 return response()->json([]);
             }
 
             $formattedStories = $stories->map(function($story) {
-                return [
-                    'id' => $story->id,
-                    'user_id' => $story->user_id,
-                    'file_path' => $story->file_path,
-                    'file_url' => Storage::url($story->file_path), // 🔄 URL COMPLETA
-                    'mime_type' => $story->mime_type,
-                    'source_type' => $story->source_type,
-                    'created_at' => $story->created_at,
-                    'approved_at' => $story->approved_at,
-                    'expires_at' => $story->expires_at,
-                    'status' => $story->status,
-                    'views_count' => $story->views_count ?? 0,
-                    'user' => [
-                        'id' => $story->user->id,
-                        'name' => $story->user->name ?? 'Usuario',
-                        'email' => $story->user->email,
-                        'is_online' => $story->user->is_online ?? false,
-                        'avatar' => $story->user->avatar ?? null
-                    ]
-                ];
+                try {
+                    // Verificar que el usuario existe
+                    if (!$story->user) {
+                        Log::warning('⚠️ [STORIES] Historia sin usuario asociado', [
+                            'story_id' => $story->id,
+                            'user_id' => $story->user_id
+                        ]);
+                        return null; // Filtrar historias sin usuario
+                    }
+
+                    return [
+                        'id' => $story->id,
+                        'user_id' => $story->user_id,
+                        'file_path' => $story->file_path,
+                        'file_url' => $story->file_path ? Storage::url($story->file_path) : null, // 🔄 URL COMPLETA
+                        'mime_type' => $story->mime_type,
+                        'source_type' => $story->source_type,
+                        'created_at' => $story->created_at,
+                        'approved_at' => $story->approved_at,
+                        'expires_at' => $story->expires_at,
+                        'status' => $story->status,
+                        'views_count' => $story->views_count ?? 0,
+                        'user' => [
+                            'id' => $story->user->id,
+                            'name' => $story->user->name ?? 'Usuario',
+                            'email' => $story->user->email ?? '',
+                            'is_online' => $story->user->is_online ?? false,
+                            'avatar' => $story->user->avatar ?? null
+                        ]
+                    ];
+                } catch (\Exception $e) {
+                    Log::error('❌ [STORIES] Error al formatear historia', [
+                        'story_id' => $story->id ?? 'N/A',
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    return null; // Filtrar historias con error
+                }
+            })->filter(function($story) {
+                return $story !== null; // Remover historias nulas
             });
 
-            return response()->json($formattedStories, 200);
+            Log::info('✅ [STORIES] Historias formateadas y enviadas', [
+                'total_sent' => $formattedStories->count(),
+                'users_online' => $formattedStories->filter(function($s) {
+                    return isset($s['user']['is_online']) && $s['user']['is_online'];
+                })->count(),
+                'users_offline' => $formattedStories->filter(function($s) {
+                    return isset($s['user']['is_online']) && !$s['user']['is_online'];
+                })->count()
+            ]);
+
+            return response()->json($formattedStories->values(), 200);
 
         } catch (\Illuminate\Database\QueryException $e) {
             Log::error('❌ Database Query Error in getActiveStories: ' . $e->getMessage());

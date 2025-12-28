@@ -43,6 +43,7 @@ import { useVideoChatGifts } from '../../components/GiftSystem/useVideoChatGifts
 import { GiftsModal } from '../../components/GiftSystem/giftModal.jsx';
 import { GiftMessageComponent } from '../../components/GiftSystem/GiftMessageComponent.jsx';
 import { GiftNotificationOverlay } from '../../components/GiftSystem/GiftNotificationOverlay';
+import { Gift, Send } from 'lucide-react';
 import {
   useTranslation as useCustomTranslation,
   TranslationSettings,
@@ -634,6 +635,9 @@ export default function VideoChatClient() {
   const hadRemoteParticipantsRef = useRef(false); // 🔥 REF PARA SABER SI YA HABÍA PARTICIPANTES REMOTOS (evita falsos positivos al inicio)
   const lastRenderStateKeyRef = useRef(''); // 🔥 REF PARA PREVENIR LOGS REPETIDOS DE RENDER
   const lastRenderLogTimeRef = useRef(0); // 🔥 REF PARA THROTTLING DE LOGS DE RENDER
+  const disconnectDetectionTimeoutRef = useRef(null); // 🔥 REF PARA PERÍODO DE GRACIA DE DETECCIÓN DE DESCONEXIÓN
+  const isDetectingDisconnectionRef = useRef(false); // 🔥 REF PARA PREVENIR MÚLTIPLES DETECCIONES SIMULTÁNEAS
+  const connectionTimeoutRef = useRef(null); // 🔥 REF PARA TIMEOUT DE CONEXIÓN (20 segundos)
 
   // Estados de controles
   // 🔥 CÁMARA: Para modelo siempre encendida, para cliente apagada por defecto
@@ -650,6 +654,45 @@ export default function VideoChatClient() {
 
   // Estados de UI
   const [tiempo, setTiempo] = useState(0);
+  
+  // 🔥 FUNCIÓN PARA CARGAR TIEMPO DESDE localStorage
+  const getStoredTime = (room) => {
+    if (!room) return 0;
+    const storageKey = `videochat_tiempo_${room}`;
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      // 🔥 Verificar que el tiempo guardado no sea muy antiguo (máximo 24 horas = 86400 segundos)
+      if (!isNaN(parsed) && parsed >= 0 && parsed < 86400) {
+        console.log('⏱️ [TIEMPO] Tiempo cargado desde localStorage:', parsed, 'segundos');
+        return parsed;
+      }
+    }
+    return 0;
+  };
+  
+  // 🔥 CARGAR TIEMPO DESDE localStorage CUANDO roomName ESTÉ DISPONIBLE
+  useEffect(() => {
+    if (roomName) {
+      const storedTime = getStoredTime(roomName);
+      if (storedTime > 0) {
+        console.log('⏱️ [TIEMPO] Cargando tiempo guardado:', storedTime, 'segundos');
+        setTiempo(storedTime);
+      }
+    }
+  }, [roomName]);
+  
+  // 🔥 GUARDAR TIEMPO EN localStorage CADA VEZ QUE CAMBIE
+  useEffect(() => {
+    if (roomName && tiempo > 0) {
+      const storageKey = `videochat_tiempo_${roomName}`;
+      localStorage.setItem(storageKey, tiempo.toString());
+      // 🔥 Log solo cada 10 segundos para no saturar la consola
+      if (tiempo % 10 === 0) {
+        console.log('⏱️ [TIEMPO] Tiempo guardado en localStorage:', tiempo, 'segundos');
+      }
+    }
+  }, [tiempo, roomName]);
 
   // Estados de mensajes
   const [messages, setMessages] = useState([]);
@@ -717,6 +760,11 @@ export default function VideoChatClient() {
   const [userBalance, setUserBalance] = useState(0);        // Balance de COINS (monedas)
   const [giftBalanceState, setGiftBalanceState] = useState(0); // Balance de GIFTS (estado local)
   const [remainingMinutes, setRemainingMinutes] = useState(0);
+  
+  // 🔥 ESTADOS PARA DATOS DEL CLIENTE (cuando el rol es modelo)
+  const [clientBalance, setClientBalance] = useState(0);        // Balance de COINS del cliente
+  const [clientGiftBalance, setClientGiftBalance] = useState(0); // Balance de GIFTS del cliente
+  const [clientRemainingMinutes, setClientRemainingMinutes] = useState(0); // Minutos restantes del cliente
 
   // Chat functions
   const [chatFunctions, setChatFunctions] = useState(null);
@@ -752,6 +800,17 @@ export default function VideoChatClient() {
   // 🔥 USAR EL BALANCE DEL HOOK O EL ESTADO LOCAL (el que tenga valor)
   const giftBalance = giftBalanceFromHook || giftBalanceState;
   
+  // 🔥 DEBUG: Log cuando cambien los valores de balance
+  useEffect(() => {
+    console.log('💰 [BALANCE] Valores de balance actualizados:', {
+      giftBalanceFromHook,
+      giftBalanceState,
+      giftBalance,
+      remainingMinutes,
+      userBalance
+    });
+  }, [giftBalanceFromHook, giftBalanceState, giftBalance, remainingMinutes, userBalance]);
+  
   // 🔥 FUNCIÓN PARA ACTUALIZAR GIFT BALANCE
   const setGiftBalance = (value) => {
     if (typeof value === 'function') {
@@ -765,48 +824,93 @@ export default function VideoChatClient() {
   const [showGiftNotification, setShowGiftNotification] = useState(false);
   const [processingGift, setProcessingGift] = useState(null);
   const [modeloDisconnected, setModeloDisconnected] = useState(false);
+  
+  // 🔥 ESTADOS PARA CONTROL DE ADVERTENCIA Y FINALIZACIÓN AUTOMÁTICA
+  const [warningShown, setWarningShown] = useState(false); // Para controlar si ya se mostró la advertencia de 2 minutos
+  const hasAutoEndedRef = useRef(false); // Para prevenir múltiples finalizaciones automáticas
+  const hasAddedMinutesRef = useRef(false); // Para prevenir agregar minutos múltiples veces
 
 
   const processSessionEarnings = async (durationSeconds, endedBy = 'user') => {
-  if (!roomName || !otherUser?.id || !userData?.id || durationSeconds <= 0) {
-        return;
-  }
-
-  try {
-    
-
-    const authToken = localStorage.getItem('token');
-    
-    const earningsResponse = await Promise.race([
-      fetch(`${API_BASE_URL}/api/earnings/process-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          room_name: roomName,
-          duration_seconds: durationSeconds,
-          modelo_user_id: otherUser.id,
-          cliente_user_id: userData.id,
-          session_type: 'video_chat',
-          ended_by: endedBy
-        })
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-    ]);
-    
-    if (earningsResponse.ok) {
-      const earningsData = await earningsResponse.json();
-            
-      if (earningsData.success && earningsData.model_earnings > 0) {
-        const minutes = Math.floor(durationSeconds / 60);
-              }
-    } else {
+    if (!roomName || !otherUser?.id || !userData?.id || durationSeconds <= 0) {
+      console.warn('⚠️ [EARNINGS] Condiciones no cumplidas para procesar ganancias:', {
+        roomName: !!roomName,
+        otherUserId: !!otherUser?.id,
+        userDataId: !!userData?.id,
+        durationSeconds
+      });
+      return;
     }
-    
-  } catch (error) {
-  }
+
+    try {
+      const authToken = localStorage.getItem('token');
+      
+      if (!authToken) {
+        console.warn('⚠️ [EARNINGS] No hay token de autenticación');
+        return;
+      }
+
+      // 🔥 DETERMINAR CORRECTAMENTE QUIÉN ES LA MODELO Y QUIÉN ES EL CLIENTE
+      let modeloUserId, clienteUserId;
+      
+      if (userData?.role === 'modelo') {
+        // Si el usuario actual es la modelo, entonces otherUser es el cliente
+        modeloUserId = userData.id;
+        clienteUserId = otherUser.id;
+      } else {
+        // Si el usuario actual es el cliente, entonces otherUser es la modelo
+        modeloUserId = otherUser.id;
+        clienteUserId = userData.id;
+      }
+
+      console.log('💰 [EARNINGS] Procesando ganancias:', {
+        room_name: roomName,
+        duration_seconds: durationSeconds,
+        modelo_user_id: modeloUserId,
+        cliente_user_id: clienteUserId,
+        user_role: userData?.role,
+        ended_by: endedBy
+      });
+      
+      const earningsResponse = await Promise.race([
+        fetch(`${API_BASE_URL}/api/earnings/process-session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            room_name: roomName,
+            duration_seconds: durationSeconds,
+            modelo_user_id: modeloUserId,
+            cliente_user_id: clienteUserId,
+            session_type: 'video_chat',
+            ended_by: endedBy
+          })
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]);
+      
+      if (earningsResponse.ok) {
+        const earningsData = await earningsResponse.json();
+        console.log('✅ [EARNINGS] Ganancias procesadas exitosamente:', earningsData);
+              
+        if (earningsData.success && earningsData.model_earnings > 0) {
+          const minutes = Math.floor(durationSeconds / 60);
+          console.log(`💰 [EARNINGS] Ganancias registradas: $${earningsData.model_earnings} por ${minutes} minuto(s)`);
+        }
+      } else {
+        const errorData = await earningsResponse.json().catch(() => ({}));
+        console.error('❌ [EARNINGS] Error procesando ganancias:', {
+          status: earningsResponse.status,
+          statusText: earningsResponse.statusText,
+          error: errorData
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ [EARNINGS] Excepción procesando ganancias:', error);
+    }
   };
 
   // Usar heartbeat
@@ -973,7 +1077,40 @@ export default function VideoChatClient() {
         });
       }
       const updated = [...prev, formattedMessage];
-      return updated.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      // 🔥 ORDENAMIENTO MEJORADO - Usar múltiples fuentes de timestamp
+      return updated.sort((a, b) => {
+        const getTimestamp = (msg) => {
+          if (msg.timestamp && typeof msg.timestamp === 'number' && msg.timestamp > 0) {
+            return msg.timestamp;
+          }
+          if (msg.created_at) {
+            const date = new Date(msg.created_at);
+            if (!isNaN(date.getTime()) && date.getTime() > 0) {
+              return date.getTime();
+            }
+          }
+          if (msg.id) {
+            const idNum = typeof msg.id === 'string' ? parseInt(msg.id) : msg.id;
+            if (typeof idNum === 'number' && idNum > 1000000000000) {
+              return idNum;
+            }
+          }
+          return 0;
+        };
+        
+        const timeA = getTimestamp(a);
+        const timeB = getTimestamp(b);
+        
+        if (timeA !== timeB && timeA > 0 && timeB > 0) {
+          return timeA - timeB;
+        }
+        if (timeA > 0 && timeB === 0) return 1;
+        if (timeA === 0 && timeB > 0) return -1;
+        
+        const idA = typeof a.id === 'string' ? parseInt(a.id) || 0 : (a.id || 0);
+        const idB = typeof b.id === 'string' ? parseInt(b.id) || 0 : (b.id || 0);
+        return idA - idB;
+      });
     });
   };
 
@@ -1011,7 +1148,40 @@ export default function VideoChatClient() {
                   ...(msg.gift_data && { gift_data: msg.gift_data }),
                   ...(msg.extra_data && { extra_data: msg.extra_data })
                 };
-              }).sort((a, b) => a.timestamp - b.timestamp);
+              }).sort((a, b) => {
+                // 🔥 ORDENAMIENTO MEJORADO - Usar múltiples fuentes de timestamp
+                const getTimestamp = (msg) => {
+                  if (msg.timestamp && typeof msg.timestamp === 'number' && msg.timestamp > 0) {
+                    return msg.timestamp;
+                  }
+                  if (msg.created_at) {
+                    const date = new Date(msg.created_at);
+                    if (!isNaN(date.getTime()) && date.getTime() > 0) {
+                      return date.getTime();
+                    }
+                  }
+                  if (msg.id) {
+                    const idNum = typeof msg.id === 'string' ? parseInt(msg.id) : msg.id;
+                    if (typeof idNum === 'number' && idNum > 1000000000000) {
+                      return idNum;
+                    }
+                  }
+                  return 0;
+                };
+                
+                const timeA = getTimestamp(a);
+                const timeB = getTimestamp(b);
+                
+                if (timeA !== timeB && timeA > 0 && timeB > 0) {
+                  return timeA - timeB;
+                }
+                if (timeA > 0 && timeB === 0) return 1;
+                if (timeA === 0 && timeB > 0) return -1;
+                
+                const idA = typeof a.id === 'string' ? parseInt(a.id) || 0 : (a.id || 0);
+                const idB = typeof b.id === 'string' ? parseInt(b.id) || 0 : (b.id || 0);
+                return idA - idB;
+              });
 
               setMessages(formattedMessages);
             }
@@ -1148,6 +1318,93 @@ export default function VideoChatClient() {
   const balanceIntervalRef = useRef(null);
   const isLoadingBalanceRef = useRef(false);
   const hasLoadedBalanceRef = useRef(false); // 🔥 REF PARA EVITAR CARGAS DUPLICADAS DE BALANCE
+  const loadUserBalanceRef = useRef(null); // 🔥 REF PARA loadUserBalance (evitar loops)
+  
+  // 🔥 ACTUALIZAR REF CUANDO loadUserBalance CAMBIE
+  useEffect(() => {
+    loadUserBalanceRef.current = loadUserBalance;
+  }, [loadUserBalance]);
+
+  // 🎵 FUNCIONES DE SONIDO PARA REGALOS
+  // 🔥 DEFINIR playAlternativeGiftSound PRIMERO para evitar errores de inicialización
+  const playAlternativeGiftSound = useCallback(async () => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      
+      const playNote = (frequency, startTime, duration, volume = 0.5) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      // Melodía alegre: Do-Mi-Sol-Do
+      const now = audioContext.currentTime;
+      playNote(523.25, now, 0.15, 0.6);        // Do
+      playNote(659.25, now + 0.1, 0.15, 0.6);  // Mi
+      playNote(783.99, now + 0.2, 0.15, 0.6);  // Sol
+      playNote(1046.5, now + 0.3, 0.2, 0.7);   // Do (octava alta)
+      
+      return true;
+    } catch (error) {
+      // Vibrar en móviles como último recurso
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200]);
+      }
+      return false;
+    }
+  }, []);
+
+  const playGiftSound = useCallback(async (soundType = 'sent') => {
+    try {
+      // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO
+      if (typeof window !== 'undefined' && window.AudioContext) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+      }
+      
+      // 🔥 SELECCIONAR ARCHIVO DE SONIDO SEGÚN EL TIPO
+      const soundUrls = {
+        sent: '/sounds/gift-received.mp3',      // Cuando envías/aceptas un regalo
+        received: '/sounds/gift-received.mp3',   // Cuando recibes un regalo
+        request: '/sounds/gift-request.mp3'      // Cuando solicitas un regalo
+      };
+      
+      const soundUrl = soundUrls[soundType] || soundUrls.sent;
+      
+      try {
+        const audio = new Audio(soundUrl);
+        audio.volume = 0.8;
+        audio.preload = 'auto';
+        
+        await audio.play();
+        return true;
+      } catch (playError) {
+        // Si falla, usar sonido sintetizado
+        return await playAlternativeGiftSound();
+      }
+    } catch (error) {
+      // Último recurso - sonido sintetizado
+      return await playAlternativeGiftSound();
+    }
+  }, [playAlternativeGiftSound]);
 
   // 🔥 CARGAR BALANCES INICIALES (COINS Y GIFTS) - CON MANEJO DE ERRORES 500
   useEffect(() => {
@@ -1172,10 +1429,18 @@ export default function VideoChatClient() {
       hasLoadedBalance: hasLoadedBalanceRef.current
     });
     
-    // 🔥 EVITAR CARGAS DUPLICADAS
-    if (hasLoadedBalanceRef.current && userData?.id) {
-      console.log('💰 [BALANCE] Ya se cargó el balance, evitando carga duplicada');
+    // 🔥 EVITAR CARGAS DUPLICADAS SOLO SI YA SE ESTÁ CARGANDO
+    // Pero permitir recargar si el usuario es cliente (necesita ver sus saldos)
+    if (hasLoadedBalanceRef.current && userData?.id && isLoadingBalanceRef.current) {
+      console.log('💰 [BALANCE] Ya se está cargando el balance, evitando carga duplicada');
       return;
+    }
+    
+    // 🔥 PARA CLIENTES: Permitir recargar balances periódicamente
+    if (hasLoadedBalanceRef.current && userData?.role === 'cliente') {
+      console.log('💰 [BALANCE] Cliente detectado, permitiendo recarga de balances');
+      // Resetear el flag para permitir recarga
+      hasLoadedBalanceRef.current = false;
     }
     
     // 🔥 Si userData.id no está disponible, intentar cargar el usuario primero
@@ -1206,9 +1471,22 @@ export default function VideoChatClient() {
     const loadBalances = async () => {
       // 🔥 PROTECCIÓN CONTRA EJECUCIONES MÚLTIPLES
       if (!isMounted || isLoadingBalanceRef.current) {
+        console.log('⏸️ [BALANCE] Carga cancelada - ya en progreso o desmontado');
         return;
       }
       
+      // 🔥 VERIFICAR ÚLTIMA LLAMADA (mínimo 5 segundos entre llamadas)
+      const now = Date.now();
+      const lastCall = window.lastBalanceCall || 0;
+      if (now - lastCall < 5000) {
+        console.log('⏸️ [BALANCE] Demasiado pronto, ignorando...', { 
+          elapsed: now - lastCall,
+          minInterval: 5000 
+        });
+        return;
+      }
+      
+      window.lastBalanceCall = now;
       isLoadingBalanceRef.current = true;
       
       try {
@@ -1241,10 +1519,45 @@ export default function VideoChatClient() {
           if (coinsResponse.ok) {
             const coinsData = await coinsResponse.json();
             if (coinsData.success) {
+              // 🔥 MOSTRAR TODOS LOS DATOS REALES DEL BACKEND
+              console.log('💰 [BALANCE] ===== DATOS REALES DEL BACKEND =====');
+              console.log('💰 [BALANCE] Respuesta completa:', JSON.stringify(coinsData, null, 2));
+              console.log('💰 [BALANCE] Valores extraídos:', {
+                total_coins: coinsData.total_coins,
+                remaining_minutes: coinsData.remaining_minutes,
+                status: coinsData.status,
+                should_end_session: coinsData.should_end_session,
+                should_show_warning: coinsData.should_show_warning
+              });
+              console.log('💰 [BALANCE] ======================================');
+              
               setUserBalance(coinsData.total_coins || 0);
               setRemainingMinutes(coinsData.remaining_minutes || 0);
+              
+              console.log('💰 [BALANCE] Estados actualizados en React:', {
+                userBalance: coinsData.total_coins || 0,
+                remainingMinutes: coinsData.remaining_minutes || 0,
+                should_end_session: coinsData.should_end_session
+              });
+              
+              // 🔥 CORTAR LLAMADA SI EL BACKEND INDICA QUE DEBE TERMINAR
+              if (coinsData.should_end_session && connected && finalizarChat && !hasAutoEndedRef.current) {
+                console.warn('🚨 [BALANCE] Backend indica should_end_session=true - Finalizando llamada INMEDIATAMENTE', {
+                  remainingMinutes: coinsData.remaining_minutes,
+                  should_end_session: coinsData.should_end_session
+                });
+                hasAutoEndedRef.current = true;
+                setShowGiftsModal(false);
+                addNotification('error', '⏰ Tiempo agotado', 'Tu tiempo se ha agotado. La llamada se está finalizando...', 2000);
+                // 🔥 CORTAR INMEDIATAMENTE SIN DELAY
+                if (finalizarChat && connected) {
+                  finalizarChat(true);
+                }
+              }
               consecutiveErrors = 0;
               errorBackoffMs = 0;
+            } else {
+              console.warn('💰 [BALANCE] Respuesta no exitosa:', coinsData);
             }
           } else if (coinsResponse.status === 500) {
             consecutiveErrors++;
@@ -1273,11 +1586,12 @@ export default function VideoChatClient() {
     });
     loadBalances();
     
-    // 🔥 CARGAR SALDO DE REGALOS INMEDIATAMENTE (en paralelo)
-    if (loadUserBalance && typeof loadUserBalance === 'function') {
+    // 🔥 CARGAR SALDO DE REGALOS INMEDIATAMENTE (en paralelo) - USAR REF
+    const currentLoadUserBalance = loadUserBalanceRef.current;
+    if (currentLoadUserBalance && typeof currentLoadUserBalance === 'function') {
       console.log('🎁 [BALANCE] Cargando saldo de regalos...');
       // Cargar inmediatamente sin esperar
-      loadUserBalance().then(result => {
+      currentLoadUserBalance().then(result => {
         console.log('🎁 [BALANCE] Saldo de regalos cargado:', result);
         // 🔥 RESETEAR FLAG SI HAY ERROR PARA PERMITIR REINTENTO
         if (result && result.success === false) {
@@ -1307,7 +1621,98 @@ export default function VideoChatClient() {
       }
       isLoadingBalanceRef.current = false;
     };
-  }, [userData?.id, roomName, loadUserBalance]); // 🔥 DEPENDENCIAS: userData.id, roomName y loadUserBalance
+  }, [userData?.id, roomName]); // 🔥 REMOVIDO loadUserBalance de dependencias para evitar loops
+
+  // 🔥 FUNCIÓN PARA OBTENER DATOS DEL CLIENTE (cuando el rol es modelo)
+  const loadClientBalance = useCallback(async () => {
+    // Solo cargar si el rol es modelo y hay un cliente conectado
+    if (userData?.role !== 'modelo' || !otherUser?.id || !roomName) {
+      return;
+    }
+
+    try {
+      const authToken = localStorage.getItem('token');
+      if (!authToken) return;
+
+      const response = await fetch(`${API_BASE_URL}/api/earnings/videochat-balance?room_name=${encodeURIComponent(roomName)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log('💰 [CLIENT BALANCE] Datos del cliente obtenidos:', {
+            remaining_minutes: data.remaining_minutes,
+            gift_balance: data.gift_balance,
+            client_id: data.client_id
+          });
+          
+          setClientRemainingMinutes(data.remaining_minutes || 0);
+          setClientGiftBalance(data.gift_balance || 0);
+          // El balance de coins se calcula desde los minutos
+          setClientBalance((data.remaining_minutes || 0) * 10);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ [CLIENT BALANCE] Error obteniendo datos del cliente:', error);
+    }
+  }, [userData?.role, otherUser?.id, roomName]);
+
+  // 🔥 REF PARA EVITAR MÚLTIPLOS INTERVALOS DE CLIENT BALANCE
+  const clientBalanceIntervalRef = useRef(null);
+  const isLoadingClientBalanceRef = useRef(false);
+
+  // 🔥 CARGAR DATOS DEL CLIENTE CUANDO EL ROL ES MODELO
+  useEffect(() => {
+    // Limpiar intervalo anterior si existe
+    if (clientBalanceIntervalRef.current) {
+      clearInterval(clientBalanceIntervalRef.current);
+      clientBalanceIntervalRef.current = null;
+    }
+
+    // Solo cargar si el rol es modelo y hay un cliente conectado
+    if (userData?.role !== 'modelo' || !otherUser?.id || !roomName || !connected) {
+      return;
+    }
+
+    // Función interna para cargar balance con protección
+    const loadWithProtection = async () => {
+      if (isLoadingClientBalanceRef.current) {
+        return;
+      }
+      isLoadingClientBalanceRef.current = true;
+      try {
+        await loadClientBalance();
+      } finally {
+        // Resetear flag después de un delay para evitar llamadas muy frecuentes
+        setTimeout(() => {
+          isLoadingClientBalanceRef.current = false;
+        }, 5000);
+      }
+    };
+
+    // Cargar inmediatamente
+    loadWithProtection();
+    
+    // Actualizar cada 30 segundos (no más frecuente)
+    clientBalanceIntervalRef.current = setInterval(() => {
+      if (!isLoadingClientBalanceRef.current) {
+        loadWithProtection();
+      }
+    }, 30000);
+    
+    return () => {
+      if (clientBalanceIntervalRef.current) {
+        clearInterval(clientBalanceIntervalRef.current);
+        clientBalanceIntervalRef.current = null;
+      }
+      isLoadingClientBalanceRef.current = false;
+    };
+  }, [userData?.role, otherUser?.id, roomName, connected]); // 🔥 REMOVIDO loadClientBalance de dependencias
 
   const siguientePersona = useCallback(async () => {
     // 🔥 PROTECCIÓN CONTRA EJECUCIONES MÚLTIPLES
@@ -1358,9 +1763,17 @@ export default function VideoChatClient() {
       ? (async () => {
           try {
             const earningsReason = currentUserData?.role === 'modelo' ? 'model_next' : 'client_next';
+            console.log('💰 [EARNINGS] Intentando procesar ganancias al ir a siguiente:', {
+              tiempo: currentTiempo,
+              tiempo_minutos: Math.floor(currentTiempo / 60),
+              otherUserId: currentOtherUser?.id,
+              userDataId: currentUserData?.id,
+              userRole: currentUserData?.role,
+              endReason: earningsReason
+            });
             await processSessionEarnings(currentTiempo, earningsReason);
           } catch (error) {
-            console.error('Error procesando ganancias:', error);
+            console.error('❌ [EARNINGS] Error procesando ganancias:', error);
           }
         })()
       : Promise.resolve();
@@ -1622,16 +2035,24 @@ export default function VideoChatClient() {
       }
 
       // 🔥 PROCESAR GANANCIAS EN PARALELO (no bloquear)
-      const earningsPromise = currentTiempo > 0 && currentOtherUser?.id
+      const earningsPromise = currentTiempo > 0 && currentOtherUser?.id && currentUserData?.id
         ? (async () => {
             try {
               let endReason = forceEnd ? 'balance_exhausted' : 'client_ended';
               if (currentUserData?.role === 'modelo') {
                 endReason = forceEnd ? 'balance_exhausted' : 'model_ended';
               }
+              console.log('💰 [EARNINGS] Intentando procesar ganancias al desconectar:', {
+                tiempo: currentTiempo,
+                tiempo_minutos: Math.floor(currentTiempo / 60),
+                otherUserId: currentOtherUser?.id,
+                userDataId: currentUserData?.id,
+                userRole: currentUserData?.role,
+                endReason
+              });
               await processSessionEarnings(currentTiempo, endReason);
             } catch (error) {
-              console.error('Error procesando ganancias:', error);
+              console.error('❌ [EARNINGS] Error procesando ganancias:', error);
             }
           })()
         : Promise.resolve();
@@ -1793,6 +2214,92 @@ export default function VideoChatClient() {
     }
   }, [roomName, otherUser, userData, tiempo, navigate, setMessages, room, startSearching, clearUserCache, processSessionEarnings, isHangingUp]);
 
+  // 🔥 MONITOREO DE TIEMPO RESTANTE: ADVERTENCIA A 2 MINUTOS Y FINALIZACIÓN AUTOMÁTICA
+  useEffect(() => {
+    // Solo aplicar para clientes (no para modelos)
+    if (userData?.role === 'modelo') {
+      return;
+    }
+
+    // Solo si hay una llamada activa
+    if (!connected || !roomName || !otherUser?.id) {
+      return;
+    }
+
+    let autoEndTimeout = null;
+
+    // 🔥 ADVERTENCIA A LOS 2 MINUTOS
+    if (remainingMinutes <= 2 && remainingMinutes > 0 && !warningShown) {
+      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos');
+      setWarningShown(true);
+      
+      // Mostrar notificación de advertencia
+      addNotification(
+        'warning',
+        '⚠️ Tiempo limitado',
+        `Te quedan ${remainingMinutes} minuto${remainingMinutes !== 1 ? 's' : ''}. La llamada se finalizará automáticamente cuando se acabe el tiempo.`,
+        10000 // 10 segundos de duración
+      );
+    }
+
+    // 🔥 FINALIZACIÓN AUTOMÁTICA CUANDO QUEDAN 2 MINUTOS O MENOS - CIERRE INMEDIATO
+    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat) {
+      console.warn('🚨 [BALANCE] Tiempo restante <= 2 minutos - Finalizando llamada inmediatamente', { remainingMinutes });
+      hasAutoEndedRef.current = true;
+      
+      // Cerrar modal de regalos si está abierto
+      setShowGiftsModal(false);
+      
+      // Mostrar notificación final
+      addNotification(
+        'error',
+        '⏰ Tiempo agotado',
+        remainingMinutes > 0 
+          ? `Te quedan ${remainingMinutes} minuto${remainingMinutes !== 1 ? 's' : ''}. La llamada se está finalizando...`
+          : 'Tu tiempo se ha agotado. La llamada se está finalizando...',
+        3000
+      );
+
+      // Finalizar la llamada automáticamente INMEDIATAMENTE (sin delay)
+      if (finalizarChat && connected) {
+        finalizarChat(true); // forceEnd = true para indicar que es por balance agotado
+      }
+    }
+
+    // 🔥 RESETEAR ADVERTENCIA SI EL TIEMPO AUMENTA (por ejemplo, si recarga monedas)
+    // 🔥 IMPORTANTE: NO resetear hasAutoEndedRef si ya se ejecutó el corte (para evitar que se resetee si el tiempo vuelve a subir temporalmente)
+    if (remainingMinutes > 2) {
+      setWarningShown(false);
+      // Solo resetear hasAutoEndedRef si realmente hay tiempo suficiente (más de 2 minutos)
+      // y si no se ha ejecutado ya el corte
+      if (remainingMinutes > 3 && hasAutoEndedRef.current) {
+        // Solo resetear si hay tiempo suficiente (más de 3 minutos) para evitar resets accidentales
+        hasAutoEndedRef.current = false;
+      }
+    }
+
+    // Cleanup: cancelar el timeout si el componente se desmonta o cambian las dependencias
+    return () => {
+      if (autoEndTimeout) {
+        clearTimeout(autoEndTimeout);
+      }
+    };
+  }, [remainingMinutes, connected, roomName, otherUser?.id, userData?.role, warningShown, finalizarChat, addNotification]);
+
+  // 🔥 EFECTO PARA CERRAR MODAL DE REGALOS CUANDO EL TIEMPO ES 2 MINUTOS O MENOS
+  useEffect(() => {
+    // Solo aplicar para clientes (no para modelos)
+    if (userData?.role === 'modelo') {
+      return;
+    }
+
+    // Si el tiempo es 2 minutos o menos, cerrar el modal de regalos automáticamente
+    if (remainingMinutes <= 2 && showGiftsModal) {
+      console.log('🚨 [REGALOS] Tiempo <= 2 minutos - Cerrando modal de regalos');
+      setShowGiftsModal(false);
+    }
+  }, [remainingMinutes, showGiftsModal, userData?.role]);
+
   // 🔥 FUNCIÓN DE DESCONEXIÓN MEJORADA - FUNCIONA PARA AMBOS ROLES
   // ========== FUNCIONES DE DESCONEXIÓN - EXACTAMENTE IGUAL QUE LA MODELO ==========
   const handleModeloDisconnected = (reason = 'stop', customMessage = '') => {
@@ -1855,6 +2362,82 @@ export default function VideoChatClient() {
 
     startRedirectCountdown();
   };
+  
+  // 🔥 FUNCIÓN CENTRALIZADA PARA DETECTAR DESCONEXIÓN CON PERÍODO DE GRACIA DE 15 SEGUNDOS
+  const detectPartnerDisconnection = useCallback((participant = null, immediate = false) => {
+    // Prevenir múltiples detecciones simultáneas
+    if (isDetectingDisconnectionRef.current && !immediate) {
+      return;
+    }
+    
+    // Si ya hay una desconexión activa, no hacer nada
+    if (modeloDisconnected || (disconnectionReason && redirectCountdown > 0) || isProcessingLeave) {
+      return;
+    }
+    
+    const currentUserRole = userData?.role;
+    const partnerRole = otherUser?.role;
+    const remoteCount = room?.remoteParticipants?.size || window.livekitRoom?.remoteParticipants?.size || 0;
+    const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
+    
+    // Verificar si realmente es el compañero
+    let isPartner = false;
+    if (participant && participant.identity) {
+      const participantIdentity = participant.identity.toLowerCase();
+      isPartner = 
+        (currentUserRole === 'cliente' && (
+          participantIdentity.includes('modelo') || 
+          participantIdentity.includes('model') ||
+          (partnerRole === 'modelo' && participantIdentity.includes(otherUser?.name?.toLowerCase()))
+        )) ||
+        (currentUserRole === 'modelo' && (
+          participantIdentity.includes('cliente') || 
+          participantIdentity.includes('client') ||
+          (partnerRole === 'cliente' && participantIdentity.includes(otherUser?.name?.toLowerCase()))
+        ));
+    } else if (remoteCount === 0 && hadActiveSession) {
+      // Si no hay participantes remotos y había sesión activa, asumir que es el compañero
+      isPartner = true;
+    }
+    
+    if (!isPartner || !hadActiveSession || !connected) {
+      return;
+    }
+    
+    // Si es inmediato (notificación del backend), procesar de inmediato
+    if (immediate) {
+      isDetectingDisconnectionRef.current = true;
+      const partnerName = currentUserRole === 'cliente' ? 'La modelo' : 'El cliente';
+      handleModeloDisconnected('partner_left_session', `${partnerName} se desconectó de la videollamada`);
+      return;
+    }
+    
+    // 🔥 PERÍODO DE GRACIA DE 15 SEGUNDOS ANTES DE DETECTAR DESCONEXIÓN
+    // Limpiar timeout anterior si existe
+    if (disconnectDetectionTimeoutRef.current) {
+      clearTimeout(disconnectDetectionTimeoutRef.current);
+    }
+    
+    isDetectingDisconnectionRef.current = true;
+    
+    disconnectDetectionTimeoutRef.current = setTimeout(() => {
+      // Verificar nuevamente después del período de gracia
+      const currentRemoteCount = room?.remoteParticipants?.size || window.livekitRoom?.remoteParticipants?.size || 0;
+      const stillConnected = room?.state === 'connected' || window.livekitRoom?.state === 'connected';
+      
+      // Solo procesar si realmente sigue desconectado
+      if (currentRemoteCount === 0 && stillConnected && hadActiveSession && 
+          !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave) {
+        const partnerName = currentUserRole === 'cliente' ? 'La modelo' : 'El cliente';
+        handleModeloDisconnected('partner_left_session', `${partnerName} se desconectó de la videollamada`);
+      } else {
+        // Se reconectó o ya se procesó, cancelar detección
+        isDetectingDisconnectionRef.current = false;
+      }
+      
+      disconnectDetectionTimeoutRef.current = null;
+    }, 15000); // 15 segundos de período de gracia
+  }, [room, userData?.role, otherUser, tiempo, connected, modeloDisconnected, disconnectionReason, redirectCountdown, isProcessingLeave, handleModeloDisconnected]);
   
   // 🔥 EFECTO PARA VERIFICAR CUANDO CAMBIAN LOS ESTADOS DE DESCONEXIÓN
   useEffect(() => {
@@ -2107,7 +2690,7 @@ export default function VideoChatClient() {
   };
 
 
-  const handleAcceptGift = async (requestId, securityHash) => {
+  const handleAcceptGift = async (requestId, securityHashOrGiftData) => {
     if (processingGift === requestId) {
       return;
     }
@@ -2115,92 +2698,217 @@ export default function VideoChatClient() {
     try {
       setProcessingGift(requestId);
 
+      // 🔥 EXTRAER securityHash - puede venir como segundo parámetro directo o dentro de giftData
+      let securityHash = null;
+      let giftDataFromParam = null;
+      
+      if (securityHashOrGiftData) {
+        if (typeof securityHashOrGiftData === 'string') {
+          // Si es un string, es el securityHash directo
+          securityHash = securityHashOrGiftData;
+        } else if (typeof securityHashOrGiftData === 'object') {
+          // Si es un objeto, es giftData - extraer security_hash de ahí
+          giftDataFromParam = securityHashOrGiftData;
+          securityHash = giftDataFromParam.security_hash || giftDataFromParam.securityHash || null;
+        }
+      }
 
-      // 🔥 STEP 1: OBTENER INFORMACIÓN DE LA SOLICITUD PENDIENTE
+      // 🔥 STEP 1: OBTENER INFORMACIÓN DE LA SOLICITUD PENDIENTE Y DEL MENSAJE ORIGINAL
       let giftRequestInfo = null;
+      let originalMessageGiftData = null;
       
       // Buscar en las solicitudes pendientes para obtener el precio
       if (pendingRequests && pendingRequests.length > 0) {
         giftRequestInfo = pendingRequests.find(req => req.id === requestId);
+      }
+      
+      // 🔥 BUSCAR EL MENSAJE ORIGINAL DE SOLICITUD PARA OBTENER LA IMAGEN CORRECTA Y security_hash
+      if (messages && messages.length > 0) {
+        const originalRequestMessage = messages.find(msg => {
+          const msgGiftData = msg.extra_data || msg.gift_data || {};
+          const parsedGiftData = typeof msgGiftData === 'string' ? JSON.parse(msgGiftData) : msgGiftData;
+          return parsedGiftData.request_id === requestId || parsedGiftData.transaction_id === requestId || msg.id === requestId;
+        });
         
-        if (giftRequestInfo) {
+        if (originalRequestMessage) {
+          try {
+            const msgExtraData = originalRequestMessage.extra_data;
+            const msgGiftData = originalRequestMessage.gift_data;
+            
+            if (msgExtraData) {
+              originalMessageGiftData = typeof msgExtraData === 'string' ? JSON.parse(msgExtraData) : msgExtraData;
+            } else if (msgGiftData) {
+              originalMessageGiftData = typeof msgGiftData === 'string' ? JSON.parse(msgGiftData) : msgGiftData;
+            }
+            
+            // 🔥 EXTRAER security_hash DEL MENSAJE ORIGINAL SI NO LO TENEMOS
+            if (!securityHash && originalMessageGiftData) {
+              securityHash = originalMessageGiftData.security_hash || originalMessageGiftData.securityHash || null;
+            }
+          } catch (e) {
+            console.warn('Error parseando datos del mensaje original:', e);
+          }
         }
+      }
+      
+      // 🔥 SI TODAVÍA NO TENEMOS security_hash, INTENTAR OBTENERLO DE giftRequestInfo
+      if (!securityHash && giftRequestInfo) {
+        securityHash = giftRequestInfo.security_hash || giftRequestInfo.securityHash || null;
+      }
+      
+      // 🔥 SI TODAVÍA NO TENEMOS security_hash, INTENTAR OBTENERLO DE giftDataFromParam
+      if (!securityHash && giftDataFromParam) {
+        securityHash = giftDataFromParam.security_hash || giftDataFromParam.securityHash || null;
       }
 
       // 🔥 STEP 2: VERIFICAR SALDO ANTES DE ACEPTAR (si tenemos la info)
-      if (giftRequestInfo && giftRequestInfo.amount) {
-        const requiredGiftCoins = giftRequestInfo.amount;
+      // Obtener el precio del regalo de múltiples fuentes
+      const requiredGiftCoins = giftDataFromParam?.gift_price || 
+                                 giftDataFromParam?.amount ||
+                                 originalMessageGiftData?.gift_price ||
+                                 originalMessageGiftData?.amount ||
+                                 giftRequestInfo?.amount ||
+                                 null;
 
-        if (giftBalance < requiredGiftCoins) {
-          addNotification(
-            'error', 
-            t('videochat.balance.insufficientGiftCoins'), 
-            t('videochat.balance.insufficientGiftCoinsMessage', { required: requiredGiftCoins, current: giftBalance })
-          );
+      if (requiredGiftCoins && giftBalance < requiredGiftCoins) {
+        addNotification(
+          'error', 
+          t('videochat.balance.insufficientGiftCoins'), 
+          t('videochat.balance.insufficientGiftCoinsMessage', { required: requiredGiftCoins, current: giftBalance })
+        );
 
-          // Cerrar notificación automáticamente
-          setShowGiftNotification(false);
-          
-          return { 
-            success: false, 
-            error: t('videochat.balance.insufficientBalanceToAcceptGift') 
-          };
-        }
+        // Cerrar notificación automáticamente
+        setShowGiftNotification(false);
+        
+        return { 
+          success: false, 
+          error: t('videochat.balance.insufficientBalanceToAcceptGift') 
+        };
       }
 
       // 🔥 STEP 3: PROCEDER CON LA ACEPTACIÓN
+      // El hook acceptGift ya maneja el session_token internamente, solo necesitamos pasar securityHash si lo tenemos
       const result = await acceptGift(requestId, securityHash);
       
       if (result.success) {
+        // 🔥 Si hay networkError pero success es true, el regalo se procesó exitosamente
+        // aunque hubo un error de conexión al recibir la respuesta
+        if (result.networkError) {
+          console.log('✅ [ACCEPT GIFT] Regalo procesado exitosamente a pesar de error de conexión');
+        }
                 
         // Cerrar notificación
         setShowGiftNotification(false);
         
-        // 🔥 STEP 4: ACTUALIZAR GIFT BALANCE LOCAL INMEDIATAMENTE
-        const giftCost = result.giftInfo?.price || 
-                        result.giftInfo?.amount || 
-                        giftRequestInfo?.amount || 
-                        giftRequestInfo?.gift?.price || 
-                        0;
+        // 🔥 STEP 4: ACTUALIZAR GIFT BALANCE (igual que handleSendGift desde el modal)
+        // El endpoint de aceptar regalo devuelve UserGiftCoins.balance, pero necesitamos UserCoins.gift_balance
+        // Por eso recargamos desde el endpoint de balance que devuelve gift_balance_coins (igual que handleSendGift)
         
-        if (giftCost > 0) {
-          
-          // Actualizar gift balance específicamente
-          if (typeof setGiftBalanceState === 'function') {
-            setGiftBalanceState(prev => Math.max(0, prev - giftCost));
-          } else {
-          }
+        // 🔥 RECARGAR DESDE EL ENDPOINT DE BALANCE (igual que handleSendGift)
+        // Este endpoint devuelve gift_balance_coins de UserCoins, que es el balance correcto
+        if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
+          // Usar la referencia para evitar problemas de dependencias
+          loadUserBalanceRef.current().then((balanceResult) => {
+            // El hook ya actualiza giftBalanceFromHook internamente vía setUserBalance
+            // giftBalance = giftBalanceFromHook || giftBalanceState, así que se actualizará automáticamente
+            console.log('✅ [ACCEPT GIFT] Balance recargado desde endpoint de balance:', balanceResult);
+            // También actualizar giftBalanceState con el valor del endpoint (gift_balance_coins)
+            if (balanceResult && balanceResult.success && balanceResult.balance !== undefined) {
+              if (typeof setGiftBalanceState === 'function') {
+                setGiftBalanceState(balanceResult.balance);
+              }
+            }
+          }).catch((error) => {
+            console.warn('⚠️ [ACCEPT GIFT] Error recargando balance:', error);
+            // Si falla, intentar con loadGiftBalance como fallback
+            if (typeof loadGiftBalance === 'function') {
+              setTimeout(() => {
+                loadGiftBalance();
+              }, 500);
+            }
+          });
+        } else if (typeof loadGiftBalance === 'function') {
+          // Fallback: usar loadGiftBalance directamente
+          setTimeout(() => {
+            loadGiftBalance();
+          }, 500);
         }
         
         // 🔥 STEP 5: AGREGAR MENSAJE AL CHAT CON DATOS COMPLETOS
+        // 🔥 OBTENER IMAGEN DE MÚLTIPLES FUENTES (prioridad: mensaje original > result > giftRequestInfo)
+        const giftImage = originalMessageGiftData?.gift_image || 
+                         originalMessageGiftData?.image || 
+                         originalMessageGiftData?.image_path ||
+                         result.giftInfo?.image || 
+                         result.giftInfo?.image_path ||
+                         result.transaction?.gift?.image_path ||
+                         giftRequestInfo?.gift?.image ||
+                         giftRequestInfo?.gift?.image_path ||
+                         null;
+        
+        const giftName = result.giftInfo?.name || 
+                        originalMessageGiftData?.gift_name ||
+                        giftRequestInfo?.gift?.name || 
+                        t('videochat.gift.gift');
+        
+        // 🔥 OBTENER EL COSTO DEL REGALO
+        const giftCost = result.giftInfo?.price || 
+                        result.giftInfo?.amount || 
+                        result.transaction?.amount ||
+                        giftRequestInfo?.amount || 
+                        giftRequestInfo?.gift?.price || 
+                        originalMessageGiftData?.gift_price ||
+                        0;
+        
+        // 🔥 OBTENER REQUEST_ID PARA VINCULAR EL MENSAJE CON LA SOLICITUD
+        const requestIdForMessage = giftRequestInfo?.id || 
+                         originalMessageGiftData?.request_id || 
+                         originalMessageGiftData?.transaction_id ||
+                         result.transaction?.id ||
+                         result.transaction?.transaction_id ||
+                         requestId ||
+                         null;
+        
         const giftMessage = {
           id: Date.now(),
           type: 'gift_sent',
-          text: `🎁 ${t('videochat.gift.youSent')}: ${result.giftInfo?.name || giftRequestInfo?.gift?.name || t('videochat.gift.gift')}`,
+          text: `🎁 ${t('videochat.gift.youSent')}: ${giftName}`,
           timestamp: Date.now(),
           isOld: false,
           sender: userData.name,
           senderRole: userData.role,
-          // 🔥 DATOS COMPLETOS DEL REGALO
+          user_id: userData.id, // 🔥 AGREGAR user_id PARA QUE LA VERIFICACIÓN FUNCIONE
+          // 🔥 DATOS COMPLETOS DEL REGALO CON IMAGEN CORRECTA Y REQUEST_ID
           gift_data: {
-            gift_name: result.giftInfo?.name || giftRequestInfo?.gift?.name || 'Regalo',
-            gift_image: result.giftInfo?.image || giftRequestInfo?.gift?.image,
+            gift_name: giftName,
+            gift_image: giftImage, // Usar imagen del mensaje original o del resultado
             gift_price: giftCost,
             action_text: t('videochat.gift.youSent'),
-            recipient_name: otherUser?.name || t('videochat.model')
+            recipient_name: otherUser?.name || t('videochat.model'),
+            request_id: requestIdForMessage, // 🔥 AGREGAR REQUEST_ID
+            transaction_id: requestIdForMessage // 🔥 TAMBIÉN COMO TRANSACTION_ID PARA COMPATIBILIDAD
           },
           extra_data: {
-            gift_name: result.giftInfo?.name || giftRequestInfo?.gift?.name || 'Regalo',
-            gift_image: result.giftInfo?.image || giftRequestInfo?.gift?.image,
+            gift_name: giftName,
+            gift_image: giftImage, // Usar imagen del mensaje original o del resultado
             gift_price: giftCost,
             action_text: t('videochat.gift.youSent'),
-            recipient_name: otherUser?.name || t('videochat.model')
+            recipient_name: otherUser?.name || t('videochat.model'),
+            request_id: requestIdForMessage, // 🔥 AGREGAR REQUEST_ID
+            transaction_id: requestIdForMessage // 🔥 TAMBIÉN COMO TRANSACTION_ID PARA COMPATIBILIDAD
           }
         };
         
         setMessages(prev => [giftMessage, ...prev]);
         
-        // 🔥 STEP 6: ACTUALIZAR SOLO GIFTS/BALANCE DESPUÉS DE ENVIAR REGALO
+        // 🔥 STEP 6: REPRODUCIR SONIDO DE REGALO ACEPTADO/ENVIADO
+        try {
+          await playGiftSound('sent');
+        } catch (error) {
+          console.warn('Error reproduciendo sonido de regalo aceptado:', error);
+        }
+        
+        // 🔥 STEP 7: ACTUALIZAR SOLO GIFTS/BALANCE DESPUÉS DE ENVIAR REGALO
         // 🔥 COMENTADO TEMPORALMENTE PARA EVITAR LOOPS INFINITOS
         // 🔥 El balance se actualizará localmente cuando se envíe el regalo
         // setTimeout(() => {
@@ -2208,14 +2916,23 @@ export default function VideoChatClient() {
         // }, 1000);
         
         // 🔥 STEP 7: NOTIFICACIÓN DE ÉXITO
+        // Si hay networkError, usar el mensaje del resultado o uno genérico
+        const successMessage = result.networkError 
+          ? (result.message || t('videochat.gift.sentMessage', { 
+              giftName: giftName, 
+              userName: otherUser?.name || t('videochat.model'), 
+              cost: giftCost 
+            }))
+          : t('videochat.gift.sentMessage', { 
+              giftName: result.giftInfo?.name || giftName || t('videochat.gift.gift'), 
+              userName: otherUser?.name || t('videochat.model'), 
+              cost: giftCost 
+            });
+        
         addNotification(
           'success', 
           t('videochat.gift.sent'), 
-          t('videochat.gift.sentMessage', { 
-            giftName: result.giftInfo?.name || t('videochat.gift.gift'), 
-            userName: otherUser?.name || t('videochat.model'), 
-            cost: giftCost 
-          })
+          successMessage
         );
         
         return { success: true };
@@ -2232,9 +2949,14 @@ export default function VideoChatClient() {
         } else if (result.error?.includes('expirado') || result.error?.includes('expired')) {
           errorTitle = t('videochat.gift.requestExpired');
           errorMessage = t('videochat.gift.requestExpiredMessage');
-        } else if (result.error?.includes('ya procesada') || result.error?.includes('already processed')) {
-          errorTitle = t('videochat.gift.alreadyProcessed');
-          errorMessage = t('videochat.gift.alreadyProcessedMessage');
+        } else if (result.error?.includes('ya procesada') || result.error?.includes('already processed') || result.error === 'request_not_found') {
+          // Si la solicitud ya fue procesada, no mostrar error (puede ser doble click)
+          // Solo recargar balance para asegurar sincronización
+          if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
+            loadUserBalanceRef.current();
+          }
+          console.log('ℹ️ [ACCEPT GIFT] Solicitud ya procesada, ignorando error');
+          return { success: true }; // Considerar como éxito
         }
         
         addNotification('error', errorTitle, errorMessage);
@@ -2246,7 +2968,20 @@ export default function VideoChatClient() {
       }
       
     } catch (error) {
-            
+      // 🔥 MANEJAR ERRORES DE RED ESPECÍFICAMENTE
+      // Si es un error 404, puede ser que la solicitud ya fue procesada
+      if (error.message?.includes('404') || error.status === 404 || error.response?.status === 404) {
+        console.log('ℹ️ [ACCEPT GIFT] Error 404 en catch - solicitud puede que ya fue procesada');
+        // Recargar balance por si acaso
+        if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
+          loadUserBalanceRef.current();
+        }
+        // No mostrar error, puede ser doble click o procesado en otra pestaña
+        return { success: true };
+      }
+      
+      // Solo mostrar error si es un error real de conexión (no 404)
+      console.error('❌ [ACCEPT GIFT] Error real:', error);
       addNotification('error', t('videochat.error.connectionErrorTitle'), t('videochat.error.couldNotProcessGift'));
       
       // Cerrar notificación en caso de error crítico
@@ -2870,6 +3605,13 @@ const handleRequestGift = async (giftId, recipientId, roomName, message) => {
 
       setMessages(prev => [requestMessage, ...prev]);
 
+      // 🔥 REPRODUCIR SONIDO DE SOLICITUD DE REGALO
+      try {
+        await playGiftSound('request');
+      } catch (error) {
+        console.warn('Error reproduciendo sonido de solicitud:', error);
+      }
+
       addNotification('success', '🎁 Solicitud Enviada', `Has solicitado ${selectedGift.name} a ${otherUser?.name || 'el cliente'}`);
       
       return { success: true };
@@ -2911,26 +3653,55 @@ const handleSendGift = async (giftId, recipientId, roomName, message) => {
     const result = await response.json();
 
     if (result.success) {
-            
-      // 🔥 ACTUALIZAR GIFT BALANCE
-      const actualCost = result.gift_price || result.amount || 0;
       
-      if (typeof setGiftBalanceState === 'function') {
-        setGiftBalanceState(prev => Math.max(0, prev - actualCost));
+      // 🔥 OBTENER EL PRECIO DEL REGALO DE MÚLTIPLES FUENTES
+      const selectedGift = availableGifts.find(g => g.id === giftId) || gifts.find(g => g.id === giftId);
+      const actualCost = result.gift?.price || 
+                        result.gift?.amount ||
+                        result.transaction?.amount ||
+                        result.amount ||
+                        selectedGift?.price ||
+                        selectedGift?.amount ||
+                        0;
+            
+      // 🔥 RECARGAR BALANCE DESDE EL BACKEND (igual que cuando se acepta desde la carta)
+      // NO descontar localmente - dejar que el backend sea la fuente de verdad
+      if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
+        loadUserBalanceRef.current().then((balanceResult) => {
+          console.log('✅ [SEND GIFT] Balance recargado desde backend:', balanceResult);
+        }).catch((error) => {
+          console.warn('⚠️ [SEND GIFT] Error recargando balance:', error);
+          if (typeof loadGiftBalance === 'function') {
+            setTimeout(() => {
+              loadGiftBalance();
+            }, 500);
+          }
+        });
+      } else if (typeof loadGiftBalance === 'function') {
+        setTimeout(() => {
+          loadGiftBalance();
+        }, 500);
       }
       
       // 🔥 AGREGAR MENSAJE AL CHAT
       const giftMessage = {
         id: Date.now(),
         type: 'gift_sent',
-        text: `🎁 ${t('videochat.gift.youSent')}: ${result.gift_name}`,
+        text: `🎁 ${t('videochat.gift.youSent')}: ${result.gift_name || selectedGift?.name || 'Regalo'}`,
         timestamp: Date.now(),
         isOld: false,
         sender: userData.name,
         senderRole: userData.role,
         gift_data: {
-          gift_name: result.gift_name,
-          gift_image: result.gift_image,
+          gift_name: result.gift_name || selectedGift?.name || 'Regalo',
+          gift_image: result.gift_image || selectedGift?.image || selectedGift?.image_url || selectedGift?.image_path || null,
+          gift_price: actualCost,
+          action_text: t('videochat.gift.youSent'),
+          recipient_name: otherUser?.name || t('videochat.model')
+        },
+        extra_data: {
+          gift_name: result.gift_name || selectedGift?.name || 'Regalo',
+          gift_image: result.gift_image || selectedGift?.image || selectedGift?.image_url || selectedGift?.image_path || null,
           gift_price: actualCost,
           action_text: t('videochat.gift.youSent'),
           recipient_name: otherUser?.name || t('videochat.model')
@@ -2938,6 +3709,13 @@ const handleSendGift = async (giftId, recipientId, roomName, message) => {
       };
       
       setMessages(prev => [giftMessage, ...prev]);
+      
+      // 🔥 REPRODUCIR SONIDO DE REGALO ENVIADO
+      try {
+        await playGiftSound('sent');
+      } catch (error) {
+        console.warn('Error reproduciendo sonido de regalo enviado:', error);
+      }
       
       // 🔥 CERRAR MODAL
       setShowGiftsModal(false);
@@ -3417,6 +4195,14 @@ const handleSendGift = async (giftId, recipientId, roomName, message) => {
         }, 2000);
 
         setLoading(false); // 🔥 Asegurar que loading se ponga en false cuando se conecta
+        setConnected(true); // 🔥 Marcar como conectado
+        
+        // 🔥 CANCELAR TIMEOUT DE CONEXIÓN SI SE CONECTÓ EXITOSAMENTE
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+          console.log('✅ [VideoChat] Conexión establecida - timeout cancelado');
+        }
 
         // 🔥 SUSCRIBIRSE AUTOMÁTICAMENTE A TODOS LOS PARTICIPANTES REMOTOS
         const subscribeToParticipant = (participant) => {
@@ -4138,6 +4924,46 @@ useEffect(() => {
           setLoading(false);
           addNotification('success', hardcodedTexts.connecting, hardcodedTexts.connectingToRoom);
           
+          // 🔥 INICIAR TIMEOUT DE 20 SEGUNDOS PARA CONEXIÓN
+          // Si después de 20 segundos no se conecta, redirigir a home
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+          }
+          
+          connectionTimeoutRef.current = setTimeout(() => {
+            // Verificar el estado actual (usar window.livekitRoom para verificar estado real)
+            const isStillConnecting = !window.livekitRoom || 
+                                     window.livekitRoom.state !== 'connected' ||
+                                     !connected;
+            
+            if (isStillConnecting) {
+              console.warn('⏰ [VideoChat] Timeout de conexión (20s) - redirigiendo a home', {
+                roomState: window.livekitRoom?.state,
+                connected: connected
+              });
+              
+              // Limpiar datos de videochat
+              localStorage.removeItem('roomName');
+              localStorage.removeItem('userName');
+              localStorage.removeItem('currentRoom');
+              localStorage.removeItem('inCall');
+              localStorage.removeItem('videochatActive');
+              
+              // Desconectar LiveKit si existe
+              if (window.livekitRoom && window.livekitRoom.state !== 'disconnected') {
+                window.livekitRoom.disconnect().catch(() => {});
+              }
+              
+              // Redirigir según el rol
+              const userRole = userData?.role || '';
+              if (userRole === 'modelo') {
+                navigate('/homellamadas', { replace: true });
+              } else {
+                navigate('/homecliente', { replace: true });
+              }
+            }
+          }, 20000); // 20 segundos
+          
           // #region agent log
           // #endregion
       }
@@ -4346,6 +5172,7 @@ useEffect(() => {
     // 🔥 MISMO INTERVALO PARA AMBOS ROLES (igual que cliente)
     let pollInterval = 2000; // 🔥 2 SEGUNDOS PARA AMBOS
     let consecutiveEmpty = 0;
+    let timeoutId = null; // 🔥 REF PARA EL TIMEOUT RECURSIVO
 
     const checkNotifications = async () => {
       // 🔥 USAR REFS EN LUGAR DE ESTADOS DIRECTOS (evitar reinicios)
@@ -4579,7 +5406,7 @@ useEffect(() => {
 
       // 🔥 CONTINUAR POLLING SIEMPRE (igual que cliente)
       if (isPolling) {
-        setTimeout(checkNotifications, pollInterval);
+        timeoutId = setTimeout(checkNotifications, pollInterval);
       }
     };
 
@@ -4587,9 +5414,13 @@ useEffect(() => {
 
     return () => {
       isPolling = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       console.log(`🛑 [VideoChat][${isModelo ? 'MODELO' : 'CLIENTE'}] Polling detenido (cleanup)`);
     };
-  }, [roomName, userName, userData?.role]); // 🔥 SOLO DEPENDENCIAS CRÍTICAS - NO REINICIAR POR OTROS CAMBIOS
+  }, [roomName, userName]); // 🔥 REMOVIDO userData?.role de dependencias para evitar reinicios innecesarios
   
   // 🔥 VERIFICACIÓN PERIÓDICA AGRESIVA PARA DETECTAR DESCONEXIÓN DE LA MODELO
   useEffect(() => {
@@ -4759,31 +5590,25 @@ useEffect(() => {
       const hasLocal = !!room.localParticipant;
       
             
-      // Solo proceder si estoy conectado pero sin usuarios remotos (modelo)
-      if (remoteCount === 0 && hasLocal) {
-        
-        if (!autoNextTimer) {
-                    
-          // Warning a los 20 segundos
-          warningTimer = setTimeout(() => {
-            if (isActive && !(disconnectionReason && redirectCountdown > 0)) {
-              addNotification('warning', 'Modelo Desconectada', 
-                'Cambiando en 10 segundos...');
-            }
-          }, 20000);
-          
-          // Auto-next a los 30 segundos
-          autoNextTimer = setTimeout(() => {
-            if (isActive) {
-              executeAutoNext();
-            }
-          }, 30000);
-        }
-        
-      } else if (remoteCount > 0) {
-        // Hay usuarios - cancelar timers
+      // 🔥 NO EJECUTAR AUTO-NEXT AQUÍ - se maneja en detectPartnerDisconnection con período de gracia
+      // Este checkEmptyRoom solo se usa para limpiar timers si hay participantes
+      if (remoteCount > 0) {
+        // Hay usuarios - cancelar timers y cancelar detección de desconexión
         if (autoNextTimer || warningTimer) {
-                    cleanupTimers();
+          cleanupTimers();
+        }
+        // Cancelar detección de desconexión si hay participantes
+        if (disconnectDetectionTimeoutRef.current) {
+          clearTimeout(disconnectDetectionTimeoutRef.current);
+          disconnectDetectionTimeoutRef.current = null;
+          isDetectingDisconnectionRef.current = false;
+        }
+      } else if (remoteCount === 0 && hasLocal) {
+        // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA
+        // Solo iniciar detección si hay sesión activa
+        const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
+        if (hadActiveSession && !isDetectingDisconnectionRef.current) {
+          detectPartnerDisconnection(null, false);
         }
       }
     };
@@ -4800,26 +5625,21 @@ useEffect(() => {
 
     // ✅ LISTENERS DE PARTICIPANTES
     const handleParticipantConnected = () => {
-            setTimeout(checkEmptyRoom, 2000);
+      // 🔥 CANCELAR DETECCIÓN DE DESCONEXIÓN SI ALGUIEN SE RECONECTA
+      if (disconnectDetectionTimeoutRef.current) {
+        clearTimeout(disconnectDetectionTimeoutRef.current);
+        disconnectDetectionTimeoutRef.current = null;
+        isDetectingDisconnectionRef.current = false;
+        console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión');
+      }
+      setTimeout(checkEmptyRoom, 2000);
     };
 
     const handleParticipantDisconnected = (participant) => {
+      // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA DE 15 SEGUNDOS
+      detectPartnerDisconnection(participant, false);
       
-      // 🔥 DETECTAR SI ES LA MODELO Y MANEJAR INMEDIATAMENTE
-      if (participant && participant.identity) {
-        const participantIdentity = participant.identity.toLowerCase();
-        const isModelo = participantIdentity.includes('modelo') || 
-                        participantIdentity.includes('model') ||
-                        (otherUser && otherUser.role === 'modelo' && participantIdentity.includes(otherUser.name?.toLowerCase()));
-        
-        if (isModelo) {
-          // 🔥 CAMBIO: Cuando la modelo se desconecta, ir a ruletear
-          handleModeloDisconnected('partner_left_session', 'La modelo se desconectó de la videollamada');
-          return; // No continuar con checkEmptyRoom
-        }
-      }
-      
-      // Si no es la modelo, verificar sala vacía después de un delay
+      // Si no es el compañero, verificar sala vacía después de un delay
       setTimeout(checkEmptyRoom, 2000);
     };
 
@@ -4950,18 +5770,78 @@ useEffect(() => {
       window.location.href = '/usersearch?role=cliente&action=emergency&from=manual';
     };
     
-    // 🔥 LISTENER PARA CUANDO EL USUARIO CIERRA LA PÁGINA O NAVEGA FUERA
-    const handleBeforeUnload = () => {
-      if (room && room.state !== 'disconnected') {
-        room.disconnect().catch(() => {});
+    // 🔥 PERÍODO DE GRACIA DE 15 SEGUNDOS ANTES DE DESCONECTAR (para permitir refresh)
+    let disconnectTimeoutRef = null;
+    let isPageVisible = !document.hidden;
+    
+    const scheduleDisconnect = () => {
+      // Limpiar timeout anterior si existe
+      if (disconnectTimeoutRef) {
+        clearTimeout(disconnectTimeoutRef);
+        disconnectTimeoutRef = null;
       }
-      if (window.livekitRoom && window.livekitRoom.state !== 'disconnected') {
-        window.livekitRoom.disconnect().catch(() => {});
+      
+      // Programar desconexión después de 15 segundos
+      disconnectTimeoutRef = setTimeout(() => {
+        // Solo desconectar si la página sigue oculta
+        if (document.hidden && (room || window.livekitRoom)) {
+          console.log('⏰ [VideoChat] Período de gracia expirado - desconectando de LiveKit');
+          if (room && room.state !== 'disconnected') {
+            room.disconnect().catch(() => {});
+          }
+          if (window.livekitRoom && window.livekitRoom.state !== 'disconnected') {
+            window.livekitRoom.disconnect().catch(() => {});
+          }
+        }
+        disconnectTimeoutRef = null;
+      }, 15000); // 15 segundos
+    };
+    
+    const cancelDisconnect = () => {
+      if (disconnectTimeoutRef) {
+        clearTimeout(disconnectTimeoutRef);
+        disconnectTimeoutRef = null;
+        console.log('✅ [VideoChat] Desconexión cancelada - página visible nuevamente');
       }
     };
     
+    // 🔥 DETECTAR CAMBIOS DE VISIBILIDAD (ocultar/mostrar pestaña)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Página oculta - iniciar período de gracia de 15 segundos
+        console.log('👁️ [VideoChat] Página oculta - iniciando período de gracia de 15 segundos');
+        isPageVisible = false;
+        scheduleDisconnect();
+      } else {
+        // Página visible - cancelar desconexión programada
+        console.log('👁️ [VideoChat] Página visible - cancelando desconexión');
+        isPageVisible = true;
+        cancelDisconnect();
+      }
+    };
+    
+    // 🔥 DETECTAR CIERRE DE PÁGINA (pero NO desconectar inmediatamente en refresh)
+    const handlePageHide = (event) => {
+      // Si es un refresh (persisted = true en algunos navegadores), no desconectar
+      if (event.persisted) {
+        console.log('🔄 [VideoChat] Refresh detectado - no desconectando inmediatamente');
+        return;
+      }
+      
+      // Para cierres reales, iniciar período de gracia
+      console.log('🚪 [VideoChat] Página oculta (posible cierre) - iniciando período de gracia');
+      scheduleDisconnect();
+    };
+    
+    // 🔥 NO DESCONECTAR EN beforeunload (permitir refresh sin desconexión)
+    const handleBeforeUnload = (event) => {
+      // No desconectar aquí - solo permitir que el navegador muestre el diálogo si es necesario
+      // El período de gracia se manejará en visibilitychange/pagehide
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('pagehide', handleBeforeUnload);
     
     return () => {
       console.log('🧹 [VideoChat] Cleanup emergency:', {
@@ -4970,8 +5850,14 @@ useEffect(() => {
       });
       
       delete window.emergencyExitClient;
+      
+      // Limpiar listeners
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('pagehide', handleBeforeUnload);
+      
+      // Cancelar desconexión programada
+      cancelDisconnect();
       
       // 🔥 SOLO DESCONECTAR SI EL COMPONENTE SE ESTÁ DESMONTANDO COMPLETAMENTE
       // No desconectar si solo cambia la referencia de room
@@ -5035,7 +5921,7 @@ useEffect(() => {
     } else if ((!roomName || !connected) && isMonitoringBalance) {
             setIsMonitoringBalance(false);
     }
-  }, [roomName, connected, isMonitoringBalance]);
+  }, [roomName, connected]); // 🔥 REMOVIDO isMonitoringBalance de dependencias para evitar loop
 
   // 🔥 INICIAR TIEMPO AUTOMÁTICAMENTE CUANDO HAY roomName (tan pronto como se une a la sala)
   useEffect(() => {
@@ -5063,13 +5949,27 @@ useEffect(() => {
       clearInterval(tiempoIntervalRef.current);
     }
     
-    // 🔥 RESETEAR TIEMPO AL INICIAR
-    setTiempo(0);
-    console.log('⏱️ [TIEMPO] Iniciando contador de tiempo');
+    // 🔥 CARGAR TIEMPO DESDE localStorage O RESETEAR SI NO HAY
+    const storedTime = getStoredTime(roomName);
+    if (storedTime > 0) {
+      console.log('⏱️ [TIEMPO] Continuando desde tiempo guardado:', storedTime, 'segundos');
+      setTiempo(storedTime);
+    } else {
+      console.log('⏱️ [TIEMPO] Iniciando contador de tiempo desde 0');
+      // 🔥 No resetear a 0 si ya hay un tiempo cargado desde el useEffect anterior
+      if (tiempo === 0) {
+        setTiempo(0);
+      }
+    }
     
     tiempoIntervalRef.current = setInterval(() => {
       setTiempo((prev) => {
         const nuevoTiempo = prev + 1;
+        // 🔥 GUARDAR EN localStorage CADA SEGUNDO
+        if (roomName) {
+          const storageKey = `videochat_tiempo_${roomName}`;
+          localStorage.setItem(storageKey, nuevoTiempo.toString());
+        }
         // 🔥 LOG CADA SEGUNDO EN LOS PRIMEROS 10 SEGUNDOS PARA DEBUG
         if (nuevoTiempo <= 10) {
           console.log('⏱️ [TIEMPO] Tiempo:', nuevoTiempo, 'segundos');
@@ -5101,6 +6001,18 @@ useEffect(() => {
         clearInterval(tiempoIntervalRef.current);
         tiempoIntervalRef.current = null;
         console.log('⏱️ [TIEMPO] Contador detenido');
+        // 🔥 GUARDAR TIEMPO FINAL EN localStorage AL LIMPIAR
+        if (roomName) {
+          const storageKey = `videochat_tiempo_${roomName}`;
+          // 🔥 Usar el valor actual del estado tiempo
+          setTiempo((currentTiempo) => {
+            if (currentTiempo > 0) {
+              localStorage.setItem(storageKey, currentTiempo.toString());
+              console.log('⏱️ [TIEMPO] Tiempo guardado en localStorage:', currentTiempo, 'segundos');
+            }
+            return currentTiempo;
+          });
+        }
       }
     };
   }, [roomName]); // 🔥 SOLO DEPENDE DE roomName
@@ -5379,7 +6291,7 @@ const checkBalanceRealTime = useCallback(async () => {
         
         {/* Modal de regalos */}
         <GiftsModal
-          isOpen={showGiftsModal}
+          isOpen={showGiftsModal && !(userData?.role === 'cliente' && remainingMinutes <= 2)}
           onClose={() => setShowGiftsModal(false)}
           recipientName={otherUser?.name}
           recipientId={otherUser?.id}
@@ -5528,15 +6440,8 @@ const checkBalanceRealTime = useCallback(async () => {
               
               if (state === 'disconnected') {
                 setConnected(false);
-                const remoteCount = window.livekitRoom?.remoteParticipants?.size || 0;
-                
-                // 🔥 SI SE DESCONECTÓ Y HABÍA UNA MODELO, MANEJAR DESCONEXIÓN
-                if (connected && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
-                  if (remoteCount === 0 && otherUser && otherUser.role === 'modelo') {
-                    // 🔥 CAMBIO: Cuando la modelo se desconecta, ir a ruletear
-                    handleModeloDisconnected('partner_left_session', 'La conexión se perdió');
-                  }
-                }
+                // 🔥 NO DETECTAR DESCONEXIÓN AQUÍ - se maneja en detectPartnerDisconnection con período de gracia
+                // Solo actualizar el estado connected
               } else if (state === 'connected') {
                 // 🔥 ESTABLECER CONECTADO INMEDIATAMENTE
                 if (!connected) {
@@ -5544,23 +6449,24 @@ const checkBalanceRealTime = useCallback(async () => {
                   setConnected(true);
                 }
                 
-                // 🔥 VERIFICAR PARTICIPANTES CUANDO SE RECONECTA
-                setTimeout(() => {
-                  if (!connected) {
-                    setConnected(true); // Asegurar que esté conectado
-                  }
-                  
-                  if (connected && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
-                    const remoteCount = window.livekitRoom?.remoteParticipants?.size || 0;
-                    if (remoteCount === 0 && otherUser && otherUser.role === 'modelo') {
-                      // 🔥 CAMBIO: Cuando la modelo se desconecta, ir a ruletear
-                      handleModeloDisconnected('partner_left_session', 'La modelo se desconectó de la videollamada');
-                    }
-                  }
-                }, 2000);
+                // 🔥 CANCELAR DETECCIÓN DE DESCONEXIÓN SI SE RECONECTA
+                if (disconnectDetectionTimeoutRef.current) {
+                  clearTimeout(disconnectDetectionTimeoutRef.current);
+                  disconnectDetectionTimeoutRef.current = null;
+                  isDetectingDisconnectionRef.current = false;
+                  console.log('✅ [VideoChat] Reconexión detectada - cancelando detección de desconexión');
+                }
               }
             }}
             onParticipantConnected={(participant) => {
+              // 🔥 CANCELAR DETECCIÓN DE DESCONEXIÓN SI ALGUIEN SE RECONECTA
+              if (disconnectDetectionTimeoutRef.current) {
+                clearTimeout(disconnectDetectionTimeoutRef.current);
+                disconnectDetectionTimeoutRef.current = null;
+                isDetectingDisconnectionRef.current = false;
+                console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión');
+              }
+              
               console.log('👤 [VideoChat-CLIENTE] Participante conectado:', {
                 identity: participant.identity,
                 sid: participant.sid,
@@ -5597,14 +6503,11 @@ const checkBalanceRealTime = useCallback(async () => {
               }
             }}
             onParticipantDisconnected={(participant) => {
-              const remoteCount = window.livekitRoom?.remoteParticipants?.size || 0;
-              
-              // 🔥 SOLO DETECTAR DESCONEXIÓN SI YA HABÍA UNA SESIÓN ACTIVA
+              // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA
+              // Solo detectar si hay una sesión activa
               const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
-              
-              if (remoteCount === 0 && connected && hadActiveSession && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave) {
-                handleModeloDisconnected('stop', 'La modelo se desconectó de la videollamada');
-              } else if (!hadActiveSession) {
+              if (hadActiveSession) {
+                detectPartnerDisconnection(participant, false);
               }
             }}
             onTrackPublished={(pub, participant) => {
@@ -5781,7 +6684,14 @@ const checkBalanceRealTime = useCallback(async () => {
               userData={userData} // ← AGREGADO (opcional)
             />
             
-            <div className="p-2 sm:p-4">
+            <div className="p-2 sm:p-4 lg:hidden mobile-video-container" style={{ 
+              height: '100dvh', // 🔥 Usar dvh (dynamic viewport height) para adaptarse a la barra del navegador
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              padding: '0.5rem',
+              paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' // 🔥 Espacio para el input fijo + safe area
+            }}>
               {/* Header condicional basado en rol */}
               {userData?.role === 'modelo' ? (
                 <HeaderModelo />
@@ -5790,15 +6700,17 @@ const checkBalanceRealTime = useCallback(async () => {
               )}
               
               {/* MÓVIL - Layout reorganizado: Tiempo/Regalos/Controles arriba, luego video */}
-              <div className="lg:hidden">
+              <div className="flex-1 flex flex-col" style={{ minHeight: 0, overflow: 'hidden' }}>
                 {/* 🔥 TIEMPO, REGALOS Y CONTROLES ARRIBA - SOLO MÓVIL */}
                 {userData?.role === 'modelo' ? (
                   <TimeDisplayImproved
+                    tiempo={tiempo}
                     connected={connected}
                     otherUser={otherUser}
                     roomName={roomName}
-                    userBalance={userBalance}
-                    remainingMinutes={remainingMinutes}
+                    userBalance={clientBalance}
+                    giftBalance={clientGiftBalance}
+                    remainingMinutes={clientRemainingMinutes}
                     t={t}
                     micEnabled={micEnabled}
                     setMicEnabled={handleSetMicEnabled}
@@ -5838,10 +6750,18 @@ const checkBalanceRealTime = useCallback(async () => {
                   />
                 )}
                 
-                {/* 🔥 CONTENEDOR DE VIDEO - Después del tiempo/controles */}
-                <div className="bg-[#1f2125] rounded-2xl overflow-hidden relative mt-4 video-main-container" 
-                    style={{height: 'calc(100vh - 360px)', minHeight: 0, minWidth: 0 }}>                
-                  {/* VideoDisplay condicional basado en rol - CON CHAT INTEGRADO */}
+                {/* 🔥 CONTENEDOR DE VIDEO - Después del tiempo/controles - ALTURA MÁXIMA */}
+                <div className="bg-[#1f2125] rounded-2xl overflow-hidden relative mt-4 video-main-container flex-1" 
+                    style={{
+                      minHeight: 0, 
+                      minWidth: 0,
+                      flex: '1 1 auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '100%', // 🔥 Ocupar todo el espacio disponible
+                      maxHeight: '100%'
+                    }}>                
+                  {/* VideoDisplay condicional basado en rol - CON CHAT INTEGRADO (igual para ambos roles) */}
                   {userData?.role === 'modelo' ? (
                     <VideoDisplayImproved
                       onCameraSwitch={cambiarCamara}
@@ -5852,6 +6772,11 @@ const checkBalanceRealTime = useCallback(async () => {
                       isDetectingUser={isDetectingUser}
                       cameraEnabled={cameraEnabled}
                       t={t}
+                      // 🔥 PROPS PARA CHAT INTEGRADO (igual que cliente)
+                      messages={messages}
+                      userData={userData}
+                      chatVisible={chatVisible}
+                      setChatVisible={setChatVisible}
                     />
                   ) : (
                     <VideoDisplayImprovedClient
@@ -5871,85 +6796,109 @@ const checkBalanceRealTime = useCallback(async () => {
                       userData={userData}
                       chatVisible={chatVisible}
                       setChatVisible={setChatVisible}
+                      // 🔥 PROPS PARA ACEPTAR REGALOS EN MÓVIL
+                      handleAcceptGift={handleAcceptGift}
+                      giftBalance={giftBalance}
+                      userBalance={userBalance}
                     />
                   )}
                 </div>
                 
-                {/* Controles móviles mejorados - condicional basado en rol */}
-                {userData?.role === 'modelo' ? (
-                  <MobileControlsImproved
-                    mensaje={mensaje}
-                    setMensaje={setMensaje}
-                    enviarMensaje={enviarMensaje}
-                    handleKeyPress={handleKeyPress}
-                    toggleFavorite={toggleFavorite}
-                    blockCurrentUser={blockCurrentUser}
-                    isFavorite={isFavorite}
-                    isAddingFavorite={isAddingFavorite}
-                    isBlocking={isBlocking}
-                    otherUser={otherUser}
-                    setShowGiftsModal={setShowGiftsModal}
-                    micEnabled={micEnabled}
-                    setMicEnabled={handleSetMicEnabled}
-                    cameraEnabled={cameraEnabled}
-                    setCameraEnabled={handleSetCameraEnabled}
-                    onCameraSwitch={onCameraSwitch}
-                    onEndCall={finalizarChat}
-                    siguientePersona={siguientePersona}
-                    finalizarChat={finalizarChat}
-                    userBalance={userBalance}
-                    cameras={cameras}
-                    microphones={microphones}
-                    selectedCamera={selectedCameraDevice}
-                    selectedMicrophone={selectedMicrophoneDevice}
-                    isLoadingDevices={isLoadingDevices}
-                    onCameraChange={handleCameraChange}
-                    onMicrophoneChange={handleMicrophoneChange}
-                    onLoadDevices={loadDevices}
-                    showMainSettings={showMainSettings}
-                    setShowMainSettings={setShowMainSettings}
-                    t={t}
-                  />
-                ) : (
-                  <MobileControlsImprovedClient
-                mensaje={mensaje}
-                setMensaje={setMensaje}
-                enviarMensaje={enviarMensaje}
-                handleKeyPress={handleKeyPress}
-                toggleFavorite={toggleFavorite}
-                blockCurrentUser={blockCurrentUser}
-                isFavorite={isFavorite}
-                isAddingFavorite={isAddingFavorite}
-                isBlocking={isBlocking}
-                otherUser={otherUser}
-                apodos={apodos}
-                setShowGiftsModal={setShowGiftsModal}
-                micEnabled={micEnabled}
-                setMicEnabled={setMicEnabled}
-                cameraEnabled={cameraEnabled}
-                setCameraEnabled={setCameraEnabled}
-                volumeEnabled={volumeEnabled}          // ← NUEVA
-                setVolumeEnabled={setVolumeEnabled}    // ← NUEVA
-                onCameraSwitch={onCameraSwitch}
-                onEndCall={finalizarChat}
-                siguientePersona={siguientePersona}
-                finalizarChat={finalizarChat}
-                userBalance={userBalance}
-                giftBalance={giftBalance}
-                cameras={cameras}
-                microphones={microphones}
-                selectedCamera={selectedCameraDevice}
-                selectedMicrophone={selectedMicrophoneDevice}
-                isLoadingDevices={isLoadingDevices}
-                onCameraChange={handleCameraChange}
-                onMicrophoneChange={handleMicrophoneChange}
-                onLoadDevices={loadDevices}
-                
-                // 🔥 AGREGAR ESTAS 2 PROPS PARA CONFIGURACIÓN:
-                showMainSettings={showMainSettings}     // ← NUEVA
-                setShowMainSettings={setShowMainSettings} // ← NUEVA
-              />
-                )}
+                {/* 🔥 INPUT DE MENSAJES MÓVIL - Para ambos roles - PEGADO AL FONDO LITERAL */}
+                <div className="lg:hidden mobile-chat-input-fixed" style={{
+                  position: 'fixed',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: '0.75rem 1rem',
+                  paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))', // 🔥 Respetar safe area en iOS
+                  backgroundColor: '#0f0f0f',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                  zIndex: 50,
+                  boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.3)',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  <div className="flex items-center gap-2">
+                    {/* Input de mensaje */}
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={mensaje}
+                        onChange={(e) => setMensaje(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder={hardcodedTexts.writeMessage || "Escribe tu mensaje..."}
+                        maxLength={200}
+                        className="
+                          w-full bg-gradient-to-r from-gray-800/60 to-slate-800/60 backdrop-blur-sm 
+                          rounded-xl outline-none text-white text-sm
+                          border border-gray-600/30 focus:border-[#ff007a]/50 
+                          transition-all duration-300 focus:bg-gray-800/80
+                          placeholder-gray-400 focus:placeholder-gray-300
+                          px-4 py-3
+                        "
+                      />
+                      {/* Contador de caracteres */}
+                      {mensaje.length > 150 && (
+                        <div className="absolute -top-6 right-1">
+                          <span className={`text-xs px-1.5 py-0.5 rounded backdrop-blur-sm ${
+                            mensaje.length > 190 
+                              ? 'bg-red-500/20 text-red-300' 
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}>
+                            {mensaje.length}/200
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Botón de regalo */}
+                    <button
+                      onClick={() => setShowGiftsModal(true)}
+                      disabled={!otherUser || (userData?.role === 'cliente' && (!giftBalance || giftBalance <= 0)) || (userData?.role === 'cliente' && remainingMinutes <= 2)}
+                      className={`
+                        relative p-3 rounded-xl transition-all duration-300 hover:scale-105 overflow-hidden shrink-0
+                        ${!otherUser || (userData?.role === 'cliente' && (!giftBalance || giftBalance <= 0)) || (userData?.role === 'cliente' && remainingMinutes <= 2)
+                          ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed opacity-50' 
+                          : 'bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 shadow-lg'
+                        }
+                      `}
+                      title={
+                        !otherUser 
+                          ? "Esperando conexión" 
+                          : userData?.role === 'cliente' && remainingMinutes <= 2
+                            ? "Tiempo agotado - No puedes enviar regalos"
+                          : userData?.role === 'cliente' && (!giftBalance || giftBalance <= 0) 
+                            ? "Necesitas monedas para enviar regalos" 
+                            : userData?.role === 'modelo'
+                              ? "Solicitar regalo"
+                              : "Enviar regalo"
+                      }
+                    >
+                      <Gift size={18} />
+                    </button>
+                    
+                    {/* Botón enviar */}
+                    <button
+                      onClick={enviarMensaje}
+                      disabled={!mensaje.trim() || isSendingMessage}
+                      className={`
+                        relative p-3 rounded-xl transition-all duration-300 overflow-hidden shrink-0
+                        ${mensaje.trim() && !isSendingMessage
+                          ? 'bg-gradient-to-r from-[#ff007a] to-[#ff007a]/80 text-white hover:scale-105 shadow-lg' 
+                          : 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                        }
+                      `}
+                      title="Enviar mensaje"
+                    >
+                      <Send size={18} />
+                      {/* Efecto de brillo */}
+                      {mensaje.trim() && !isSendingMessage && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full hover:translate-x-full transition-transform duration-700"></div>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
               
               {/* DESKTOP - Layout principal con contenedor inferior */}
@@ -5986,6 +6935,10 @@ const checkBalanceRealTime = useCallback(async () => {
                           userData={userData}
                           chatVisible={chatVisible}
                           setChatVisible={setChatVisible}
+                          // 🔥 PROPS PARA ACEPTAR REGALOS EN MÓVIL
+                          handleAcceptGift={handleAcceptGift}
+                          giftBalance={giftBalance}
+                          userBalance={userBalance}
                         />
                       )}
                   </div>
@@ -6009,6 +6962,7 @@ const checkBalanceRealTime = useCallback(async () => {
                       handleKeyPress={(e) => e.key === 'Enter' && enviarMensaje()}
                       userData={userData || {}}
                       userBalance={userBalance || 0}
+                      playGiftSound={playGiftSound}
                       t={t}
                     />
                   ) : (
@@ -6032,6 +6986,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     giftBalance={giftBalance}           // Balance de GIFTS  
                     handleAcceptGift={handleAcceptGift}
                     handleRejectGift={handleRejectGift}
+                    playGiftSound={playGiftSound}
                     t={t}
                     hardcodedTexts={hardcodedTexts}
                   />
@@ -6042,11 +6997,13 @@ const checkBalanceRealTime = useCallback(async () => {
                 <div className="mx-4 mb-1 flex-shrink-0">
                   {userData?.role === 'modelo' ? (
                     <TimeDisplayImproved
+                      tiempo={tiempo}
                       connected={connected}
                       otherUser={otherUser}
                       roomName={roomName}
-                      userBalance={userBalance}
-                      remainingMinutes={remainingMinutes}
+                      userBalance={clientBalance}
+                      giftBalance={clientGiftBalance}
+                      remainingMinutes={clientRemainingMinutes}
                       t={t}
                       // 🔥 PROPS PARA CONTROLES INTEGRADOS
                       micEnabled={micEnabled}
@@ -6064,6 +7021,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     />
                   ) : (
                     <TimeDisplayImprovedClient
+                    tiempo={tiempo}
                     connected={connected}
                     otherUser={otherUser}
                     roomName={roomName}

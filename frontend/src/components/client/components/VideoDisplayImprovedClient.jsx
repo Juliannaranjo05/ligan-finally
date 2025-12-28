@@ -3,6 +3,8 @@ import { useParticipants, VideoTrack, useTracks, useRoomContext, useRemotePartic
 import { Track } from "livekit-client";
 import { Camera, CameraOff, Loader2, Users, Eye, MoreVertical, MessageSquare, MessageSquareOff, Gift } from "lucide-react";
 import { useGlobalTranslation, GlobalTranslatedText } from '../../../contexts/GlobalTranslationContext';
+import { getTranslatedGiftName, getGiftCardText } from '../../GiftSystem/giftTranslations';
+import { getVideoChatText } from '../../videochatTranslations';
 
 const VideoDisplayImprovedClient = ({ 
   onCameraSwitch, 
@@ -26,7 +28,11 @@ const VideoDisplayImprovedClient = ({
   setChatVisible = () => {},
   // 🔥 PROPS PARA CHAT INTEGRADO
   messages = [],
-  userData = null
+  userData = null,
+  // 🔥 PROPS PARA ACEPTAR REGALOS
+  handleAcceptGift = null,
+  giftBalance = 0,
+  userBalance = 0
 }) => {
   
   // 🔥 FALLBACK A TEXTO EN ESPAÑOL SI NO HAY hardcodedTexts
@@ -45,8 +51,12 @@ const VideoDisplayImprovedClient = ({
   const { 
     translateGlobalText, 
     isEnabled: translationEnabled,
-    getExistingTranslation
+    getExistingTranslation,
+    currentLanguage: globalCurrentLanguage
   } = useGlobalTranslation();
+  
+  // 🔥 OBTENER IDIOMA ACTUAL
+  const currentLanguage = globalCurrentLanguage || 'es';
   
   // 🔥 ESTADOS PARA CHAT INTEGRADO
   const [chatOpacity, setChatOpacity] = useState(1);
@@ -223,6 +233,9 @@ const VideoDisplayImprovedClient = ({
       gift_name: giftData.gift_name || 'Regalo Especial',
       gift_price: giftData.gift_price || 10,
       gift_image: giftData.gift_image || null,
+      request_id: giftData.request_id || giftData.transaction_id || null,
+      transaction_id: giftData.transaction_id || giftData.request_id || null,
+      security_hash: giftData.security_hash || giftData.securityHash || null,
       ...giftData
     };
   }, []);
@@ -760,7 +773,7 @@ const VideoDisplayImprovedClient = ({
               </div>
               <div className="text-center text-gray-400">
                 <Loader2 className="animate-spin mx-auto mb-2" size={48} />
-                <p>Iniciando cámara...</p>
+                <p>{getVideoChatText('startingCamera', currentLanguage, 'Iniciando cámara...')}</p>
               </div>
             </div>
           );
@@ -771,7 +784,7 @@ const VideoDisplayImprovedClient = ({
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418]">
             <div className="text-center">
               <CameraOff className="mx-auto mb-4 text-gray-500" size={64} />
-              <p className="text-gray-500">Cámara apagada</p>
+              <p className="text-gray-500">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</p>
             </div>
           </div>
         );
@@ -789,9 +802,9 @@ const VideoDisplayImprovedClient = ({
             }
             if (otherUser) {
               const nickname = apodos?.[otherUser.id];
-              return nickname || otherUser.name || otherUser.display_name || 'Modelo';
+              return nickname || otherUser.name || otherUser.display_name || getVideoChatText('model', currentLanguage, 'Modelo');
             }
-            return 'Modelo';
+            return getVideoChatText('model', currentLanguage, 'Modelo');
           })();
           
           return renderVideoTrack(finalRemoteTrack, displayName, "green", true); // showOnTop = true
@@ -807,9 +820,9 @@ const VideoDisplayImprovedClient = ({
           }
           if (otherUser) {
             const nickname = apodos?.[otherUser.id];
-            return nickname || otherUser.name || otherUser.display_name || 'Modelo';
+            return nickname || otherUser.name || otherUser.display_name || getVideoChatText('model', currentLanguage, 'Modelo');
           }
-          return 'Modelo';
+          return getVideoChatText('model', currentLanguage, 'Modelo');
         })();
         
         return (
@@ -870,7 +883,7 @@ const VideoDisplayImprovedClient = ({
             </div>
             <div className="text-center text-gray-400">
               <Loader2 className="animate-spin mx-auto mb-2" size={48} />
-              <p>Esperando video de la modelo...</p>
+              <p>{getVideoChatText('waitingForModelVideo', currentLanguage, 'Esperando video de la modelo...')}</p>
             </div>
           </div>
         );
@@ -881,8 +894,8 @@ const VideoDisplayImprovedClient = ({
       if (participants.length === 1 && localParticipant && !remoteParticipant && !hadRemoteParticipant) {
         status = {
           icon: <Users size={48} className="text-[#ff007a]" />,
-          title: 'Esperando modelo',
-          subtitle: 'Sala lista para conectar',
+          title: getVideoChatText('waitingForModel', currentLanguage, 'Esperando modelo'),
+          subtitle: getVideoChatText('roomReadyToConnect', currentLanguage, 'Sala lista para conectar'),
           bgColor: 'from-[#ff007a]/10 to-[#ff007a]/5',
           borderColor: 'border-[#ff007a]/20'
         };
@@ -936,7 +949,7 @@ const VideoDisplayImprovedClient = ({
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 bg-[#00ff66] rounded-full animate-pulse"></div>
                     <span className="text-white text-xs font-medium truncate">
-                      {otherUser?.name || 'Modelo'}
+                      {otherUser?.name || getVideoChatText('model', currentLanguage, 'Modelo')}
                     </span>
                   </div>
                 </div>
@@ -949,7 +962,7 @@ const VideoDisplayImprovedClient = ({
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl">
             <div className="relative z-10 text-center">
               <Loader2 size={16} className="text-gray-400 mb-1 animate-spin" />
-              <div className="text-gray-400 text-xs font-medium">Esperando video...</div>
+              <div className="text-gray-400 text-xs font-medium">{getVideoChatText('waitingForVideo', currentLanguage, 'Esperando video...')}</div>
             </div>
           </div>
         );
@@ -961,7 +974,7 @@ const VideoDisplayImprovedClient = ({
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
             <div className="relative z-10 text-center p-2">
               <CameraOff size={20} className="text-gray-500 mx-auto mb-2" />
-              <div className="text-gray-500 text-xs font-medium">Cámara apagada</div>
+              <div className="text-gray-500 text-xs font-medium">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</div>
             </div>
           </div>
         );
@@ -990,7 +1003,7 @@ const VideoDisplayImprovedClient = ({
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
           <div className="relative z-10 text-center p-2">
             <Loader2 size={16} className="text-gray-400 mx-auto mb-2 animate-spin" />
-            <div className="text-gray-400 text-xs font-medium">Iniciando cámara...</div>
+            <div className="text-gray-400 text-xs font-medium">{getVideoChatText('startingCamera', currentLanguage, 'Iniciando cámara...')}</div>
           </div>
         </div>
       );
@@ -999,7 +1012,7 @@ const VideoDisplayImprovedClient = ({
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#0a0d10] to-[#131418] relative rounded-xl border-2 border-gray-700/50">
           <div className="relative z-10 text-center p-2">
             <CameraOff size={20} className="text-gray-500 mx-auto mb-2" />
-            <div className="text-gray-500 text-xs font-medium">Cámara apagada</div>
+            <div className="text-gray-500 text-xs font-medium">{getVideoChatText('cameraOff', currentLanguage, 'Cámara apagada')}</div>
           </div>
         </div>
       );
@@ -1042,13 +1055,46 @@ const VideoDisplayImprovedClient = ({
               }
             `}</style>
             {/* Mostrar todos los mensajes del historial ordenados (más antiguos arriba, más recientes abajo) */}
-            {[...messages].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).map((msg, idx) => {
+            {[...messages].sort((a, b) => {
+              // 🔥 ORDENAR POR TIMESTAMP MEJORADO - Manejar múltiples campos de tiempo
+              const getTimestamp = (msg) => {
+                // Intentar obtener timestamp de múltiples fuentes
+                if (msg.timestamp && msg.timestamp > 0) return msg.timestamp;
+                if (msg.created_at) {
+                  const date = new Date(msg.created_at);
+                  if (!isNaN(date.getTime())) return date.getTime();
+                }
+                if (msg.id && typeof msg.id === 'number' && msg.id > 1000000000000) {
+                  // Si el ID es un timestamp válido (mayor a 2001-09-09)
+                  return msg.id;
+                }
+                // Si no hay timestamp válido, usar el índice como fallback (pero con un valor muy bajo)
+                return 0;
+              };
+              
+              const timestampA = getTimestamp(a);
+              const timestampB = getTimestamp(b);
+              
+              // Si ambos tienen timestamp válido, ordenar por timestamp
+              if (timestampA > 0 && timestampB > 0) {
+                return timestampA - timestampB;
+              }
+              
+              // Si solo uno tiene timestamp, el que tiene timestamp va después
+              if (timestampA > 0) return 1;
+              if (timestampB > 0) return -1;
+              
+              // Si ninguno tiene timestamp, mantener el orden original usando el ID
+              const idA = a.id || 0;
+              const idB = b.id || 0;
+              return idA - idB;
+            }).map((msg, idx) => {
               if (msg.type === 'system') return null;
               
               const isLocal = msg.type === 'local' || (msg.senderRole && msg.senderRole === userData?.role);
               const senderName = isLocal 
                 ? (userData?.name || 'Tú') 
-                : (msg.sender || otherUser?.name || 'Modelo');
+                : (msg.sender || otherUser?.name || getVideoChatText('model', currentLanguage, 'Modelo'));
               
               // 🔥 DETECTAR SI ES MENSAJE DE REGALO
               const isGift = isGiftMessage(msg);
@@ -1096,7 +1142,11 @@ const VideoDisplayImprovedClient = ({
                           <Gift size={12} className="text-white" />
                         </div>
                         <span className="text-xs font-semibold text-white">
-                          {isGiftSent ? 'Regalo Enviado' : isGiftRequest ? 'Solicitud de Regalo' : 'Regalo Recibido'}
+                          {isGiftSent 
+                            ? getGiftCardText('giftSent', currentLanguage) 
+                            : isGiftRequest 
+                            ? getGiftCardText('requestGift', currentLanguage)
+                            : getGiftCardText('giftReceived', currentLanguage)}
                         </span>
                       </div>
                       
@@ -1136,7 +1186,7 @@ const VideoDisplayImprovedClient = ({
                       {/* Nombre del regalo */}
                       <div className="text-center mb-1">
                         <p className="text-white font-bold text-xs" style={{ wordBreak: 'break-word' }}>
-                          {giftData.gift_name || 'Regalo Especial'}
+                          {getTranslatedGiftName(giftData.gift_name, currentLanguage, giftData.gift_name || 'Regalo Especial')}
                         </p>
                       </div>
                       
@@ -1144,10 +1194,75 @@ const VideoDisplayImprovedClient = ({
                       {giftData.gift_price && (
                         <div className="text-center">
                           <span className="text-xs font-semibold text-amber-200">
-                            ✨ {giftData.gift_price} monedas
+                            ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                           </span>
                         </div>
                       )}
+                      
+                      {/* 🔥 BOTÓN ACEPTAR Y PAGAR - SOLO PARA SOLICITUDES DE REGALO */}
+                      {isGiftRequest && handleAcceptGift && (() => {
+                        const currentBalance = giftBalance !== undefined ? giftBalance : (userBalance !== undefined ? userBalance : 0);
+                        const giftPrice = giftData.gift_price || 0;
+                        const hasEnoughBalance = currentBalance >= giftPrice;
+                        const requestId = giftData.request_id || giftData.transaction_id || msg.id;
+                        
+                        // 🔥 VERIFICAR SI EL REGALO YA FUE ACEPTADO
+                        const giftAlreadyAccepted = messages.some(m => {
+                          if (m.type === 'gift_sent' && m.user_id === userData?.id) {
+                            try {
+                              const sentGiftData = typeof m.extra_data === 'string' ? JSON.parse(m.extra_data) : (m.extra_data || {});
+                              const sentGiftData2 = typeof m.gift_data === 'string' ? JSON.parse(m.gift_data) : (m.gift_data || {});
+                              const sentRequestId = sentGiftData.request_id || sentGiftData.transaction_id || sentGiftData2.request_id || sentGiftData2.transaction_id;
+                              
+                              return sentRequestId === requestId || 
+                                     String(sentRequestId) === String(requestId) ||
+                                     sentRequestId === giftData.request_id || 
+                                     sentRequestId === giftData.transaction_id;
+                            } catch (e) {
+                              return false;
+                            }
+                          }
+                          return false;
+                        });
+                        
+                        if (giftAlreadyAccepted) {
+                          return (
+                            <div className="text-center mt-2 pt-2 border-t border-white/10">
+                              <span className="text-green-400 text-xs font-medium">
+                                {getGiftCardText('giftSentCheck', currentLanguage)}
+                              </span>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <button
+                            onClick={async () => {
+                              if (!handleAcceptGift || !hasEnoughBalance) {
+                                if (window.showNotification) {
+                                  window.showNotification('error', 'Saldo insuficiente', `Necesitas ${giftPrice} ${getGiftCardText('coins', currentLanguage)} para aceptar este regalo. Tu saldo actual: ${currentBalance}`);
+                                }
+                                return;
+                              }
+                              
+                              const result = await handleAcceptGift(requestId, giftData);
+                              if (!result.success && result.error !== 'request_not_found') {
+                                if (window.showNotification) {
+                                  window.showNotification('error', 'Error', result.error || 'No se pudo procesar el regalo');
+                                }
+                              }
+                            }}
+                            disabled={!hasEnoughBalance}
+                            className={`mt-2 w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
+                              hasEnoughBalance
+                                ? 'bg-gradient-to-r from-[#ff007a] to-[#cc0062] text-white hover:from-[#ff3399] hover:to-[#e6006e] active:scale-95'
+                                : 'bg-gray-600 text-gray-300 cursor-not-allowed opacity-50'
+                            }`}
+                          >
+                            {hasEnoughBalance ? 'Regalar' : `Faltan ${giftPrice - currentBalance} ${getGiftCardText('coins', currentLanguage)}`}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

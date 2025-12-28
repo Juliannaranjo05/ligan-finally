@@ -8,6 +8,39 @@
   "idioma": "Sprache",
   "iniciarSesion": "Anmelden",
   "ayuda": "Hilfe",
+  "helpModal": {
+    "title": "Hilfezentrum",
+    "subtitle": "Alles, was Sie wissen müssen",
+    "login": {
+      "title": "Wie melde ich mich an?",
+      "description": "Um sich bei Ligando anzumelden, klicken Sie auf die Schaltfläche \"Anmelden\" oben auf der Seite. Sie können Ihre E-Mail und Ihr Passwort verwenden oder sich mit Google anmelden.",
+      "step1": "Klicken Sie auf \"Anmelden\" in der Kopfzeile",
+      "step2": "Geben Sie Ihre E-Mail und Ihr Passwort ein oder verwenden Sie Google",
+      "step3": "Fertig! Sie können mit dem Chatten beginnen"
+    },
+    "register": {
+      "title": "Haben Sie kein Konto?",
+      "description": "Die Erstellung eines Kontos bei Ligando ist sehr einfach. Sie benötigen nur eine E-Mail-Adresse und müssen einige einfache Schritte befolgen.",
+      "step1": "Klicken Sie auf \"Anmelden\"",
+      "step2": "Wählen Sie \"Hier registrieren\" oder \"Konto erstellen\"",
+      "step3": "Füllen Sie das Formular aus und bestätigen Sie Ihre E-Mail"
+    },
+    "about": {
+      "title": "Was ist Ligando?",
+      "description": "Ligando ist eine Video-Chat-Plattform, auf der Sie sich mit Menschen aus der ganzen Welt verbinden können. Sie können chatten, Videoanrufe tätigen und auf sichere und unterhaltsame Weise neue Menschen kennenlernen."
+    },
+    "faq": {
+      "title": "Häufig gestellte Fragen",
+      "q1": "Ist es kostenlos?",
+      "a1": "Die Registrierung ist völlig kostenlos. Einige Premium-Funktionen können Münzen erfordern.",
+      "q2": "Wie funktionieren Videoanrufe?",
+      "a2": "Sie können einen Videoanruf mit jedem Online-Benutzer starten. Anrufe werden in Echtzeit durchgeführt und sind völlig privat.",
+      "q3": "Muss ich mein Konto verifizieren?",
+      "a3": "Ja, nach der Registrierung erhalten Sie einen Bestätigungscode in Ihrer E-Mail, um Ihr Konto zu aktivieren."
+    },
+    "footer": "Benötigen Sie weitere Hilfe? Kontaktieren Sie unser Support-Team.",
+    "startButton": "Jetzt beginnen"
+  },
   "comenzar": "Mit dem Chatten beginnen",
   "subtitulo": "Video-Chat mit zufälligen Personen online sofort",
   "activa": "Aktiv",
@@ -148,7 +181,7 @@
     "yourHistory": "Ihr Verlauf",
     "yourBalance": "Ihr Guthaben",
     "total": "Gesamt:",
-    "minutes": "Minuten:",
+    "minutes": "Minuten",
     "status": "Status:",
     "insufficientBalance": "❌ Unzureichend",
     "minimumBalance": "⚠️ Minimum",
@@ -177,7 +210,6 @@
     "coinsClaimedSuccess": "Münzen erfolgreich beansprucht!",
     "claimed": "Beansprucht",
     "coins": "Münzen",
-    "minutes": "Minuten",
     "paymentProblemTitle": "Problem mit Ihrer Zahlung?",
     "paymentProblemMessage": "Wenn die Zahlung nicht durchgeführt wurde oder die Münzen nicht hinzugefügt wurden, gehen Sie zu \"Münzen Kaufen\" und überprüfen Sie Ihre Transaktionen. Bearbeiten Sie die ausstehende Zahlung oder kontaktieren Sie den Support, wenn Sie Hilfe benötigen."
   },
@@ -273,7 +305,8 @@
     },
     "hints": {
       "passwordLength": "{{current}}/{{required}} Zeichen"
-    }, "google_button": "Mit Google fortfahren"
+    },
+    "google_button": "Mit Google fortfahren"
   },
   "verification": {
     "title": "E-Mail-Verifizierung",
@@ -932,7 +965,9 @@
       "minimumCharacters": "Mindestens 8 Zeichen",
       "canUseGoogle": "Du kannst weiterhin Google zur Anmeldung verwenden",
       "canUseEmail": "Oder deine E-Mail und dein Passwort verwenden"
-    }
+    },
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts."
   },
   "subirHistoria": {
     "titulo": "Lade deine Geschichte hoch oder nimm sie auf",
@@ -1018,7 +1053,93 @@
     "gifts": "Geschenke",
     "minutes": "Minuten",
     "connected": "Verbunden",
-    "connectionEstablished": "Videoanruf erfolgreich hergestellt"
+    "connectionEstablished": "Videoanruf erfolgreich hergestellt",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "Zeit"
@@ -1195,7 +1316,13 @@
       "next": "Nächste",
       "loadingEarnings": "Lade Einnahmen...",
       "errorLoadingEarnings": "Fehler beim Laden der wöchentlichen Einnahmen",
-      "connectionError": "Verbindungsfehler"
+      "connectionError": "Verbindungsfehler",
+      "records": "records",
+      "retry": "Retry",
+      "onlySessions": "Sessions Only",
+      "onlyGifts": "Gifts Only",
+      "noSessionEarnings": "You have no session earnings this week",
+      "noGiftEarnings": "You have no gift earnings this week"
     },
     "pending": {
       "title": "Ausstehend gesamt",
@@ -1242,6 +1369,28 @@
       "friday": "freitag",
       "saturday": "samstag",
       "sunday": "sonntag"
+    },
+    "sourceTypes": {
+      "video_session": "Videochat",
+      "direct_gift": "Direct Gift",
+      "chat_gift": "Chat Gift",
+      "session": "Session"
+    },
+    "pendingPayments": {
+      "loading": "Loading pending payments...",
+      "retry": "Retry",
+      "allClear": "All clear!",
+      "noPendingPayments": "You have no pending payments",
+      "totalPending": "Total Pending",
+      "paymentsWaiting": "payment(s) waiting",
+      "processing": "Processing...",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessingInfo": "💡 Payments are processed weekly. Your money will arrive soon."
     }
   },
   "preCallLobby": {
@@ -1372,65 +1521,65 @@
       "readMoreButton": "Weitere Details lesen"
     },
     "verificacion": {
-    "title": "Identität verifizieren",
-    "progressLabel": "Verifizierungsfortschritt",
-    "steps": {
-      "selfie": {
-        "title": "Selfie",
-        "description": "Klares Foto Ihres Gesichts",
-        "uploadText": "Selfie hochladen",
-        "changeText": "Bild ändern",
-        "icon": "👤"
+      "title": "Identität verifizieren",
+      "progressLabel": "Verifizierungsfortschritt",
+      "steps": {
+        "selfie": {
+          "title": "Selfie",
+          "description": "Klares Foto Ihres Gesichts",
+          "uploadText": "Selfie hochladen",
+          "changeText": "Bild ändern",
+          "icon": "👤"
+        },
+        "document": {
+          "title": "Identitätsdokument",
+          "description": "Personalausweis oder Reisepass",
+          "uploadText": "Identitätsdokument hochladen",
+          "changeText": "Bild ändern",
+          "icon": "📋"
+        },
+        "selfieDoc": {
+          "title": "Selfie mit Dokument",
+          "description": "Ihr Gesicht neben dem Dokument",
+          "uploadText": "Selfie mit Dokument hochladen",
+          "changeText": "Bild ändern",
+          "icon": "🤳"
+        }
       },
-      "document": {
-        "title": "Identitätsdokument",
-        "description": "Personalausweis oder Reisepass",
-        "uploadText": "Identitätsdokument hochladen",
-        "changeText": "Bild ändern",
-        "icon": "📋"
+      "video": {
+        "title": "Verifizierungsvideo",
+        "description": "Nehmen Sie ein Video auf, während Sie Ihr Dokument halten",
+        "recordButton": "Verifizierungsvideo aufnehmen",
+        "recorded": "Video erfolgreich aufgenommen",
+        "icon": "🎥",
+        "modal": {
+          "title": "Verifizierungsvideo aufnehmen",
+          "instructions": "Anweisungen:",
+          "steps": [
+            "Halten Sie Ihr Gesicht deutlich sichtbar",
+            "Halten Sie Ihr Identitätsdokument vor die Kamera",
+            "Stellen Sie sicher, dass eine gute Beleuchtung vorhanden ist",
+            "Das Dokument muss im Video lesbar sein"
+          ]
+        }
       },
-      "selfieDoc": {
-        "title": "Selfie mit Dokument",
-        "description": "Ihr Gesicht neben dem Dokument",
-        "uploadText": "Selfie mit Dokument hochladen",
-        "changeText": "Bild ändern",
-        "icon": "🤳"
+      "actions": {
+        "submit": "Vollständige Verifizierung einreichen",
+        "submitting": "Verifizierung wird gesendet...",
+        "delete": "Löschen",
+        "deleteImage": "Bild löschen",
+        "deleteVideo": "Video löschen"
+      },
+      "messages": {
+        "incompleteSteps": "Bitte vervollständigen Sie alle Schritte vor dem Einreichen.",
+        "invalidVideoType": "Videotyp '{type}' ist nicht gültig. Erforderlich: video/webm oder video/mp4",
+        "sending": "Verifizierung wird gesendet...",
+        "success": "Verifizierung erfolgreich gesendet. Sie werden weitergeleitet...",
+        "validationError": "Validierungsfehler gefunden:",
+        "fileTooLarge": "Die Dateien sind zu groß. Bitte reduzieren Sie die Videogröße.",
+        "genericError": "Fehler beim Senden der Verifizierung. Bitte versuchen Sie es erneut."
       }
-    },
-    "video": {
-      "title": "Verifizierungsvideo",
-      "description": "Nehmen Sie ein Video auf, während Sie Ihr Dokument halten",
-      "recordButton": "Verifizierungsvideo aufnehmen",
-      "recorded": "Video erfolgreich aufgenommen",
-      "icon": "🎥",
-      "modal": {
-        "title": "Verifizierungsvideo aufnehmen",
-        "instructions": "Anweisungen:",
-        "steps": [
-          "Halten Sie Ihr Gesicht deutlich sichtbar",
-          "Halten Sie Ihr Identitätsdokument vor die Kamera",
-          "Stellen Sie sicher, dass eine gute Beleuchtung vorhanden ist",
-          "Das Dokument muss im Video lesbar sein"
-        ]
-      }
-    },
-    "actions": {
-      "submit": "Vollständige Verifizierung einreichen",
-      "submitting": "Verifizierung wird gesendet...",
-      "delete": "Löschen",
-      "deleteImage": "Bild löschen",
-      "deleteVideo": "Video löschen"
-    },
-    "messages": {
-      "incompleteSteps": "Bitte vervollständigen Sie alle Schritte vor dem Einreichen.",
-      "invalidVideoType": "Videotyp '{type}' ist nicht gültig. Erforderlich: video/webm oder video/mp4",
-      "sending": "Verifizierung wird gesendet...",
-      "success": "Verifizierung erfolgreich gesendet. Sie werden weitergeleitet...",
-      "validationError": "Validierungsfehler gefunden:",
-      "fileTooLarge": "Die Dateien sind zu groß. Bitte reduzieren Sie die Videogröße.",
-      "genericError": "Fehler beim Senden der Verifizierung. Bitte versuchen Sie es erneut."
     }
-  }
   },
   "paymentMethods": {
     "errorLoadingMethods": "Fehler beim Laden der Zahlungsmethoden",
@@ -1583,71 +1732,73 @@
     "coins": "Münzen",
     "minutes": "Minuten",
     "gifts": "Geschenke"
-  },"gifts": {
-      "sendGift": "Geschenk Senden",
-      "requestGift": "Geschenk Anfordern", 
-      "forRecipient": "Für {{name}}",
-      "requestFrom": "Anfordern von {{name}}",
-      "clickToSend": "Klicken zum Senden",
-      "clickToRequest": "Klicken zum Anfordern",
-      "yourBalance": "Ihr Guthaben: {{balance}} Münzen",
-      "optionalMessage": "Optionale Nachricht für Ihr Geschenk:",
-      "optionalRequestMessage": "Optionale Nachricht (erscheint mit Ihrer Anfrage):",
-      "placeholderGift": "Z.B.: Du bist fantastisch! 💖",
-      "placeholderRequest": "Z.B.: Bitte! 🥺",
-      "characters": "{{current}}/{{max}} Zeichen",
-      "giftsAvailable": "{{count}} Geschenke verfügbar",
-      "insufficient": "Fehlen {{amount}}",
-      "confirmSend": "{{giftName}} an {{recipientName}} senden?\nKosten: {{price}} Münzen\nIhr aktuelles Guthaben: {{balance}} Münzen",
-      "giftSent": "{{giftName}} an {{recipientName}} gesendet! 🎉",
-      "requestSent": "{{giftName}} Anfrage an {{recipientName}} gesendet! 🎁",
-      "sendingGift": "Geschenk wird gesendet...",
-      "sendingRequest": "Anfrage wird gesendet...",
-      "invalidGiftId": "Fehler: Ungültige Geschenk-ID",
-      "invalidRecipientId": "Fehler: Ungültige Empfänger-ID", 
-      "insufficientBalance": "Nicht genug Münzen. Sie benötigen {{required}} aber haben {{current}}.",
-      "processingError": "Fehler beim Verarbeiten des Geschenks"
-    },"disconnect": {
-      "modelSkippedYou": "Das Model ist zum nächsten gewechselt",
-      "searchedOtherClient": "Suchte einen anderen Kunden",
-      "modelDisconnected": "Das Model hat sich getrennt",
-      "endedVideoCall": "Beendete den Videoanruf",
-      "modelLeft": "Das Model hat den Raum verlassen",
-      "leftSession": "Verließ die Sitzung",
-      "balanceExhausted": "Guthaben aufgebraucht",
-      "ranOutOfCoins": "Du hast keine Münzen mehr",
-      "sessionEnded": "Sitzung beendet",
-      "connectionLost": "Verbindung verloren",
-      "details": "Details",
-      "dontWorryClient": "Keine Sorge!",
-      "connectingWithOther": "Verbinde mit anderem Model...",
-      "inSeconds": "In {{seconds}}s",
-      "connecting": "Verbinde...",
-      "keepSufficientCoins": "Mantén monedas suficientes",
-      "beRespectful": "Sé respetuoso siempre",
-      "eachConnectionUnique": "Cada conexión es única"
-    },
-    "sessionSuspended": {
-      "title": "Eine neue Sitzung wurde auf einem anderen Gerät geöffnet",
-      "message": "Ihre aktuelle Sitzung wurde ausgesetzt, weil eine neue Sitzung auf einem anderen Gerät geöffnet wurde. Sie können mit dieser Sitzung fortfahren, indem Sie auf die Schaltfläche unten klicken.",
-      "continueSession": "Mit dieser Sitzung fortfahren",
-      "reactivating": "Sitzung wird reaktiviert...",
-      "noToken": "Kein Token verfügbar",
-      "reactivateError": "Fehler beim Reaktivieren der Sitzung",
-      "networkError": "Verbindungsfehler. Bitte versuchen Sie es erneut."
-    },
-    "sessionClosed": {
-      "title": "Ihr Konto wurde auf einem anderen Gerät geöffnet",
-      "message": "Ihr Konto wurde auf einem anderen Gerät geöffnet. Sie können mit dieser Sitzung fortfahren, indem Sie auf die Schaltfläche unten klicken.",
-      "continueSession": "Mit dieser Sitzung fortfahren",
-      "reclaiming": "Wiederherstellen...",
-      "successTitle": "Sitzung wiederhergestellt",
-      "successMessage": "Ihre Sitzung wurde erfolgreich wiederhergestellt. Wird neu geladen...",
-      "noToken": "Kein Token verfügbar",
-      "invalidResponse": "Ungültige Serverantwort",
-      "reclaimError": "Fehler beim Wiederherstellen der Sitzung",
-      "networkError": "Verbindungsfehler. Bitte versuchen Sie es erneut."
-    },
+  },
+  "gifts": {
+    "sendGift": "Geschenk Senden",
+    "requestGift": "Geschenk Anfordern",
+    "forRecipient": "Für {{name}}",
+    "requestFrom": "Anfordern von {{name}}",
+    "clickToSend": "Klicken zum Senden",
+    "clickToRequest": "Klicken zum Anfordern",
+    "yourBalance": "Ihr Guthaben: {{balance}} Münzen",
+    "optionalMessage": "Optionale Nachricht für Ihr Geschenk:",
+    "optionalRequestMessage": "Optionale Nachricht (erscheint mit Ihrer Anfrage):",
+    "placeholderGift": "Z.B.: Du bist fantastisch! 💖",
+    "placeholderRequest": "Z.B.: Bitte! 🥺",
+    "characters": "{{current}}/{{max}} Zeichen",
+    "giftsAvailable": "{{count}} Geschenke verfügbar",
+    "insufficient": "Fehlen {{amount}}",
+    "confirmSend": "{{giftName}} an {{recipientName}} senden?\nKosten: {{price}} Münzen\nIhr aktuelles Guthaben: {{balance}} Münzen",
+    "giftSent": "{{giftName}} an {{recipientName}} gesendet! 🎉",
+    "requestSent": "{{giftName}} Anfrage an {{recipientName}} gesendet! 🎁",
+    "sendingGift": "Geschenk wird gesendet...",
+    "sendingRequest": "Anfrage wird gesendet...",
+    "invalidGiftId": "Fehler: Ungültige Geschenk-ID",
+    "invalidRecipientId": "Fehler: Ungültige Empfänger-ID",
+    "insufficientBalance": "Nicht genug Münzen. Sie benötigen {{required}} aber haben {{current}}.",
+    "processingError": "Fehler beim Verarbeiten des Geschenks"
+  },
+  "disconnect": {
+    "modelSkippedYou": "Das Model ist zum nächsten gewechselt",
+    "searchedOtherClient": "Suchte einen anderen Kunden",
+    "modelDisconnected": "Das Model hat sich getrennt",
+    "endedVideoCall": "Beendete den Videoanruf",
+    "modelLeft": "Das Model hat den Raum verlassen",
+    "leftSession": "Verließ die Sitzung",
+    "balanceExhausted": "Guthaben aufgebraucht",
+    "ranOutOfCoins": "Du hast keine Münzen mehr",
+    "sessionEnded": "Sitzung beendet",
+    "connectionLost": "Verbindung verloren",
+    "details": "Details",
+    "dontWorryClient": "Keine Sorge!",
+    "connectingWithOther": "Verbinde mit anderem Model...",
+    "inSeconds": "In {{seconds}}s",
+    "connecting": "Verbinde...",
+    "keepSufficientCoins": "Mantén monedas suficientes",
+    "beRespectful": "Sé respetuoso siempre",
+    "eachConnectionUnique": "Cada conexión es única"
+  },
+  "sessionSuspended": {
+    "title": "Eine neue Sitzung wurde auf einem anderen Gerät geöffnet",
+    "message": "Ihre aktuelle Sitzung wurde ausgesetzt, weil eine neue Sitzung auf einem anderen Gerät geöffnet wurde. Sie können mit dieser Sitzung fortfahren, indem Sie auf die Schaltfläche unten klicken.",
+    "continueSession": "Mit dieser Sitzung fortfahren",
+    "reactivating": "Sitzung wird reaktiviert...",
+    "noToken": "Kein Token verfügbar",
+    "reactivateError": "Fehler beim Reaktivieren der Sitzung",
+    "networkError": "Verbindungsfehler. Bitte versuchen Sie es erneut."
+  },
+  "sessionClosed": {
+    "title": "Ihr Konto wurde auf einem anderen Gerät geöffnet",
+    "message": "Ihr Konto wurde auf einem anderen Gerät geöffnet. Sie können mit dieser Sitzung fortfahren, indem Sie auf die Schaltfläche unten klicken.",
+    "continueSession": "Mit dieser Sitzung fortfahren",
+    "reclaiming": "Wiederherstellen...",
+    "successTitle": "Sitzung wiederhergestellt",
+    "successMessage": "Ihre Sitzung wurde erfolgreich wiederhergestellt. Wird neu geladen...",
+    "noToken": "Kein Token verfügbar",
+    "invalidResponse": "Ungültige Serverantwort",
+    "reclaimError": "Fehler beim Wiederherstellen der Sitzung",
+    "networkError": "Verbindungsfehler. Bitte versuchen Sie es erneut."
+  },
   "roulette": {
     "titulo": "Video-Roulette",
     "estado": "Bereit zur Verbindung",
@@ -1656,7 +1807,9 @@
     "start_button": "Suche starten",
     "random_user_notice": "Sie werden mit einem zufälligen Benutzer verbunden",
     "default_camera": "Kamera {{number}}",
-    "default_microphone": "Mikrofon {{number}}"
+    "default_microphone": "Mikrofon {{number}}",
+    "cameraInUse": "Error: Camera is being used by another application. Please close other applications that may be using the camera (Zoom, Teams, etc.) and reload the page.",
+    "cameraAccessError": "Cannot access camera. Please make sure it is not being used by another application."
   },
   "mirror": {
     "label": "Spiegelmodus",
@@ -1664,5 +1817,100 @@
     "disable": "Spiegel deaktivieren",
     "active": "Spiegel aktiv",
     "description": "Mein Bild wie in einem Spiegel sehen"
+  },
+  "storiesComingSoon": "Stories will be available soon",
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "accion": {
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    }
+  },
+  "permission_alert": "You need to allow camera and microphone access to continue.",
+  "userSearch": {
+    "waiting_users": "Waiting for users",
+    "waiting_guy": "Waiting for guy",
+    "waiting_girl": "Waiting for girl",
+    "rouletting": "Rouletting",
+    "connecting": "Connecting!",
+    "searching_new_guy": "Searching for new guy...",
+    "searching_new_girl": "Searching for new girl...",
+    "reconnecting": "Reconnecting...",
+    "starting_roulette": "Starting roulette...",
+    "user_found_connecting": "User found! Connecting...",
+    "preparing_connection": "Preparing secure connection...",
+    "time": "Time:",
+    "checks": "Checks:",
+    "automatic_verification": "⚡ Automatic verification every 7 seconds",
+    "cancel_search": "← Cancel search",
+    "cancel_wait": "← Cancel wait",
+    "back": "← Back",
+    "error_connecting": "Error connecting",
+    "try_again": "Try creating a new room",
+    "try_another_user": "Try searching for another user",
+    "timeout_message": "No user connected after 3 minutes. Try again later.",
+    "timeout_status": "Wait time expired"
+  },
+  "verificacion": {
+    "title": "Verify Identity",
+    "progressLabel": "Verification progress",
+    "steps": {
+      "selfie": {
+        "title": "Selfie",
+        "description": "Clear photo of your face",
+        "uploadText": "Upload selfie",
+        "changeText": "Change image",
+        "icon": "👤"
+      },
+      "document": {
+        "title": "Identity document",
+        "description": "ID card or passport",
+        "uploadText": "Upload identity document",
+        "changeText": "Change image",
+        "icon": "📋"
+      },
+      "selfieDoc": {
+        "title": "Selfie with document",
+        "description": "Your face next to the document",
+        "uploadText": "Upload selfie with document",
+        "changeText": "Change image",
+        "icon": "🤳"
+      }
+    },
+    "video": {
+      "title": "Verification video",
+      "description": "Record a video holding your document",
+      "recordButton": "Record verification video",
+      "recorded": "Video recorded successfully",
+      "icon": "🎥",
+      "modal": {
+        "title": "Record verification video",
+        "instructions": "Instructions:",
+        "steps": [
+          "Keep your face clearly visible",
+          "Hold your identity document in front of the camera",
+          "Make sure there is good lighting",
+          "The document must be readable in the video"
+        ]
+      }
+    },
+    "actions": {
+      "submit": "Submit complete verification",
+      "submitting": "Submitting verification...",
+      "delete": "Delete",
+      "deleteImage": "Delete image",
+      "deleteVideo": "Delete video"
+    },
+    "messages": {
+      "incompleteSteps": "Please complete all steps before submitting.",
+      "invalidVideoType": "Video type '{type}' is not valid. Required: video/webm or video/mp4",
+      "sending": "Sending verification...",
+      "success": "Verification sent successfully. You will be redirected...",
+      "validationError": "Validation errors found:",
+      "fileTooLarge": "Files are too large. Please reduce the video size.",
+      "genericError": "Error sending verification. Please try again."
+    }
   }
 }

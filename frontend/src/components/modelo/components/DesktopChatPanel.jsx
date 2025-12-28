@@ -4,6 +4,7 @@ import { GiftMessageComponent } from '../../GiftSystem/GiftMessageComponent';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../../i18n';
+import { getTranslatedGiftName, getGiftCardText } from '../../GiftSystem/giftTranslations';
 
 const DesktopChatPanel = ({
   getDisplayName,
@@ -22,7 +23,8 @@ const DesktopChatPanel = ({
   handleKeyPress,
   userData,
   userBalance,
-  handleAcceptGift,     
+  handleAcceptGift,
+  playGiftSound,
   t
 }) => {
 
@@ -97,155 +99,13 @@ const DesktopChatPanel = ({
     };
   }, [currentLanguage, changeGlobalLanguage, i18nInstance]);
 
-  // 🎵 SISTEMA DE SONIDOS DE REGALO - COPIADO DE CHATPRIVADO
-const playGiftReceivedSound = useCallback(async () => {
-    
-  try {
-    // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO
-    if (typeof window !== 'undefined' && window.AudioContext) {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-      }
-    }
-    
-    // 🔥 INTENTAR MÚLTIPLES ARCHIVOS DE SONIDO
-    const soundUrls = [       
-      '/sounds/gift-received.mp3',    // ← Para cuando RECIBES un regalo
-      '/sounds/gift-notification.mp3',
-      '/sounds/gift-sound.wav'
-    ];
-    
-    let soundPlayed = false;
-    
-    for (const soundUrl of soundUrls) {
-      if (soundPlayed) break;
-      
-      try {
-                
-        const audio = new Audio(soundUrl);
-        audio.volume = 1.0; // 🔥 VOLUMEN MÁXIMO
-        audio.preload = 'auto';
-        
-        // 🔥 PROMESA PARA MANEJAR LA REPRODUCCIÓN
-        await new Promise((resolve, reject) => {
-          audio.oncanplaythrough = () => {
-                        audio.play()
-              .then(() => {
-                                soundPlayed = true;
-                resolve();
-              })
-              .catch(reject);
-          };
-          
-          audio.onerror = (error) => {
-            reject(error);
-          };
-          
-          // Timeout de 2 segundos
-          setTimeout(() => reject(new Error('Timeout')), 2000);
-        });
-        
-        break; // Si llegamos aquí, el sonido se reprodujo
-        
-      } catch (audioError) {
-        continue; // Probar el siguiente
-      }
-    }
-    
-    // 🔥 SI NINGÚN ARCHIVO FUNCIONA, USAR SONIDO SINTETIZADO
-    if (!soundPlayed) {
-            await playAlternativeGiftSound();
-    }
-    
-  } catch (error) {
-        // 🔥 ÚLTIMO RECURSO - SONIDO SINTETIZADO
-    try {
-      await playAlternativeGiftSound();
-    } catch (finalError) {
-          }
-  }
-}, []);
-
-// 🔥 MEJORAR EL SONIDO ALTERNATIVO PARA SER MÁS FUERTE Y CLARO:
-const playAlternativeGiftSound = useCallback(async () => {
-  try {
-        
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // 🔥 ASEGURAR QUE EL CONTEXTO ESTÉ ACTIVO
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-    
-    // 🔥 CREAR UNA MELODÍA MÁS FUERTE Y LLAMATIVA
-    const playNote = (frequency, startTime, duration, volume = 0.5) => {
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.setValueAtTime(frequency, startTime);
-      oscillator.type = 'sine'; // 🔥 CAMBIAR A SINE PARA SONIDO MÁS CLARO
-      
-      gainNode.gain.setValueAtTime(0, startTime);
-      gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
-      gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
-      
-      oscillator.start(startTime);
-      oscillator.stop(startTime + duration);
-    };
-    
-    // 🔥 MELODÍA MÁS LLAMATIVA Y FUERTE
-    const now = audioContext.currentTime;
-    playNote(659.25, now, 0.15, 0.6);        // Mi
-    playNote(783.99, now + 0.1, 0.15, 0.6);  // Sol
-    playNote(1046.5, now + 0.2, 0.15, 0.6);  // Do
-    playNote(1318.5, now + 0.3, 0.2, 0.7);   // Mi alto
-    playNote(1046.5, now + 0.45, 0.3, 0.8);  // Do final más largo y fuerte
-    
-        
-    return true;
-    
-  } catch (error) {
-        
-    // 🔥 ÚLTIMO ÚLTIMO RECURSO - VIBRACIÓN EN MÓVILES
-    if ('vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200, 100, 400, 100, 200]);
-          }
-    
-    return false;
-  }
-}, []);
-
-// 🔥 ASEGURAR QUE LOS PERMISOS DE AUDIO ESTÉN HABILITADOS AL INICIO:
-  useEffect(() => {
-    // Solicitar permisos de audio cuando se monte el componente
-    const enableAudio = async () => {
-      try {
-        if (typeof window !== 'undefined' && window.AudioContext) {
-          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-          if (audioContext.state === 'suspended') {
-                        // No hacer resume aquí, se hará cuando sea necesario
-          }
-        }
-        
-        // Solicitar permisos de notificación
-        if ('Notification' in window && Notification.permission === 'default') {
-          await Notification.requestPermission();
-        }
-      } catch (error) {
-              }
-    };
-    
-    enableAudio();
-  }, []);
   // 🎁 FUNCIÓN PARA REPRODUCIR NOTIFICACIÓN DE REGALO
   const playGiftNotification = useCallback(async (giftName) => {
     try {
-      // Reproducir sonido
-      await playGiftReceivedSound();
+      // Reproducir sonido usando la función centralizada
+      if (playGiftSound) {
+        await playGiftSound('received');
+      }
       
       // Mostrar notificación visual si está permitido
       if (Notification.permission === 'granted') {
@@ -262,9 +122,10 @@ const playAlternativeGiftSound = useCallback(async () => {
         navigator.vibrate([200, 100, 200, 100, 400]);
       }
       
-          } catch (error) {
-          }
-  }, [playGiftReceivedSound]);
+    } catch (error) {
+      console.error('Error en playGiftNotification:', error);
+    }
+  }, [playGiftSound]);
 
   // Auto-scroll al final cuando hay nuevos mensajes
   const scrollToBottom = () => {
@@ -311,29 +172,150 @@ const playAlternativeGiftSound = useCallback(async () => {
     // Solo actualizar si realmente cambiaron
     if (currentSignature !== lastSignature) {
       
-      // Filtrar mensajes únicos
+      // Filtrar mensajes únicos por ID y también por contenido de regalo (transaction_id o contenido similar)
       const seenIds = new Set();
+      const seenGiftTransactions = new Set(); // Para detectar regalos duplicados por transaction_id
+      const seenGiftContent = new Set(); // Para detectar regalos duplicados por contenido
       const uniqueMessages = messages.filter(msg => {
+        // Filtro por ID del mensaje
         if (seenIds.has(msg.id)) return false;
         seenIds.add(msg.id);
+        
+        // 🔥 FILTRO ADICIONAL: Detectar regalos duplicados por transaction_id o gift_request_id
+        // Si es un mensaje de regalo, verificar si ya existe uno con el mismo transaction_id o contenido similar
+        if (msg.type === 'gift_received' || msg.type === 'gift_sent' || msg.extra_data || msg.gift_data) {
+          try {
+            const extraData = typeof msg.extra_data === 'string' ? JSON.parse(msg.extra_data) : (msg.extra_data || {});
+            const giftData = typeof msg.gift_data === 'string' ? JSON.parse(msg.gift_data) : (msg.gift_data || {});
+            
+            // Obtener transaction_id, request_id o gift_request_id
+            const transactionId = extraData.transaction_id || giftData.transaction_id || extraData.gift_request_id || giftData.gift_request_id;
+            const requestId = extraData.request_id || giftData.request_id || extraData.gift_request_id || giftData.gift_request_id;
+            const uniqueId = transactionId || requestId;
+            
+            if (uniqueId) {
+              // 🔥 CREAR CLAVE ÚNICA: Si es gift_sent o gift_received con el mismo ID, considerar duplicado
+              // Un gift_sent del cliente que acepta un regalo es equivalente a un gift_received para la modelo
+              // Por lo tanto, si ya existe un gift_received con el mismo request_id/transaction_id, filtrar el gift_sent
+              const normalizedType = (msg.type === 'gift_sent' && (msg.user_role === 'cliente' || msg.senderRole === 'cliente')) 
+                ? 'gift_received' 
+                : msg.type;
+              
+              // Crear una clave única basada en ID único y tipo normalizado (sin room_name para evitar duplicados)
+              const giftKey = `${uniqueId}-${normalizedType}`;
+              
+              if (seenGiftTransactions.has(giftKey)) {
+                // Ya existe un mensaje con este ID único, omitir este
+                console.log('🔍 [MODELO] Mensaje de regalo duplicado detectado y filtrado (por ID único):', {
+                  msgId: msg.id,
+                  uniqueId,
+                  type: msg.type,
+                  normalizedType,
+                  giftKey
+                });
+                return false;
+              }
+              
+              seenGiftTransactions.add(giftKey);
+            } else {
+              // Si no hay transaction_id, usar contenido del regalo para detectar duplicados
+              const giftName = extraData.gift_name || giftData.gift_name;
+              const giftPrice = extraData.gift_price || giftData.gift_price;
+              const giftImage = extraData.gift_image || giftData.gift_image;
+              
+              if (giftName && msg.type === 'gift_received') {
+                // Crear una clave basada en contenido del regalo, tipo, y timestamp aproximado (últimos 5 segundos)
+                const timestamp = msg.timestamp || msg.created_at || 0;
+                const timeWindow = Math.floor(timestamp / 5000); // Ventana de 5 segundos
+                const contentKey = `${giftName}-${giftPrice || 0}-${msg.type}-${timeWindow}`;
+                
+                if (seenGiftContent.has(contentKey)) {
+                  // Ya existe un mensaje con el mismo contenido de regalo en la misma ventana de tiempo
+                  console.log('🔍 [MODELO] Mensaje de regalo duplicado detectado y filtrado (por contenido):', {
+                    msgId: msg.id,
+                    giftName,
+                    giftPrice,
+                    type: msg.type,
+                    contentKey
+                  });
+                  return false;
+                }
+                
+                seenGiftContent.add(contentKey);
+              }
+            }
+          } catch (e) {
+            // Si hay error parseando, continuar con el filtro normal por ID
+            console.warn('⚠️ [MODELO] Error parseando datos de regalo para filtro:', e);
+          }
+        }
+        
         return true;
       });
 
-      // 🔥 ORDENAMIENTO CRONOLÓGICO CORRECTO
+      // 🔥 ORDENAMIENTO CRONOLÓGICO CORRECTO - MEJORADO
       const sortedMessages = uniqueMessages.slice().sort((a, b) => {
-        // Usar created_at o timestamp como fuente principal de ordenamiento
-        const timeA = new Date(a.created_at || a.timestamp).getTime();
-        const timeB = new Date(b.created_at || b.timestamp).getTime();
+        // 🔥 FUNCIÓN PARA OBTENER TIMESTAMP DE MÚLTIPLES FUENTES
+        const getTimestamp = (msg) => {
+          // Intentar obtener timestamp de múltiples fuentes
+          if (msg.timestamp && typeof msg.timestamp === 'number' && msg.timestamp > 0) {
+            return msg.timestamp;
+          }
+          
+          if (msg.created_at) {
+            // Manejar tanto strings como números
+            let date;
+            if (typeof msg.created_at === 'string') {
+              date = new Date(msg.created_at);
+            } else if (typeof msg.created_at === 'number') {
+              date = new Date(msg.created_at);
+            } else {
+              return null;
+            }
+            
+            if (!isNaN(date.getTime()) && date.getTime() > 0) {
+              return date.getTime();
+            }
+          }
+          
+          // Si el ID es un timestamp válido (mayor a 2001-09-09)
+          if (msg.id) {
+            const idNum = typeof msg.id === 'string' ? parseInt(msg.id) : msg.id;
+            if (typeof idNum === 'number' && idNum > 1000000000000) {
+              return idNum;
+            }
+          }
+          
+          // Si no hay timestamp válido, retornar null (se ordenarán al final)
+          return null;
+        };
         
-        // 🔥 ORDEN ASCENDENTE: los más antiguos primero
-        if (timeA !== timeB) {
-          return timeA - timeB; // ← CAMBIO CLAVE: timeA - timeB (no timeB - timeA)
+        const timeA = getTimestamp(a);
+        const timeB = getTimestamp(b);
+        
+        // 🔥 ORDEN ASCENDENTE: los más antiguos primero, los más recientes al final
+        // Si ambos tienen timestamp válido, ordenar por timestamp (ascendente)
+        if (timeA !== null && timeB !== null) {
+          // timeA - timeB: si timeA es menor (más antiguo), retorna negativo, entonces a va antes de b
+          // Esto significa: mensajes más antiguos primero, más recientes al final
+          const diff = timeA - timeB;
+          // Si son iguales, usar ID como desempate
+          if (diff === 0) {
+            const idA = typeof a.id === 'string' ? parseInt(a.id) || 0 : (a.id || 0);
+            const idB = typeof b.id === 'string' ? parseInt(b.id) || 0 : (b.id || 0);
+            return idA - idB;
+          }
+          return diff;
         }
         
-        // Si tienen el mismo timestamp, usar ID como desempate
-        const idA = typeof a.id === 'string' ? parseInt(a.id) : a.id;
-        const idB = typeof b.id === 'string' ? parseInt(b.id) : b.id;
-        return idA - idB; // ← ORDEN ASCENDENTE por ID también
+        // Si solo uno tiene timestamp, el que tiene timestamp va primero (es más antiguo)
+        if (timeA !== null && timeB === null) return -1;
+        if (timeA === null && timeB !== null) return 1;
+        
+        // Si ninguno tiene timestamp, usar ID como desempate (mantener orden relativo)
+        const idA = typeof a.id === 'string' ? parseInt(a.id) || 0 : (a.id || 0);
+        const idB = typeof b.id === 'string' ? parseInt(b.id) || 0 : (b.id || 0);
+        return idA - idB;
       });
 
       // 🔥 DETECTAR NUEVOS REGALOS ANTES DE ACTUALIZAR
@@ -396,7 +378,8 @@ const playAlternativeGiftSound = useCallback(async () => {
         }
       }
 
-      setStableMessages(uniqueMessages);
+      // 🔥 USAR LOS MENSAJES ORDENADOS, NO LOS ÚNICOS SIN ORDENAR
+      setStableMessages(sortedMessages);
     } else {
           }
   }, [messages, playGiftNotification, userData?.id]);
@@ -709,15 +692,17 @@ const playAlternativeGiftSound = useCallback(async () => {
       }
     }
     
-    // Fallback a gift_data
-    if (!giftData.gift_name && msg.gift_data) {
+    // Fallback a gift_data (combinar, no reemplazar)
+    if (msg.gift_data) {
       try {
+        let parsedGiftData = {};
         if (typeof msg.gift_data === 'string') {
-          const parsed = JSON.parse(msg.gift_data);
-          giftData = { ...giftData, ...parsed };
+          parsedGiftData = JSON.parse(msg.gift_data);
         } else if (typeof msg.gift_data === 'object') {
-          giftData = { ...giftData, ...msg.gift_data };
+          parsedGiftData = msg.gift_data;
         }
+        // Combinar datos, dando prioridad a extra_data pero preservando gift_data
+        giftData = { ...parsedGiftData, ...giftData };
       } catch (e) {
         console.warn('Error parsing gift_data:', e);
       }
@@ -739,8 +724,8 @@ const playAlternativeGiftSound = useCallback(async () => {
     if (!giftData.gift_name && (msg.text || msg.message)) {
       const text = msg.text || msg.message;
       
-      // Para solicitudes: "🎁 Solicitud de regalo: Nombre del Regalo"
-      const requestMatch = text.match(/Solicitud de regalo:\s*(.+?)(?:\s*-|$)/);
+      // Para solicitudes: "🎁 Solicitud de regalo: Nombre del Regalo" o "🎁 Pedido de presente: Nombre"
+      const requestMatch = text.match(/(?:Solicitud de regalo|Pedido de presente):\s*(.+?)(?:\s*-|$)/);
       if (requestMatch) {
         giftData.gift_name = requestMatch[1].trim();
         giftData.gift_price = giftData.gift_price || 10;
@@ -759,15 +744,23 @@ const playAlternativeGiftSound = useCallback(async () => {
       }
     }
     
+    // 🔥 Asegurar que gift_image se obtenga de todas las fuentes posibles
+    const giftImage = giftData.gift_image || 
+                      giftData.image || 
+                      giftData.image_path || 
+                      giftData.gift_image_path || 
+                      null;
+    
     // Valores por defecto
     return {
+      ...giftData,
+      // Asegurar que gift_image esté en el objeto final (sobrescribir cualquier valor previo)
       gift_name: giftData.gift_name || 'Regalo Especial',
       gift_price: giftData.gift_price || 10,
-      gift_image: giftData.gift_image || null,
-      request_id: giftData.request_id || msg.id,
+      gift_image: giftImage, // Usar la imagen obtenida de todas las fuentes
+      request_id: giftData.request_id || giftData.transaction_id || msg.id,
       security_hash: giftData.security_hash || null,
-      original_message: giftData.original_message || '',
-      ...giftData
+      original_message: giftData.original_message || ''
     };
   }, []);
 
@@ -778,8 +771,7 @@ const playAlternativeGiftSound = useCallback(async () => {
     
     // Si ya es una URL completa
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      // Si ya tiene parámetros, no agregar más
-      return imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
+      return imagePath;
     }
     
     const baseUrl = import.meta.env.VITE_API_BASE_URL;
@@ -812,11 +804,49 @@ const playAlternativeGiftSound = useCallback(async () => {
       finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
     }
     
-    // Agregar hash del nombre del archivo como versión para invalidar caché
-    // Agregar nombre del archivo como versión para invalidar caché cuando cambie
-    const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+    // Agregar versión basada en el nombre del archivo (sin timestamp para evitar re-renders)
+    const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : 'default';
     return `${finalUrl}?v=${version}`;
   };
+
+  // 🔥 COMPONENTE PARA RENDERIZAR IMÁGENES DE REGALOS - SIN LOOPS
+  const GiftImage = React.memo(({ imagePath, messageId, alt, className, containerClassName }) => {
+    // Usar useMemo para estabilizar la URL y evitar recálculos
+    const imageUrl = useMemo(() => {
+      if (!imagePath) return null;
+      return buildCompleteImageUrl(imagePath);
+    }, [imagePath]);
+
+    // Si no hay URL, retornar null para no romper el layout
+    if (!imageUrl) {
+      return null;
+    }
+
+    // Usar una key estable basada solo en messageId para evitar re-renders innecesarios
+    const stableKey = useMemo(() => `gift-img-${messageId}`, [messageId]);
+
+    return (
+      <div className={containerClassName || "gift-image-container"} style={{ minHeight: '80px', minWidth: '80px' }}>
+        <img
+          key={stableKey}
+          src={imageUrl}
+          alt={alt || 'Regalo'}
+          className={className || "gift-image object-contain"}
+          style={{ 
+            width: '100%', 
+            height: '100%', 
+            objectFit: 'contain'
+          }}
+          loading="eager"
+          decoding="sync"
+        />
+      </div>
+    );
+  }, (prevProps, nextProps) => {
+    // Comparación personalizada: solo re-renderizar si cambia imagePath o messageId
+    return prevProps.imagePath === nextProps.imagePath && 
+           prevProps.messageId === nextProps.messageId;
+  });
 
   // 🔥 FUNCIÓN PARA LIMITAR NOMBRE A 8 CARACTERES
   const truncateName = (name, maxLength = 8) => {
@@ -990,7 +1020,6 @@ const playAlternativeGiftSound = useCallback(async () => {
                   {/* 🔥 RENDERIZADO DE REGALOS - FLUJO CRONOLÓGICO CORREGIDO */}
                   {isGift && (() => {
                     const giftData = parseGiftData(msg);
-                    const imageUrl = buildCompleteImageUrl(giftData.gift_image);
 
                     // 🔥 DETERMINAR TIPO DE REGALO Y QUIÉN LO ENVIÓ (DESDE PERSPECTIVA DE MODELO)
                     const isFromCurrentUser = msg.user_id === userData?.id || 
@@ -1057,41 +1086,27 @@ const playAlternativeGiftSound = useCallback(async () => {
                                   <Gift size={16} className="text-white" />
                                 </div>
                                 <span className="text-pink-100 gift-title font-semibold">
-                                  Te pide un regalo
+                                  {getGiftCardText('requestGift', currentLanguage)}
                                 </span>
                               </div>
                               
                               <div className="mb-3 flex justify-center">
-                                <div className="gift-image-container bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
-                                  {imageUrl ? (
-                                    <img
-                                      src={imageUrl}
-                                      alt={giftData.gift_name || 'Regalo'}
-                                      className="gift-image object-contain"
-                                      loading="lazy"
-                                      decoding="async"
-                                      key={`gift-${giftData.gift_name}-${imageUrl}`}
-                                      onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                                        if (fallback) fallback.style.display = 'flex';
-                                      }}
-                                    />
-                                  ) : null}
-                                  <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
-                                    <Gift size={20} className="text-purple-300" />
-                                  </div>
-                                </div>
+                                <GiftImage
+                                  imagePath={giftData.gift_image}
+                                  messageId={msg.id}
+                                  alt={giftData.gift_name || 'Regalo'}
+                                  containerClassName="gift-image-container bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30"
+                                />
                               </div>
                               
                               <div className="text-center space-y-2">
                                 <p className="text-white font-bold gift-name-text">
-                                  {giftData.gift_name}
+                                  {getTranslatedGiftName(giftData.gift_name, currentLanguage, giftData.gift_name)}
                                 </p>
                                 
                                 <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg gift-price-container border border-amber-300/30">
                                   <span className="text-amber-200 font-bold gift-price-text">
-                                    ✨ {giftData.gift_price} monedas
+                                    ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                                   </span>
                                 </div>
                                 <div className="text-left">
@@ -1110,9 +1125,13 @@ const playAlternativeGiftSound = useCallback(async () => {
                     }
 
                     // 🔥 2. REGALO RECIBIDO (la modelo recibe regalo del cliente) - PRIORIDAD ALTA
-                    // Detectar si es un regalo recibido: tiene tipo gift_received O tiene datos de regalo y no es del usuario actual
+                    // 🔥 IMPORTANTE: gift_sent del cliente DEBE mostrarse como regalo recibido para la modelo
+                    // Detectar si es un regalo recibido: tiene tipo gift_received O gift_sent del cliente O tiene datos de regalo y no es del usuario actual
                     const hasReceivedGiftData = giftData.gift_name && !isFromCurrentUser;
                     const isFromClient = msg.user_role === 'cliente' || msg.senderRole === 'cliente' || msg.user_role === 'client';
+                    
+                    // 🔥 gift_sent del cliente = regalo recibido para la modelo
+                    const isGiftSentFromClient = msg.type === 'gift_sent' && !isFromCurrentUser && isFromClient;
                     
                     // 🔥 PRIORIDAD: Si tiene datos de regalo y viene de un cliente, es regalo recibido
                     // También verificar si el mensaje tiene información de regalo aunque no tenga el tipo
@@ -1120,6 +1139,7 @@ const playAlternativeGiftSound = useCallback(async () => {
                     
                     if (msg.type === 'gift_received' ||
                         isGiftReceivedByModel ||
+                        isGiftSentFromClient ||
                         (hasGiftInfo && !isFromCurrentUser && (isFromClient || !msg.user_role)) ||
                         (hasReceivedGiftData && !isFromCurrentUser) ||
                         (!isFromCurrentUser && (
@@ -1154,39 +1174,26 @@ const playAlternativeGiftSound = useCallback(async () => {
                                 <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full gift-icon-container">
                                   <Gift size={16} className="text-white" />
                                 </div>
-                                <span className="text-green-100 gift-title font-semibold">🎉 ¡Regalo Recibido!</span>
+                                <span className="text-green-100 gift-title font-semibold">{getGiftCardText('giftReceived', currentLanguage)}</span>
                               </div>
                               
                               <div className="mb-3 flex justify-center">
-                                <div className="gift-image-container bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-green-300/30">
-                                  {imageUrl ? (
-                                    <img
-                                      src={imageUrl}
-                                      alt={giftData.gift_name}
-                                      className="gift-image object-contain"
-                                      loading="lazy"
-                                      decoding="async"
-                                      onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                                        if (fallback) fallback.style.display = 'flex';
-                                      }}
-                                    />
-                                  ) : null}
-                                  <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
-                                    <Gift size={20} className="text-green-300" />
-                                  </div>
-                                </div>
+                                <GiftImage
+                                  imagePath={giftData.gift_image}
+                                  messageId={msg.id}
+                                  alt={giftData.gift_name}
+                                  containerClassName="gift-image-container bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-green-300/30"
+                                />
                               </div>
                               
                               <div className="text-center space-y-2">
                                 <p className="text-white font-bold gift-name-text">
-                                  {giftData.gift_name}
+                                  {getTranslatedGiftName(giftData.gift_name, currentLanguage, giftData.gift_name)}
                                 </p>
                                 
                                 <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg gift-price-container border border-green-300/30">
                                   <span className="text-green-200 font-bold gift-price-text">
-                                    💰 {giftData.gift_price} monedas
+                                    💰 {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                                   </span>
                                 </div>
                               </div>
@@ -1224,26 +1231,13 @@ const playAlternativeGiftSound = useCallback(async () => {
                             </div>
                             
                             <div className="mb-3 flex justify-center">
-                              <div className="gift-image-container bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
-                                {imageUrl ? (
-                                  <img
-                                    src={imageUrl}
-                                    alt={giftData.gift_name || 'Regalo'}
-                                    className="gift-image object-contain"
-                                    loading="lazy"
-                                    decoding="async"
-                                    key={`gift-request-${giftData.gift_name}-${imageUrl}`}
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                                      if (fallback) fallback.style.display = 'flex';
-                                    }}
-                                  />
-                                ) : null}
-                                <div className={`gift-fallback ${imageUrl ? 'hidden' : 'flex'} gift-fallback-icon items-center justify-center`}>
-                                  <Gift size={20} className="text-purple-300" />
-                                </div>
-                              </div>
+                              <GiftImage
+                                imagePath={giftData.gift_image}
+                                messageId={msg.id}
+                                alt={giftData.gift_name || 'Regalo'}
+                                containerClassName="gift-image-container bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30"
+                                fallbackIcon={<Gift size={20} className="text-purple-300" />}
+                              />
                             </div>
                             
                             <div className="text-center space-y-2">
@@ -1286,29 +1280,17 @@ const playAlternativeGiftSound = useCallback(async () => {
                               <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full gift-icon-container">
                                 <Gift size={16} className="text-white" />
                               </div>
-                              <span className="text-blue-100 gift-title font-semibold">Regalo Enviado</span>
+                              <span className="text-blue-100 gift-title font-semibold">{getGiftCardText('giftSent', currentLanguage)}</span>
                             </div>
                             
-                            {imageUrl && (
+                            {giftData.gift_image && (
                               <div className="mb-3 flex justify-center">
-                                <div className="gift-image-container bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-blue-300/30">
-                                  <img
-                                    src={imageUrl}
-                                    alt={giftData.gift_name}
-                                    className="gift-image object-contain"
-                                    loading="lazy"
-                                    decoding="async"
-                                    key={`gift-sent-${giftData.gift_name}-${imageUrl}`}
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                                      if (fallback) fallback.style.display = 'flex';
-                                    }}
-                                  />
-                                  <div className="gift-fallback hidden gift-fallback-icon items-center justify-center">
-                                    <Gift size={20} className="text-blue-300" />
-                                  </div>
-                                </div>
+                                <GiftImage
+                                  imagePath={giftData.gift_image}
+                                  messageId={msg.id}
+                                  alt={giftData.gift_name}
+                                  containerClassName="gift-image-container bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-blue-300/30"
+                                />
                               </div>
                             )}
                             

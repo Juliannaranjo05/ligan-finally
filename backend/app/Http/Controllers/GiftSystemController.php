@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\User;
 use App\Models\Gift;
 use App\Models\GiftTransaction;
@@ -1157,17 +1158,68 @@ class GiftSystemController extends Controller
             }
 
             // 6. 💬 CREAR MENSAJES DE CHAT PARA REGALO DIRECTO
-            Log::info('💬 [CHAT] Creando mensajes de chat para regalo directo');
+            Log::info('💬 [CHAT] Creando mensajes de chat para regalo directo', [
+                'room_name' => $roomName,
+                'gift_name' => $gift->name ?? 'NULL',
+                'user_id' => $user->id ?? 'NULL',
+                'user_name' => $user->name ?? 'NULL',
+                'modelo_id' => $recipientId ?? 'NULL'
+            ]);
+            
+            // 🔥 DETECTAR SI ES VIDEOCHAT (room_name no tiene sufijos _modelo/_client y no empieza con chat_user_)
+            $isVideoChat = !empty($roomName) && 
+                          $roomName !== 'direct_message' && 
+                          !str_starts_with($roomName, 'chat_user_') &&
+                          !str_ends_with($roomName, '_modelo') && 
+                          !str_ends_with($roomName, '_client');
+            
+            // 🔥 Asegurar que el room_name no tenga sufijos ya agregados
+            $baseRoomName = $roomName;
+            if (str_ends_with($roomName, '_modelo') || str_ends_with($roomName, '_client')) {
+                $baseRoomName = substr($roomName, 0, -7); // Remover '_modelo' o '_client'
+            }
+            
+            // 🔥 Si el room_name está vacío, construir uno basado en los IDs
+            if (empty($baseRoomName) || $baseRoomName === 'direct_message') {
+                $baseRoomName = "chat_user_{$recipientId}_{$user->id}";
+                Log::info('💬 [CHAT] Room_name vacío, construyendo nuevo:', ['base_room_name' => $baseRoomName]);
+                $isVideoChat = false; // No es videochat si construimos el room_name
+            }
+            
+            Log::info('💬 [CHAT] Detección de contexto:', [
+                'is_videochat' => $isVideoChat,
+                'base_room_name' => $baseRoomName,
+                'original_room_name' => $roomName
+            ]);
+            
+            $giftDataForModelo = [
+                'gift_name' => $gift->name ?? 'Regalo',
+                'gift_image' => $gift->image_path ?? null,
+                'gift_price' => $gift->price ?? 0,
+                'client_name' => $user->name ?? 'Cliente',
+                'modelo_name' => $recipient->name ?? 'Modelo',
+                'transaction_id' => $transactionId ?? 0,
+                'context' => $isVideoChat ? 'videochat_direct' : 'chat_direct',
+                'room_name' => $baseRoomName,
+                'action_text' => "Recibiste de",
+                'sender_name' => $user->name ?? 'Cliente',
+                'original_message' => $message
+            ];
+            
             $chatMessage = null;
+            $modeloMessage = null;
 
             try {
                 // Mensaje para el cliente (SENDER)
+                // 🔥 Si es videochat, usar el mismo room_name sin sufijos
+                $clientRoomName = $isVideoChat ? $baseRoomName : ($baseRoomName . '_client');
+                
                 $chatMessage = ChatMessage::create([
-                    'room_name' => $roomName,
+                    'room_name' => $clientRoomName,
                     'user_id' => $user->id,
                     'user_name' => $user->name ?? 'Cliente',
                     'user_role' => 'cliente',
-                    'message' => $message ?: "🎁 Enviaste: {$gift->name}",
+                    'message' => $message ?: "Enviaste: {$gift->name}",
                     'type' => 'gift_sent',
                     'extra_data' => json_encode([
                         'gift_name' => $gift->name,
@@ -1176,8 +1228,8 @@ class GiftSystemController extends Controller
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $recipient->name ?? 'Modelo',
                         'transaction_id' => $transactionId,
-                        'context' => 'chat_direct',
-                        'room_name' => $roomName,
+                        'context' => $isVideoChat ? 'videochat_direct' : 'chat_direct',
+                        'room_name' => $baseRoomName,
                         'action_text' => "Enviaste",
                         'recipient_name' => $recipient->name ?? 'Modelo',
                         'message' => $message
@@ -1198,11 +1250,83 @@ class GiftSystemController extends Controller
                 ]);
             }
 
+            try {
+                // Mensaje para la modelo (RECEIVER)
+                // 🔥 Si es videochat, usar el mismo room_name sin sufijos
+                $modeloRoomName = $isVideoChat ? $baseRoomName : ($baseRoomName . '_modelo');
+                
+                Log::info('🚀 [CHAT] Creando mensaje para modelo con room_name:', [
+                    'room_name' => $modeloRoomName,
+                    'base_room_name' => $baseRoomName,
+                    'is_videochat' => $isVideoChat,
+                    'gift_data' => $giftDataForModelo
+                ]);
+                
+                $modeloMessage = ChatMessage::create([
+                    'room_name' => $modeloRoomName,
+                    'user_id' => $user->id,
+                    'user_name' => $user->name ?? 'Usuario',
+                    'user_role' => 'cliente',
+                    'message' => $message ?: "Te envió: {$gift->name}",
+                    'type' => 'gift_received',
+                    'extra_data' => json_encode($giftDataForModelo)
+                ]);
+                
+                // 🔥 Actualizar gift_data si la columna existe
+                try {
+                    if (Schema::hasColumn('chat_messages', 'gift_data')) {
+                        DB::table('chat_messages')
+                            ->where('id', $modeloMessage->id)
+                            ->update(['gift_data' => json_encode($giftDataForModelo)]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ [CHAT] No se pudo actualizar gift_data (columna puede no existir): ' . $e->getMessage());
+                }
+                
+                // 🔥 Verificar que el mensaje se creó correctamente
+                $verificationMessage = ChatMessage::find($modeloMessage->id);
+                
+                Log::info('✅ [CHAT] Modelo creado ID: ' . $modeloMessage->id, [
+                    'room_name' => $modeloRoomName,
+                    'base_room_name' => $baseRoomName,
+                    'type' => 'gift_received',
+                    'gift_name' => $gift->name ?? 'N/A',
+                    'gift_data' => $giftDataForModelo,
+                    'message_id' => $modeloMessage->id,
+                    'message_created_at' => $modeloMessage->created_at,
+                    'verification' => [
+                        'exists' => !!$verificationMessage,
+                        'room_name_stored' => $verificationMessage->room_name ?? 'NOT FOUND',
+                        'type_stored' => $verificationMessage->type ?? 'NOT FOUND',
+                        'has_extra_data' => !!$verificationMessage->extra_data
+                    ],
+                    'expected_room_name_for_modelo' => $baseRoomName . '_modelo',
+                    'actual_room_name_stored' => $verificationMessage->room_name ?? 'NOT FOUND',
+                    'match' => ($verificationMessage->room_name ?? '') === ($baseRoomName . '_modelo')
+                ]);
+
+            } catch (\Exception $e) {
+                Log::error('❌ [CHAT] Error creando mensaje modelo: ' . $e->getMessage());
+                Log::error('📍 [CHAT] Archivo: ' . $e->getFile() . ':' . $e->getLine());
+            }
+            
+            Log::info('🏁 [CHAT] FIN proceso mensajes para regalo directo');
+
             DB::commit();
 
             // 🔥 OBTENER BALANCE TOTAL ACTUALIZADO PARA LA RESPUESTA
             $clientCoinsFresh = $clientCoins->fresh();
             $newTotalBalance = $clientCoinsFresh->purchased_balance + $clientCoinsFresh->gift_balance;
+            
+            // 🔥 Log final de confirmación
+            Log::info('✅ [CHAT] Regalo directo completado exitosamente', [
+                'transaction_id' => $transactionId,
+                'client_message_id' => $chatMessage->id ?? null,
+                'modelo_message_id' => $modeloMessage->id ?? null,
+                'client_room_name' => $chatMessage->room_name ?? null,
+                'modelo_room_name' => $modeloMessage->room_name ?? null,
+                'base_room_name' => $baseRoomName
+            ]);
             
             return response()->json([
                 'success' => true,
@@ -1226,6 +1350,12 @@ class GiftSystemController extends Controller
                     'extra_data' => json_decode($chatMessage->extra_data, true),
                     'created_at' => $chatMessage->created_at->toISOString()
                 ] : null,
+                'modelo_message_created' => $modeloMessage ? [
+                    'id' => $modeloMessage->id,
+                    'room_name' => $modeloMessage->room_name,
+                    'type' => $modeloMessage->type,
+                    'created_at' => $modeloMessage->created_at->toISOString()
+                ] : null,
                 'data' => [
                     'transaction_id' => $transactionId,
                     'gift' => [
@@ -1240,7 +1370,10 @@ class GiftSystemController extends Controller
                         'received_amount' => $modeloAmount
                     ],
                     'client_balance' => [
-                        'new_balance' => $clientCoins->fresh()->gift_balance,
+                        'new_balance' => $newTotalBalance, // 🔥 Balance total (purchased + gift)
+                        'total_balance' => $newTotalBalance, // 🔥 Alias para compatibilidad
+                        'purchased_balance' => $clientCoinsFresh->purchased_balance,
+                        'gift_balance' => $clientCoinsFresh->gift_balance,
                         'spent_amount' => $gift->price
                     ],
                     'transaction_details' => [
@@ -1248,6 +1381,7 @@ class GiftSystemController extends Controller
                         'modelo_received' => $modeloAmount,
                         'platform_fee' => $platformCommission,
                         'room_name' => $roomName,
+                        'base_room_name' => $baseRoomName,
                         'type' => 'direct_gift'
                     ]
                 ]
@@ -1526,5 +1660,397 @@ class GiftSystemController extends Controller
     public function generateSecurityHash($modeloId, $clientId, $giftId, $amount): array
     {
         return $this->generateAdvancedSecurityHash($modeloId, $clientId, $giftId, $amount);
+    }
+
+    /**
+     * 🎁 ENVIAR REGALO SIMPLE - Endpoint directo sin validaciones complejas
+     * Este endpoint permite al cliente enviar un regalo directamente desde el request_id
+     */
+    public function sendGiftSimple(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $user = Auth::user();
+            $requestId = $request->input('request_id');
+            
+            Log::info("🎁 [SIMPLE] Cliente {$user->id} intentando enviar regalo con request_id: {$requestId}");
+            
+            // 1. Verificar que sea cliente
+            if (!$user || $user->rol !== 'cliente') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Solo clientes pueden enviar regalos'
+                ], 403);
+            }
+            
+            // 2. Validar request_id
+            if (!$requestId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'request_id es requerido'
+                ], 400);
+            }
+            
+            // 3. Buscar la solicitud de regalo
+            $giftRequest = GiftRequest::where('id', $requestId)
+                ->where('client_id', $user->id)
+                ->where('status', 'pending')
+                ->with(['modelo', 'gift'])
+                ->first();
+            
+            if (!$giftRequest) {
+                Log::warning("❌ [SIMPLE] Solicitud no encontrada", [
+                    'request_id' => $requestId,
+                    'client_id' => $user->id
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'La solicitud no existe, ya fue procesada o no te pertenece'
+                ], 404);
+            }
+            
+            // 4. Verificar que el regalo esté activo
+            if (!$giftRequest->gift || !$giftRequest->gift->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El regalo ya no está disponible'
+                ], 400);
+            }
+            
+            // 5. Verificar saldo del cliente
+            $clientCoins = UserGiftCoins::lockForUpdate()
+                ->where('user_id', $user->id)
+                ->first();
+            
+            if (!$clientCoins) {
+                $clientCoins = UserGiftCoins::create([
+                    'user_id' => $user->id,
+                    'balance' => 0,
+                    'total_received' => 0,
+                    'total_sent' => 0
+                ]);
+            }
+            
+            if ($clientCoins->balance < $giftRequest->amount) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'insufficient_balance',
+                    'message' => 'Saldo insuficiente para este regalo',
+                    'data' => [
+                        'current_balance' => $clientCoins->balance,
+                        'required_amount' => $giftRequest->amount,
+                        'missing_amount' => $giftRequest->amount - $clientCoins->balance
+                    ]
+                ], 400);
+            }
+            
+            // 6. Prevenir doble procesamiento
+            $lockKey = "gift_simple_lock_{$user->id}_{$requestId}";
+            if (\Illuminate\Support\Facades\Cache::has($lockKey)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Esta transacción ya se está procesando'
+                ], 409);
+            }
+            \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
+            
+            // 7. Procesar transacción
+            Log::info("💰 [SIMPLE] Procesando transacción", [
+                'client_balance_before' => $clientCoins->balance,
+                'amount' => $giftRequest->amount
+            ]);
+            
+            // Descontar del cliente
+            $clientCoins->decrement('balance', $giftRequest->amount);
+            $clientCoins->increment('total_sent', $giftRequest->amount);
+            
+            // Obtener/crear monedas de la modelo
+            $modeloCoins = UserGiftCoins::lockForUpdate()
+                ->where('user_id', $giftRequest->modelo_id)
+                ->first();
+            
+            if (!$modeloCoins) {
+                $modeloCoins = UserGiftCoins::create([
+                    'user_id' => $giftRequest->modelo_id,
+                    'balance' => 0,
+                    'total_received' => 0,
+                    'total_sent' => 0
+                ]);
+            }
+            
+            // Calcular comisión
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $platformCommissionRate = $giftCommissionPercentage / 100;
+            $modeloRate = 1 - $platformCommissionRate;
+            
+            $modeloAmount = $giftRequest->amount * $modeloRate;
+            $platformCommission = $giftRequest->amount * $platformCommissionRate;
+            
+            // Agregar monedas a la modelo
+            $modeloCoins->increment('balance', $modeloAmount);
+            $modeloCoins->increment('total_received', $modeloAmount);
+            
+            // Actualizar estado de la solicitud
+            $giftRequest->update([
+                'status' => 'accepted',
+                'accepted_at' => now(),
+                'processed_at' => now(),
+                'processed_amount' => $giftRequest->amount,
+                'modelo_received' => $modeloAmount,
+                'platform_commission' => $platformCommission
+            ]);
+            
+            // Registrar la transacción
+            DB::table('gift_transactions')->insert([
+                'gift_request_id' => $giftRequest->id,
+                'client_id' => $user->id,
+                'modelo_id' => $giftRequest->modelo_id,
+                'sender_id' => $user->id,
+                'receiver_id' => $giftRequest->modelo_id,
+                'gift_id' => $giftRequest->gift_id,
+                'amount' => $giftRequest->amount,
+                'amount_total' => $giftRequest->amount,
+                'amount_modelo' => $modeloAmount,
+                'amount_commission' => $platformCommission,
+                'type' => 'gift',
+                'transaction_type' => 'gift_accepted',
+                'status' => 'completed',
+                'source' => 'gift_simple_system',
+                'message' => "Regalo: {$giftRequest->gift->name}",
+                'reference_id' => "GR-{$giftRequest->id}",
+                'room_name' => $giftRequest->room_name ?? ''
+            ]);
+            
+            // Crear mensajes de chat
+            $roomName = $giftRequest->room_name ?? 'chat_default';
+            
+            // 🔥 Asegurar que el room_name no tenga sufijos ya agregados
+            $baseRoomName = $roomName;
+            if (str_ends_with($roomName, '_modelo') || str_ends_with($roomName, '_client')) {
+                $baseRoomName = substr($roomName, 0, -7); // Remover '_modelo' o '_client'
+            }
+            
+            // 🔥 Si el room_name está vacío o es 'chat_default', construir uno basado en los IDs
+            if (empty($baseRoomName) || $baseRoomName === 'chat_default') {
+                $baseRoomName = "chat_user_{$giftRequest->modelo_id}_{$user->id}";
+                Log::info('💬 [SIMPLE] Room_name vacío, construyendo nuevo:', ['base_room_name' => $baseRoomName]);
+            }
+            
+            Log::info('💬 [SIMPLE] INICIO: Creando mensajes', [
+                'room_name_original' => $roomName,
+                'base_room_name' => $baseRoomName,
+                'room_name_modelo' => $baseRoomName . '_modelo',
+                'room_name_client' => $baseRoomName . '_client',
+                'gift_name' => $giftRequest->gift->name ?? 'NULL',
+                'user_id' => $user->id ?? 'NULL',
+                'user_name' => $user->name ?? 'NULL',
+                'modelo_id' => $giftRequest->modelo_id ?? 'NULL',
+                'client_id' => $user->id ?? 'NULL'
+            ]);
+            
+            try {
+                Log::info('🚀 [SIMPLE] Creando mensaje cliente...');
+                
+                // Mensaje para el cliente
+                $clientMessage = ChatMessage::create([
+                    'room_name' => $baseRoomName . '_client',
+                    'user_id' => $user->id,
+                    'user_name' => $user->name ?? 'Usuario',
+                    'user_role' => 'cliente',
+                    'message' => "Envió: " . ($giftRequest->gift->name ?? 'Regalo'),
+                    'type' => 'gift_sent',
+                    'extra_data' => json_encode([
+                        'gift_name' => $giftRequest->gift->name ?? 'Regalo',
+                        'gift_image' => $giftRequest->gift->image_path ?? null,
+                        'gift_price' => $giftRequest->amount ?? 0,
+                        'client_name' => $user->name ?? 'Cliente',
+                        'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
+                        'transaction_id' => $giftRequest->id ?? 0,
+                        'request_id' => $giftRequest->id
+                    ])
+                ]);
+                
+                Log::info('✅ [SIMPLE] Cliente creado ID: ' . $clientMessage->id);
+                
+            } catch (Exception $e) {
+                Log::error('❌ [SIMPLE] Error cliente: ' . $e->getMessage());
+                Log::error('📍 [SIMPLE] Archivo: ' . $e->getFile() . ':' . $e->getLine());
+            }
+
+            try {
+                Log::info('🚀 [SIMPLE] Creando mensaje modelo...');
+                
+                // Mensaje para la modelo
+                $giftDataForModelo = [
+                    'gift_name' => $giftRequest->gift->name ?? 'Regalo',
+                    'gift_image' => $giftRequest->gift->image_path ?? null,
+                    'gift_price' => $giftRequest->amount ?? 0,
+                    'client_name' => $user->name ?? 'Cliente',
+                    'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
+                    'transaction_id' => $giftRequest->id ?? 0,
+                    'request_id' => $giftRequest->id
+                ];
+                
+                $modeloRoomName = $baseRoomName . '_modelo';
+                
+                Log::info('🚀 [SIMPLE] Creando mensaje para modelo con room_name:', [
+                    'room_name' => $modeloRoomName,
+                    'base_room_name' => $baseRoomName,
+                    'gift_data' => $giftDataForModelo
+                ]);
+                
+                $modeloMessage = ChatMessage::create([
+                    'room_name' => $modeloRoomName,
+                    'user_id' => $user->id,
+                    'user_name' => $user->name ?? 'Usuario',
+                    'user_role' => 'cliente',
+                    'message' => "Te envió: " . ($giftRequest->gift->name ?? 'Regalo'),
+                    'type' => 'gift_received',
+                    'extra_data' => json_encode($giftDataForModelo)
+                ]);
+                
+                // 🔥 Actualizar gift_data si la columna existe (usando update directo)
+                try {
+                    if (Schema::hasColumn('chat_messages', 'gift_data')) {
+                        DB::table('chat_messages')
+                            ->where('id', $modeloMessage->id)
+                            ->update(['gift_data' => json_encode($giftDataForModelo)]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ [SIMPLE] No se pudo actualizar gift_data (columna puede no existir): ' . $e->getMessage());
+                }
+                
+                // 🔥 Verificar que el mensaje se creó correctamente
+                $verificationMessage = ChatMessage::find($modeloMessage->id);
+                
+                Log::info('✅ [SIMPLE] Modelo creado ID: ' . $modeloMessage->id, [
+                    'room_name' => $modeloRoomName,
+                    'base_room_name' => $baseRoomName,
+                    'type' => 'gift_received',
+                    'gift_name' => $giftRequest->gift->name ?? 'N/A',
+                    'gift_data' => $giftDataForModelo,
+                    'message_id' => $modeloMessage->id,
+                    'message_created_at' => $modeloMessage->created_at,
+                    'verification' => [
+                        'exists' => !!$verificationMessage,
+                        'room_name_stored' => $verificationMessage->room_name ?? 'NOT FOUND',
+                        'type_stored' => $verificationMessage->type ?? 'NOT FOUND',
+                        'has_extra_data' => !!$verificationMessage->extra_data
+                    ]
+                ]);
+                
+            } catch (Exception $e) {
+                Log::error('❌ [SIMPLE] Error modelo: ' . $e->getMessage());
+                Log::error('📍 [SIMPLE] Archivo: ' . $e->getFile() . ':' . $e->getLine());
+            }
+            
+            Log::info('🏁 [SIMPLE] FIN proceso mensajes');
+            
+            // Limpiar lock
+            \Illuminate\Support\Facades\Cache::forget($lockKey);
+            
+            // Cancelar solicitudes duplicadas
+            GiftRequest::where('modelo_id', $giftRequest->modelo_id)
+                ->where('client_id', $user->id)
+                ->where('status', 'pending')
+                ->where('id', '!=', $requestId)
+                ->where('created_at', '>', now()->subMinutes(5))
+                ->update([
+                    'status' => 'cancelled',
+                    'cancelled_reason' => 'duplicate_accepted'
+                ]);
+            
+            DB::commit();
+            
+            // 🔥 INTEGRAR CON SISTEMA UNIFICADO DE EARNINGS
+            try {
+                $earningsController = new \App\Http\Controllers\SessionEarningsController();
+                $giftDetails = [
+                    'gift_id' => $giftRequest->gift_id,
+                    'gift_name' => $giftRequest->gift->name ?? 'Regalo',
+                    'gift_image' => $giftRequest->gift->image_path ?? null,
+                    'gift_price' => $giftRequest->amount,
+                    'transaction_id' => $giftRequest->id,
+                    'context' => 'chat_request'
+                ];
+
+                $earningsResult = $earningsController->processGiftEarnings(
+                    $giftRequest->modelo_id,     // modelUserId
+                    $user->id,                   // clientUserId
+                    $giftRequest->amount,        // giftValue
+                    $giftRequest->room_name ?? 'chat_gift',     // roomName
+                    $giftDetails                 // giftDetails
+                );
+
+                if ($earningsResult) {
+                    Log::info('✅ [SIMPLE] [UNIFICADO] Ganancias de regalo integradas', [
+                        'gift_request_id' => $giftRequest->id,
+                        'modelo_id' => $giftRequest->modelo_id,
+                        'client_id' => $user->id,
+                        'amount' => $giftRequest->amount
+                    ]);
+                } else {
+                    Log::warning('⚠️ [SIMPLE] [UNIFICADO] Error integrando ganancias de regalo', [
+                        'gift_request_id' => $giftRequest->id
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('❌ [SIMPLE] [UNIFICADO] Excepción integrando ganancias: ' . $e->getMessage(), [
+                    'gift_request_id' => $giftRequest->id ?? null,
+                    'trace' => $e->getTraceAsString()
+                ]);
+                // NO hacer rollback aquí - la transacción ya se completó exitosamente
+            }
+            
+            Log::info('✅ [SIMPLE] Regalo enviado exitosamente', [
+                'request_id' => $requestId,
+                'client_id' => $user->id,
+                'modelo_id' => $giftRequest->modelo_id,
+                'amount' => $giftRequest->amount,
+                'modelo_received' => $modeloAmount,
+                'new_balance' => $clientCoins->fresh()->balance
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => '¡Regalo enviado exitosamente!',
+                'data' => [
+                    'transaction_id' => $giftRequest->id,
+                    'gift' => [
+                        'id' => $giftRequest->gift->id,
+                        'name' => $giftRequest->gift->name,
+                        'image' => $giftRequest->gift->image_path,
+                        'amount' => $giftRequest->amount
+                    ],
+                    'client_balance' => [
+                        'old_balance' => $clientCoins->balance + $giftRequest->amount,
+                        'new_balance' => $clientCoins->fresh()->balance,
+                        'amount_spent' => $giftRequest->amount
+                    ],
+                    'modelo_received' => $modeloAmount,
+                    'platform_commission' => $platformCommission
+                ]
+            ]);
+            
+        } catch (Exception $e) {
+            DB::rollBack();
+            
+            // Limpiar lock en caso de error
+            if (isset($lockKey)) {
+                \Illuminate\Support\Facades\Cache::forget($lockKey);
+            }
+            
+            Log::error('❌ [SIMPLE] Error enviando regalo: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request_id' => $request->input('request_id')
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al procesar el regalo. Por favor intenta nuevamente.',
+                'message' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor'
+            ], 500);
+        }
     }
 }

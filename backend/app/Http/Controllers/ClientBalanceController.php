@@ -107,7 +107,9 @@ class ClientBalanceController extends Controller
 
         // 🔥 USAR LOS NUEVOS ACCESSORS DEL MODELO
         $totalCoins = $userCoins->total_balance; // purchased_balance + gift_balance
-        $remainingMinutes = $userCoins->available_minutes; // floor(total_balance / 10)
+        // 🔥 IMPORTANTE: available_minutes solo usa purchased_balance, NO gift_balance
+        // gift_balance es solo para regalos, no para minutos de videochat
+        $remainingMinutes = $userCoins->available_minutes; // floor(purchased_balance / 10)
         $balanceStatus = $userCoins->balance_status; // normal, low, warning, critical
 
         // Consumo en esta sesión
@@ -209,7 +211,9 @@ class ClientBalanceController extends Controller
 
             // 🔥 USAR LOS ACCESSORS DEL MODELO
             $totalCoins = $userCoins->total_balance; // purchased_balance + gift_balance
-            $remainingMinutes = $userCoins->available_minutes; // floor(total_balance / 10)
+            // 🔥 IMPORTANTE: available_minutes solo usa purchased_balance, NO gift_balance
+            // gift_balance es solo para regalos, no para minutos de videochat
+            $remainingMinutes = $userCoins->available_minutes; // floor(purchased_balance / 10)
             $balanceStatus = $userCoins->balance_status; // normal, low, warning, critical
 
             // 🔥 INFORMACIÓN ADICIONAL PARA EL CLIENTE
@@ -338,8 +342,9 @@ class ClientBalanceController extends Controller
                 'total_coins' => $totalCoins,
                 'remaining_minutes' => $remainingMinutes,
                 'status' => $userCoins->balance_status,
-                'should_end_session' => $totalCoins <= 20, // ≤ 2 minutos
-                'should_show_warning' => $totalCoins <= 50  // ≤ 5 minutos
+                // 🔥 CORRECCIÓN: should_end_session debe basarse en remaining_minutes (solo purchased), NO en total_coins
+                'should_end_session' => $remainingMinutes <= 2, // ≤ 2 minutos (solo purchased_balance)
+                'should_show_warning' => $remainingMinutes <= 5  // ≤ 5 minutos (solo purchased_balance)
             ]);
 
         } catch (\Exception $e) {

@@ -122,7 +122,7 @@ export default function PreCallLobbyModelo() {
               videoRef.current.srcObject = videoOnlyStream;
                           }
           } catch (videoErr) {
-                        alert("No se puede acceder a la cámara. Verifica que no esté siendo usada por otra aplicación.");
+                        alert(t("roulette.cameraAccessError", "No se puede acceder a la cámara. Verifica que no esté siendo usada por otra aplicación."));
           }
         }
       }
@@ -213,7 +213,7 @@ export default function PreCallLobbyModelo() {
                 if (err.name === 'NotAllowedError') {
           alert(t("permission_alert", "Necesitas permitir el acceso a cámara y micrófono para continuar."));
         } else if (err.name === 'AbortError') {
-          alert("Error: La cámara está siendo usada por otra aplicación. Por favor cierra otras aplicaciones que puedan estar usando la cámara (Zoom, Teams, etc.) y recarga la página.");
+          alert(t("roulette.cameraInUse", "Error: La cámara está siendo usada por otra aplicación. Por favor cierra otras aplicaciones que puedan estar usando la cámara (Zoom, Teams, etc.) y recarga la página."));
         }
       }
     };
@@ -245,14 +245,14 @@ export default function PreCallLobbyModelo() {
   }, [stopSearching]);
 
   return (
-    <div className="min-h-screen bg-ligand-mix-dark from-[#0a0d10] to-[#131418] text-white">
-      <div className="w-full px-6 pt-6">
+    <div className="h-screen overflow-hidden bg-ligand-mix-dark from-[#0a0d10] to-[#131418] text-white flex flex-col">
+      <div className="flex-shrink-0 w-full px-4 sm:px-6 pt-3 sm:pt-4">
         <Header />
       </div>
 
-      <div className="flex justify-center items-center px-6 mt-[-30px]">
-        <div className="bg-[#1f2125] rounded-2xl p-6 shadow-2xl flex flex-col items-center max-w-md w-full">
-          <div className="w-full h-60 rounded-xl overflow-hidden mb-4 bg-black relative">
+      <div className="flex-1 flex justify-center items-center px-4 sm:px-6 pb-3 min-h-0 overflow-hidden">
+        <div className="bg-[#1f2125] rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-2xl flex flex-col items-center max-w-md w-full h-full max-h-full justify-center">
+          <div className="w-full aspect-video max-w-[240px] sm:max-w-[280px] md:max-w-[320px] mx-auto rounded-xl overflow-hidden mb-1.5 sm:mb-2 bg-black relative flex-shrink-0">
             <video
               ref={videoRef}
               autoPlay
@@ -264,12 +264,12 @@ export default function PreCallLobbyModelo() {
             {/* Botón de modo espejo */}
             <button
               onClick={toggleMirrorMode}
-              className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
+              className="absolute top-1.5 right-1.5 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition-colors"
               title={mirrorMode ? t("mirror.disable", "Desactivar espejo") : t("mirror.enable", "Activar espejo")}
             >
               <svg 
-                width="20" 
-                height="20" 
+                width="16" 
+                height="16" 
                 viewBox="0 0 24 24" 
                 fill="none" 
                 stroke="currentColor" 
@@ -282,27 +282,27 @@ export default function PreCallLobbyModelo() {
 
             {/* Indicador de estado del espejo */}
             {mirrorMode && (
-              <div className="absolute bottom-2 left-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded">
+              <div className="absolute bottom-1.5 left-1.5 bg-green-500/80 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                 {t("mirror.active", "Espejo activo")}
               </div>
             )}
           </div>
 
-          <div className="text-center mb-4">
-            <h2 className="text-xl font-semibold">{t("roulette.titulo")}</h2>
-            <p className="text-green-400 text-sm flex items-center justify-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+          <div className="text-center mb-1.5 w-full flex-shrink-0">
+            <h2 className="text-sm sm:text-base md:text-lg font-semibold mb-0.5">{t("roulette.titulo")}</h2>
+            <p className="text-green-400 text-[11px] sm:text-xs md:text-sm flex items-center justify-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
               {t("roulette.estado")}
             </p>
           </div>
 
-          <div className="w-full space-y-4">
-            <div>
-              <label className="text-sm text-white/70">{t("roulette.camera_label")}</label>
+          <div className="w-full space-y-1.5 sm:space-y-2 flex-shrink-0">
+            <div className="flex-shrink-0">
+              <label className="text-xs sm:text-sm text-white/70 mb-0.5 block">{t("roulette.camera_label")}</label>
               <select
                 value={selectedCamera}
                 onChange={(e) => setSelectedCamera(e.target.value)}
-                className="w-full mt-1 p-2 rounded-lg bg-[#2b2d31] text-white outline-none"
+                className="w-full p-1.5 sm:p-2 rounded-lg bg-[#2b2d31] text-white text-xs sm:text-sm outline-none"
                 disabled={loading}
               >
                 {cameras.map((cam) => (
@@ -313,12 +313,12 @@ export default function PreCallLobbyModelo() {
               </select>
             </div>
 
-            <div>
-              <label className="text-sm text-white/70">{t("roulette.mic_label")}</label>
+            <div className="flex-shrink-0">
+              <label className="text-xs sm:text-sm text-white/70 mb-0.5 block">{t("roulette.mic_label")}</label>
               <select
                 value={selectedMic}
                 onChange={(e) => setSelectedMic(e.target.value)}
-                className="w-full mt-1 p-2 rounded-lg bg-[#2b2d31] text-white outline-none"
+                className="w-full p-1.5 sm:p-2 rounded-lg bg-[#2b2d31] text-white text-xs sm:text-sm outline-none"
                 disabled={loading}
               >
                 {microphones.map((mic) => (
@@ -330,8 +330,8 @@ export default function PreCallLobbyModelo() {
             </div>
 
             {/* Control de modo espejo */}
-            <div className="flex items-center justify-between">
-              <label className="text-sm text-white/70">
+            <div className="flex items-center justify-between flex-shrink-0 bg-[#2b2d31] rounded-lg px-2.5 py-1">
+              <label className="text-xs sm:text-sm text-white/70">
                 {t("mirror.label", "Modo espejo")}
               </label>
               <button
@@ -350,21 +350,21 @@ export default function PreCallLobbyModelo() {
           </div>
 
           <button
-            className="mt-6 w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-6 py-3 rounded-full text-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             onClick={iniciarRuleta}
             disabled={loading}
           >
             {loading ? (
               <div className="flex items-center justify-center gap-2">
-                <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
-                {t("searching_user")}
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                <span className="text-xs sm:text-sm">{t("searching_user")}</span>
               </div>
             ) : (
-              t("roulette.start_button")
+              <span className="text-xs sm:text-sm">{t("roulette.start_button")}</span>
             )}
           </button>
 
-          <div className="mt-4 text-center text-xs text-white/50">
+          <div className="mt-1 text-center text-[10px] sm:text-xs text-white/50 flex-shrink-0 px-2">
             <p>{t('roulette.random_user_notice')}</p>
           </div>
         </div>

@@ -22,8 +22,8 @@ export function usePageAccess() {
         '/esperandocallcliente', 
         '/videochatclient',
         '/message',
+        '/mensajesmobileclient', // 🔥 Ruta móvil para mensajes
         '/mensajes', // 🔗 Permitir acceso a mensajes para clientes (usado por links de perfil)
-        '/mensajesmobileclient',
         '/favoritesboy',
         '/usersearch', // 🔍 Compartida con modelo
         '/settings'

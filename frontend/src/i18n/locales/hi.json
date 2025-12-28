@@ -182,7 +182,7 @@
     "yourHistory": "आपका इतिहास",
     "yourBalance": "आपका बैलेंस",
     "total": "कुल:",
-    "minutes": "मिनट:",
+    "minutes": "मिनट",
     "status": "स्थिति:",
     "insufficientBalance": "❌ अपर्याप्त",
     "minimumBalance": "⚠️ न्यूनतम",
@@ -211,7 +211,6 @@
     "coinsClaimedSuccess": "सिक्के सफलतापूर्वक प्राप्त किए गए!",
     "claimed": "प्राप्त किया गया",
     "coins": "सिक्के",
-    "minutes": "मिनट",
     "paymentProblemTitle": "भुगतान में समस्या?",
     "paymentProblemMessage": "यदि भुगतान नहीं किया गया या सिक्के नहीं जोड़े गए, तो \"सिक्के खरीदें\" पर जाएं और अपने लेनदेन की समीक्षा करें। लंबित भुगतान को संसाधित करें या यदि आपको सहायता की आवश्यकता है तो सहायता से संपर्क करें।"
   },
@@ -307,8 +306,8 @@
     },
     "hints": {
       "passwordLength": "{{current}}/{{required}} अक्षर"
-    },"google_button": "Google के साथ जारी रखें"
-
+    },
+    "google_button": "Google के साथ जारी रखें"
   },
   "verification": {
     "title": "ईमेल सत्यापन",
@@ -441,7 +440,18 @@
     "removeFromFavorites": "पसंदीदा से हटाएं",
     "chat": "चैट करें",
     "call": "कॉल करें",
-    "blockedUsers": "ब्लॉक किए गए लड़के",
+    "blockedUsers": {
+      "title": "ब्लॉक किए गए लड़के",
+      "count": "ब्लॉक किया गया लड़का",
+      "countPlural": "ब्लॉक किए गए लड़के",
+      "loading": "ब्लॉक किए गए लड़के लोड हो रहे हैं...",
+      "noBlocked": "आपने किसी लड़के को ब्लॉक नहीं किया है",
+      "noBlockedDesc": "चैट से ब्लॉक किए गए लड़के यहां दिखाई देंगे",
+      "unblockSuccess": "लड़का अनब्लॉक कर दिया गया",
+      "tip": "ब्लॉक किए गए लड़के आपको संदेश या कॉल नहीं कर सकते। आप उन्हें कभी भी अनब्लॉक कर सकते हैं।",
+      "blockedReason": "ब्लॉक करने का कारण:",
+      "blockedAgo": "{{time}} पहले ब्लॉक किया गया"
+    },
     "blockedUserSingular": "ब्लॉक किया गया लड़का",
     "blockedUserPlural": "ब्लॉक किए गए लड़के",
     "loadingBlocked": "ब्लॉक किए गए लड़के लोड हो रहे हैं...",
@@ -511,18 +521,6 @@
       "blockedReason": "ब्लॉक करने का कारण:",
       "blockedAgo": "{{time}} पहले ब्लॉक किया गया",
       "unblocking": "अनब्लॉक कर रहे हैं..."
-    },
-    "blockedUsers": {
-      "title": "ब्लॉक किए गए लड़के",
-      "count": "ब्लॉक किया गया लड़का",
-      "countPlural": "ब्लॉक किए गए लड़के",
-      "loading": "ब्लॉक किए गए लड़के लोड हो रहे हैं...",
-      "noBlocked": "आपने किसी लड़के को ब्लॉक नहीं किया है",
-      "noBlockedDesc": "चैट से ब्लॉक किए गए लड़के यहां दिखाई देंगे",
-      "unblockSuccess": "लड़का अनब्लॉक कर दिया गया",
-      "tip": "ब्लॉक किए गए लड़के आपको संदेश या कॉल नहीं कर सकते। आप उन्हें कभी भी अनब्लॉक कर सकते हैं।",
-      "blockedReason": "ब्लॉक करने का कारण:",
-      "blockedAgo": "{{time}} पहले ब्लॉक किया गया"
     },
     "calls": {
       "initiating": "कॉल शुरू कर रहे हैं...",
@@ -1005,11 +1003,12 @@
     },
     "managePhoto": "फोटो प्रबंधित करें",
     "managePhotoTitle": "प्रोफाइल फोटो प्रबंधित करें",
-    "transactionHistory": "लेनदेन इतिहास",
     "privacyNotifications": "🔔 गोपनीयता और सूचनाएं",
     "notifications": "सूचनाएं",
     "privacy": "गोपनीयता",
-    "favoriteModels": "पसंदीदा मॉडल"
+    "favoriteModels": "पसंदीदा मॉडल",
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts."
   },
   "profileLink": {
     "copyLink": "मेरे प्रोफाइल का लिंक कॉपी करें",
@@ -1100,7 +1099,93 @@
     "gifts": "उपहार",
     "minutes": "मिनट",
     "connected": "कनेक्टेड",
-    "connectionEstablished": "वीडियो कॉल सफलतापूर्वक स्थापित किया गया"
+    "connectionEstablished": "वीडियो कॉल सफलतापूर्वक स्थापित किया गया",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "समय"
@@ -1347,6 +1432,7 @@
       "processing": "प्रसंस्करण...",
       "week": "सप्ताह",
       "pending": "लंबित",
+      "sessions": "सत्र",
       "processed": "प्रसंस्कृत:",
       "daysWaiting": "दिन प्रतीक्षा में",
       "inProcess": "प्रक्रिया में",
@@ -1463,7 +1549,7 @@
       "error_message": "स्थिति सत्यापित करने में त्रुटि। पुनः प्रयास कर रहे हैं..."
     }
   },
-   "stopverification": {
+  "stopverification": {
     "title": "पहचान सत्यापन",
     "description": "शुरू करने के लिए, आपको हमारा दस्तावेज पढ़ना होगा और हमारी शर्तों को स्वीकार करना होगा।",
     "startButton": "सत्यापन शुरू करें",
@@ -1691,63 +1777,66 @@
   "common": {
     "coins": "सिक्के",
     "minutes": "मिनट",
-    "gifts": "उपहार"
-  },"gifts": {
-      "sendGift": "उपहार भेजें",
-      "requestGift": "उपहार मांगें", 
-      "forRecipient": "{{name}} के लिए",
-      "requestFrom": "{{name}} से मांगें",
-      "clickToSend": "भेजने के लिए क्लिक करें",
-      "clickToRequest": "मांगने के लिए क्लिक करें",
-      "yourBalance": "आपका बैलेंस: {{balance}} सिक्के",
-      "optionalMessage": "आपके उपहार के साथ वैकल्पिक संदेश:",
-      "optionalRequestMessage": "वैकल्पिक संदेश (आपके अनुरोध के साथ दिखाई देगा):",
-      "placeholderGift": "उदा: आप अद्भुत हैं! 💖",
-      "placeholderRequest": "उदा: कृपया! 🥺",
-      "characters": "{{current}}/{{max}} अक्षर",
-      "giftsAvailable": "{{count}} उपहार उपलब्ध",
-      "insufficient": "{{amount}} कम है",
-      "confirmSend": "{{giftName}} को {{recipientName}} को भेजें?\nकीमत: {{price}} सिक्के\nआपका वर्तमान बैलेंस: {{balance}} सिक्के",
-      "giftSent": "{{giftName}} {{recipientName}} को भेजा गया! 🎉",
-      "requestSent": "{{giftName}} का अनुरोध {{recipientName}} को भेजा गया! 🎁",
-      "sendingGift": "उपहार भेजा जा रहा है...",
-      "sendingRequest": "अनुरोध भेजा जा रहा है...",
-      "invalidGiftId": "त्रुटि: अमान्य उपहार ID",
-      "invalidRecipientId": "त्रुटि: अमान्य प्राप्तकर्ता ID", 
-      "insufficientBalance": "पर्याप्त सिक्के नहीं। आपको {{required}} चाहिए लेकिन {{current}} है।",
-      "processingError": "उपहार प्रसंस्करण में त्रुटि"
-    },"disconnect": {
-      "modelSkippedYou": "मॉडल अगले पर चला गया",
-      "searchedOtherClient": "दूसरे क्लाइंट की तलाश की",
-      "modelDisconnected": "मॉडल डिस्कनेक्ट हो गया",
-      "endedVideoCall": "वीडियो कॉल समाप्त की",
-      "modelLeft": "मॉडल ने कमरा छोड़ दिया",
-      "leftSession": "सेशन छोड़ दिया",
-      "balanceExhausted": "बैलेंस समाप्त",
-      "ranOutOfCoins": "आपके सिक्के खत्म हो गए",
-      "sessionEnded": "सेशन समाप्त",
-      "connectionLost": "कनेक्शन टूट गया",
-      "details": "विवरण",
-      "dontWorryClient": "चिंता मत करो!",
-      "connectingWithOther": "दूसरे मॉडल से जुड़ रहे हैं...",
-      "inSeconds": "{{seconds}} सेकंड में",
-      "connecting": "जुड़ रहे हैं...",
-      "keepSufficientCoins": "पर्याप्त सिक्के रखें",
-      "beRespectful": "हमेशा सम्मानजनक बनें",
-      "eachConnectionUnique": "हर कनेक्शन अनोखा है"
-    },
-    "sessionClosed": {
-      "title": "सत्र बंद",
-      "message": "आपका सत्र बंद कर दिया गया क्योंकि खाता किसी अन्य डिवाइस पर खोला गया था।",
-      "continueSession": "वर्तमान सत्र के साथ जारी रखें",
-      "reclaiming": "पुनः प्राप्त कर रहे हैं...",
-      "successTitle": "सत्र पुनः प्राप्त",
-      "successMessage": "आपका सत्र सफलतापूर्वक पुनः प्राप्त कर लिया गया है। पुनः लोड हो रहा है...",
-      "noToken": "कोई टोकन उपलब्ध नहीं",
-      "invalidResponse": "अमान्य सर्वर प्रतिक्रिया",
-      "reclaimError": "सत्र पुनः प्राप्त करने में त्रुटि",
-      "networkError": "कनेक्शन त्रुटि। कृपया पुनः प्रयास करें।"
-    },
+    "gifts": "उपहार",
+    "close": "बंद करें"
+  },
+  "gifts": {
+    "sendGift": "उपहार भेजें",
+    "requestGift": "उपहार मांगें",
+    "forRecipient": "{{name}} के लिए",
+    "requestFrom": "{{name}} से मांगें",
+    "clickToSend": "भेजने के लिए क्लिक करें",
+    "clickToRequest": "मांगने के लिए क्लिक करें",
+    "yourBalance": "आपका बैलेंस: {{balance}} सिक्के",
+    "optionalMessage": "आपके उपहार के साथ वैकल्पिक संदेश:",
+    "optionalRequestMessage": "वैकल्पिक संदेश (आपके अनुरोध के साथ दिखाई देगा):",
+    "placeholderGift": "उदा: आप अद्भुत हैं! 💖",
+    "placeholderRequest": "उदा: कृपया! 🥺",
+    "characters": "{{current}}/{{max}} अक्षर",
+    "giftsAvailable": "{{count}} उपहार उपलब्ध",
+    "insufficient": "{{amount}} कम है",
+    "confirmSend": "{{giftName}} को {{recipientName}} को भेजें?\nकीमत: {{price}} सिक्के\nआपका वर्तमान बैलेंस: {{balance}} सिक्के",
+    "giftSent": "{{giftName}} {{recipientName}} को भेजा गया! 🎉",
+    "requestSent": "{{giftName}} का अनुरोध {{recipientName}} को भेजा गया! 🎁",
+    "sendingGift": "उपहार भेजा जा रहा है...",
+    "sendingRequest": "अनुरोध भेजा जा रहा है...",
+    "invalidGiftId": "त्रुटि: अमान्य उपहार ID",
+    "invalidRecipientId": "त्रुटि: अमान्य प्राप्तकर्ता ID",
+    "insufficientBalance": "पर्याप्त सिक्के नहीं। आपको {{required}} चाहिए लेकिन {{current}} है।",
+    "processingError": "उपहार प्रसंस्करण में त्रुटि"
+  },
+  "disconnect": {
+    "modelSkippedYou": "मॉडल अगले पर चला गया",
+    "searchedOtherClient": "दूसरे क्लाइंट की तलाश की",
+    "modelDisconnected": "मॉडल डिस्कनेक्ट हो गया",
+    "endedVideoCall": "वीडियो कॉल समाप्त की",
+    "modelLeft": "मॉडल ने कमरा छोड़ दिया",
+    "leftSession": "सेशन छोड़ दिया",
+    "balanceExhausted": "बैलेंस समाप्त",
+    "ranOutOfCoins": "आपके सिक्के खत्म हो गए",
+    "sessionEnded": "सेशन समाप्त",
+    "connectionLost": "कनेक्शन टूट गया",
+    "details": "विवरण",
+    "dontWorryClient": "चिंता मत करो!",
+    "connectingWithOther": "दूसरे मॉडल से जुड़ रहे हैं...",
+    "inSeconds": "{{seconds}} सेकंड में",
+    "connecting": "जुड़ रहे हैं...",
+    "keepSufficientCoins": "पर्याप्त सिक्के रखें",
+    "beRespectful": "हमेशा सम्मानजनक बनें",
+    "eachConnectionUnique": "हर कनेक्शन अनोखा है"
+  },
+  "sessionClosed": {
+    "title": "सत्र बंद",
+    "message": "आपका सत्र बंद कर दिया गया क्योंकि खाता किसी अन्य डिवाइस पर खोला गया था।",
+    "continueSession": "वर्तमान सत्र के साथ जारी रखें",
+    "reclaiming": "पुनः प्राप्त कर रहे हैं...",
+    "successTitle": "सत्र पुनः प्राप्त",
+    "successMessage": "आपका सत्र सफलतापूर्वक पुनः प्राप्त कर लिया गया है। पुनः लोड हो रहा है...",
+    "noToken": "कोई टोकन उपलब्ध नहीं",
+    "invalidResponse": "अमान्य सर्वर प्रतिक्रिया",
+    "reclaimError": "सत्र पुनः प्राप्त करने में त्रुटि",
+    "networkError": "कनेक्शन त्रुटि। कृपया पुनः प्रयास करें।"
+  },
   "roulette": {
     "titulo": "वीडियो रूलेट",
     "estado": "कनेक्ट करने के लिए तैयार",
@@ -1756,7 +1845,9 @@
     "start_button": "खोज शुरू करें",
     "random_user_notice": "आप एक यादृच्छिक उपयोगकर्ता से जुड़ेंगे",
     "default_camera": "कैमरा {{number}}",
-    "default_microphone": "माइक्रोफोन {{number}}"
+    "default_microphone": "माइक्रोफोन {{number}}",
+    "cameraInUse": "त्रुटि: कैमरा किसी अन्य एप्लिकेशन द्वारा उपयोग किया जा रहा है। कृपया अन्य एप्लिकेशन बंद करें जो कैमरा का उपयोग कर सकते हैं (Zoom, Teams, आदि) और पृष्ठ को पुनः लोड करें।",
+    "cameraAccessError": "कैमरा तक पहुंच नहीं बन सकी। कृपया सुनिश्चित करें कि यह किसी अन्य एप्लिकेशन द्वारा उपयोग नहीं किया जा रहा है।"
   },
   "mirror": {
     "label": "मिरर मोड",
@@ -1764,5 +1855,48 @@
     "disable": "मिरर अक्षम करें",
     "active": "मिरर सक्रिय",
     "description": "मेरी छवि को दर्पण में देखें"
+  },
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "accion": {
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    }
+  },
+  "permission_alert": "You need to allow camera and microphone access to continue.",
+  "userSearch": {
+    "waiting_users": "Waiting for users",
+    "waiting_guy": "Waiting for guy",
+    "waiting_girl": "Waiting for girl",
+    "rouletting": "Rouletting",
+    "connecting": "Connecting!",
+    "searching_new_guy": "Searching for new guy...",
+    "searching_new_girl": "Searching for new girl...",
+    "reconnecting": "Reconnecting...",
+    "starting_roulette": "Starting roulette...",
+    "user_found_connecting": "User found! Connecting...",
+    "preparing_connection": "Preparing secure connection...",
+    "time": "Time:",
+    "checks": "Checks:",
+    "automatic_verification": "⚡ Automatic verification every 7 seconds",
+    "cancel_search": "← Cancel search",
+    "cancel_wait": "← Cancel wait",
+    "back": "← Back",
+    "error_connecting": "Error connecting",
+    "try_again": "Try creating a new room",
+    "try_another_user": "Try searching for another user",
+    "timeout_message": "No user connected after 3 minutes. Try again later.",
+    "timeout_status": "Wait time expired"
+  },
+  "sessionSuspended": {
+    "title": "A new session was opened on another device",
+    "message": "Your current session has been suspended because a new session was opened on another device. You can continue with this session by clicking the button below.",
+    "continueSession": "Continue with this session",
+    "reactivating": "Reactivating session...",
+    "noToken": "No token available",
+    "reactivateError": "Error reactivating session",
+    "networkError": "Connection error. Please try again."
   }
 }

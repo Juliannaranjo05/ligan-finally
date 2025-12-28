@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import api from "../../../api/axios";
 import logoproncipal from "../../imagenes/logoprincipal.png";
 import { verificarCodigo, reenviarCodigo } from "../../../utils/auth";
 import { RegistrationProtectedPage } from '../../hooks/useRegistrationAccess'; // 🔄 Cambio de hook
@@ -17,6 +18,21 @@ export default function EmailVerification() {
   const [resending, setResending] = useState(false);
   const [verifying, setVerifying] = useState(false); // 🆕 Estado para verificación
   const inputsRef = useRef([]);
+
+  // ✅ Asegurar que el token esté configurado cuando el componente se monta
+  React.useEffect(() => {
+    const token = localStorage.getItem("token");
+    const justRegistered = localStorage.getItem("just_registered");
+    
+    if (token) {
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      console.log('✅ Token encontrado y configurado en verificarcodigo');
+    } else {
+      console.warn('⚠️ No se encontró token en localStorage en verificarcodigo');
+      // No mostrar error - permitir verificar el código sin token
+      // El código se puede verificar sin autenticación según la API
+    }
+  }, [navigate]);
 
   const handleSalir = async () => {
     try {
@@ -78,17 +94,35 @@ export default function EmailVerification() {
       setVerifying(true); // 🔄 Activar estado de verificación
       setMessage("Verificando...");
       
-      // 📧 Verificar el código
+      // 📧 Verificar el código (no requiere token según la API)
       await verificarCodigo(email, fullCode);
+      
+      // ✅ Después de verificar, verificar si tenemos token
+      let token = localStorage.getItem('token');
+      
+      // ✅ Si no hay token pero acabamos de verificar el email, guardar email para que puedan hacer login
+      if (!token) {
+        // Guardar el email verificado para que puedan hacer login después
+        localStorage.setItem('email_verified_waiting_login', email);
+        setMessage("✅ ¡Tu cuenta ha sido verificada exitosamente! Ya puedes iniciar sesión con tu correo y contraseña. Redirigiendo...");
+        
+        setTimeout(() => {
+          localStorage.removeItem("just_registered");
+          localStorage.setItem('email_just_verified', 'true');
+          // Redirigir a login con el email prellenado
+          navigate(`/home?auth=login&email=${encodeURIComponent(email)}`, { replace: true });
+        }, 3000); // Aumentar tiempo para que el usuario lea el mensaje
+        return;
+      }
+      
+      // ✅ Asegurar que axios tenga el token configurado
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       
       // 🏃‍♂️ BANDERA TEMPORAL para evitar que el hook intercepte
       localStorage.setItem('email_just_verified', 'true');
-            
-      // 🚀 FORZAR NAVEGACIÓN COMPLETA - EVITAR QUE EL HOOK LA INTERCEPTE
-      setTimeout(() => {
-        // ⚡ NAVEGACIÓN AGRESIVA - Fuerza recarga completa
-        window.location.href = "/genero";
-      }, 1500);
+      
+      // ✅ Usar navigate en lugar de window.location.href para preservar la sesión
+      navigate('/genero', { replace: true });
       
     } catch (error) {
       setVerifying(false);

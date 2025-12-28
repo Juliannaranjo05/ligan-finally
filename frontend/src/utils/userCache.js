@@ -95,6 +95,19 @@ class UserCacheManager {
     try {
       this.lastFetchTime = Date.now();
       
+      // Log de intento de request
+      const requestLog = {
+        timestamp: new Date().toISOString(),
+        action: 'userCache_getUser_request',
+        url: '/api/profile',
+        retryCount,
+        cacheKey
+      };
+      const logs = JSON.parse(localStorage.getItem('userCache_logs') || '[]');
+      logs.push(requestLog);
+      if (logs.length > 50) logs.shift(); // Mantener solo los últimos 50
+      localStorage.setItem('userCache_logs', JSON.stringify(logs));
+      console.log('📡 [USER_CACHE] Iniciando request:', requestLog);
             
       const response = await axios.get('/api/profile', {
         headers: {
@@ -144,6 +157,25 @@ class UserCacheManager {
                 await new Promise(resolve => setTimeout(resolve, delay));
         return this.makeRequestWithRetry(token, cacheKey, retryCount + 1);
       }
+      
+      // Log de error final (después de todos los retries)
+      const finalErrorLog = {
+        timestamp: new Date().toISOString(),
+        action: 'userCache_getUser_final_error',
+        url: '/api/profile',
+        error: error.message,
+        status: error.response?.status || 'unknown',
+        statusText: error.response?.statusText || 'unknown',
+        retryCount,
+        cacheKey,
+        responseData: error.response?.data || null
+      };
+      const logs = JSON.parse(localStorage.getItem('userCache_logs') || '[]');
+      logs.push(finalErrorLog);
+      if (logs.length > 50) logs.shift();
+      localStorage.setItem('userCache_logs', JSON.stringify(logs));
+      localStorage.setItem('last_userCache_error', JSON.stringify(finalErrorLog));
+      console.error('❌ [USER_CACHE] Error final después de retries:', finalErrorLog);
       
       // Si llegamos aquí, no podemos recuperarnos
       throw error;

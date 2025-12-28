@@ -22,6 +22,9 @@ import {
   Smile
 } from "lucide-react";
 
+// 🔥 IMPORTACIONES NECESARIAS
+import { useGiftSystem, GiftNotificationOverlay, GiftsModal } from '../GiftSystem/index.jsx';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivadoMobile() {
@@ -43,6 +46,11 @@ export default function ChatPrivadoMobile() {
   // 🔥 ESTADOS PARA POLLING EN TIEMPO REAL
   const [pollingInterval, setPollingInterval] = useState(null);
   const [lastMessageTime, setLastMessageTime] = useState(null);
+
+  // 🎁 ESTADOS DE REGALOS
+  const [showGiftsModal, setShowGiftsModal] = useState(false);
+  const [loadingGift, setLoadingGift] = useState(false);
+  const [sendingGiftId, setSendingGiftId] = useState(null); // ID del request que se está procesando
 
   // 🔥 OBTENER CONTEXTO GLOBAL COMPLETO DE TRADUCCIÓN
   const { 
@@ -130,6 +138,21 @@ export default function ChatPrivadoMobile() {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
   };
+
+  // 🎁 SISTEMA DE REGALOS
+  const {
+    gifts,
+    loadingGifts,
+    pendingRequests,
+    loadingRequests,
+    loadGifts,
+    loadPendingRequests,
+    setPendingRequests,
+    acceptGiftRequest,
+    rejectGiftRequest,
+    requestGift,
+    generateSessionToken
+  } = useGiftSystem(usuario.id, usuario.rol, getAuthHeaders, API_BASE_URL);
 
   // 🔥 FUNCIÓN PARA DETECTAR IDIOMA DEL TEXTO
   const detectLanguage = useCallback((text) => {
@@ -668,9 +691,22 @@ export default function ChatPrivadoMobile() {
   // 🔥 CARGAR MENSAJES CON TIEMPO REAL
   const cargarMensajes = async (roomName, isPolling = false) => {
     try {
+      if (!roomName) {
+        console.warn('⚠️ [MODELO] cargarMensajes llamado sin roomName');
+        return;
+      }
+      
       if (!isPolling) {
         // Solo mostrar loading en carga inicial
       }
+
+      console.log('📥 [MODELO] cargarMensajes llamado:', {
+        roomName,
+        isPolling,
+        conversacionActiva,
+        usuarioRol: usuario.rol,
+        roomNameMatch: roomName === conversacionActiva
+      });
 
       const response = await fetch(`${API_BASE_URL}/api/chat/messages/${roomName}`, {
         headers: getAuthHeaders()
@@ -678,13 +714,138 @@ export default function ChatPrivadoMobile() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('📥 [MODELO] Respuesta de mensajes:', {
+          success: data.success,
+          messagesCount: data.messages?.length || 0,
+          room_name: data.room_name,
+          debug_info: data.debug_info
+        });
+        
+        // 🔥 Log RAW de todos los tipos de mensajes recibidos ANTES de cualquier procesamiento
+        if (data.messages && Array.isArray(data.messages)) {
+          const allTypes = data.messages.map(m => m.type || 'unknown');
+          const giftReceivedRaw = data.messages.filter(m => m.type === 'gift_received');
+          const giftRequestRaw = data.messages.filter(m => m.type === 'gift_request');
+          console.log('📥 [MODELO] 🔥 RAW - Mensajes recibidos del servidor:', {
+            total: data.messages.length,
+            gift_received_count: giftReceivedRaw.length,
+            gift_request_count: giftRequestRaw.length,
+            gift_received_ids: giftReceivedRaw.map(m => m.id),
+            gift_request_ids: giftRequestRaw.map(m => m.id),
+            all_types: allTypes,
+            gift_received_details: giftReceivedRaw.map(m => ({
+              id: m.id,
+              type: m.type,
+              room_name: m.room_name,
+              has_gift_data: !!m.gift_data,
+              has_extra_data: !!m.extra_data
+            }))
+          });
+        }
+        
         if (data.success && data.messages) {
           const newMessages = data.messages;
+          
+          // 🔥 Log para debugging
+          const giftMessages = newMessages.filter(m => 
+            ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(m.type)
+          );
+          
+          if (giftMessages.length > 0) {
+            const giftReceivedMessages = giftMessages.filter(m => m.type === 'gift_received');
+            console.log('🎁 [MODELO] Mensajes de regalo encontrados:', {
+              total: giftMessages.length,
+              types: giftMessages.map(m => m.type),
+              ids: giftMessages.map(m => m.id),
+              room_names: giftMessages.map(m => m.room_name || 'N/A'),
+              gift_received_count: giftReceivedMessages.length,
+              gift_received_ids: giftReceivedMessages.map(m => m.id),
+              gift_received_details: giftReceivedMessages.map(m => ({
+                id: m.id,
+                type: m.type,
+                room_name: m.room_name,
+                has_gift_data: !!m.gift_data,
+                has_extra_data: !!m.extra_data,
+                extra_data_type: typeof m.extra_data,
+                gift_data_type: typeof m.gift_data,
+                message: m.message
+              })),
+              // 🔥 Mostrar TODOS los tipos de mensajes de regalo para debugging
+              all_gift_types: giftMessages.map(m => ({
+                id: m.id,
+                type: m.type,
+                room_name: m.room_name,
+                message: m.message?.substring(0, 50)
+              })),
+              all_gift_data: giftMessages.map(m => {
+                try {
+                  const extraData = typeof m.extra_data === 'string' ? JSON.parse(m.extra_data) : m.extra_data;
+                  const giftData = typeof m.gift_data === 'string' ? JSON.parse(m.gift_data) : m.gift_data;
+                  return {
+                    id: m.id,
+                    type: m.type,
+                    room_name: m.room_name,
+                    extra_data: extraData,
+                    gift_data: giftData
+                  };
+                } catch {
+                  return {
+                    id: m.id,
+                    type: m.type,
+                    room_name: m.room_name,
+                    extra_data: m.extra_data,
+                    gift_data: m.gift_data
+                  };
+                }
+              })
+            });
+          } else {
+            console.log('🎁 [MODELO] ⚠️ No se encontraron mensajes de regalo en la respuesta', {
+              roomName,
+              totalMessages: newMessages.length,
+              messageTypes: newMessages.map(m => m.type),
+              messageRoomNames: newMessages.map(m => m.room_name || 'N/A')
+            });
+          }
           
           // Solo actualizar si hay mensajes nuevos
           setMensajes(prevMensajes => {
             const prevIds = new Set(prevMensajes.map(m => m.id));
             const hasNewMessages = newMessages.some(m => !prevIds.has(m.id));
+            
+            if (hasNewMessages) {
+              const newGiftMessages = newMessages.filter(m => 
+                !prevIds.has(m.id) && ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(m.type)
+              );
+              
+              if (newGiftMessages.length > 0) {
+                const newGiftReceived = newGiftMessages.filter(m => m.type === 'gift_received');
+                console.log('🎁 [MODELO] ⭐ NUEVOS mensajes de regalo detectados:', {
+                  count: newGiftMessages.length,
+                  types: newGiftMessages.map(m => m.type),
+                  ids: newGiftMessages.map(m => m.id),
+                  gift_received_count: newGiftReceived.length,
+                  gift_received_ids: newGiftReceived.map(m => m.id),
+                  gift_received_details: newGiftReceived.map(m => ({
+                    id: m.id,
+                    type: m.type,
+                    room_name: m.room_name,
+                    has_gift_data: !!m.gift_data,
+                    has_extra_data: !!m.extra_data,
+                    extra_data: m.extra_data,
+                    gift_data: m.gift_data,
+                    message: m.message
+                  })),
+                  fullMessages: newGiftMessages
+                });
+              }
+              
+              console.log('📥 [MODELO] Actualizando mensajes - hay nuevos:', {
+                prevCount: prevMensajes.length,
+                newCount: newMessages.length,
+                newIds: newMessages.filter(m => !prevIds.has(m.id)).map(m => m.id)
+              });
+            }
             
             if (hasNewMessages || !isPolling) {
               // Actualizar último tiempo de mensaje
@@ -709,6 +870,12 @@ export default function ChatPrivadoMobile() {
           });
         }
       } else {
+        console.error('❌ [MODELO] Error cargando mensajes:', {
+          status: response.status,
+          statusText: response.statusText,
+          roomName
+        });
+        
         // Mensajes de ejemplo solo en primera carga
         if (!isPolling) {
           const exampleMessages = [
@@ -735,7 +902,8 @@ export default function ChatPrivadoMobile() {
         }
       }
     } catch (error) {
-          }
+      console.error('❌ [MODELO] Excepción cargando mensajes:', error);
+    }
   };
 
   // 🔥 FUNCIÓN PARA INICIAR POLLING EN TIEMPO REAL
@@ -745,13 +913,24 @@ export default function ChatPrivadoMobile() {
       clearInterval(pollingInterval);
     }
 
+    console.log('🔄 [MODELO] Iniciando polling para room:', roomName);
+
     // Iniciar nuevo polling cada 2 segundos
     const interval = setInterval(() => {
-      cargarMensajes(roomName, true);
+      if (conversacionActiva === roomName) {
+        cargarMensajes(roomName, true);
+      }
     }, 2000);
+    
+    // 🔥 Forzar primera carga inmediata para detectar regalos nuevos
+    if (conversacionActiva === roomName) {
+      setTimeout(() => {
+        cargarMensajes(roomName, true);
+      }, 500);
+    }
 
     setPollingInterval(interval);
-  }, [pollingInterval]);
+  }, [pollingInterval, conversacionActiva, cargarMensajes]);
 
   // 🔥 FUNCIÓN PARA DETENER POLLING
   const detenerPolling = useCallback(() => {
@@ -760,6 +939,57 @@ export default function ChatPrivadoMobile() {
       setPollingInterval(null);
     }
   }, [pollingInterval]);
+
+  // 🔥 DETECTAR NUEVOS MENSAJES DE REGALO Y RECARGAR
+  useEffect(() => {
+    if (!conversacionActiva || mensajes.length === 0) return;
+    
+    const giftReceivedMessages = mensajes.filter(m => 
+      m.type === 'gift_received' && 
+      m.room_name && 
+      (m.room_name === conversacionActiva || m.room_name === conversacionActiva + '_modelo')
+    );
+    
+    if (giftReceivedMessages.length > 0) {
+      console.log('🎁 [MODELO] ⭐ Detectados mensajes de regalo recibido:', {
+        count: giftReceivedMessages.length,
+        room_name_activa: conversacionActiva,
+        total_mensajes: mensajes.length,
+        gift_messages: giftReceivedMessages.map(m => ({
+          id: m.id,
+          type: m.type,
+          room_name: m.room_name,
+          has_gift_data: !!m.gift_data,
+          has_extra_data: !!m.extra_data,
+          gift_data: m.gift_data,
+          extra_data: m.extra_data,
+          message: m.message
+        })),
+        all_message_types: mensajes.map(m => m.type),
+        all_message_ids: mensajes.map(m => m.id)
+      });
+      
+      // Forzar scroll al final si hay nuevos mensajes de regalo
+      setTimeout(() => {
+        if (mensajesRef.current) {
+          mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+        }
+      }, 200);
+    } else {
+      // 🔥 Log cuando NO se encuentran mensajes gift_received
+      const allGiftMessages = mensajes.filter(m => 
+        ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(m.type)
+      );
+      if (allGiftMessages.length > 0) {
+        console.log('🎁 [MODELO] ⚠️ Hay mensajes de regalo pero NO gift_received:', {
+          room_name_activa: conversacionActiva,
+          gift_types: allGiftMessages.map(m => m.type),
+          gift_ids: allGiftMessages.map(m => m.id),
+          gift_room_names: allGiftMessages.map(m => m.room_name)
+        });
+      }
+    }
+  }, [mensajes, conversacionActiva]);
 
   // 🔥 ENVIAR MENSAJE CON ACTUALIZACIÓN INMEDIATA
   const enviarMensaje = async () => {
@@ -824,6 +1054,11 @@ export default function ChatPrivadoMobile() {
     // Detener polling anterior
     detenerPolling();
     
+    console.log('🟣 [MODELO] ========== INICIO abrirConversacion ==========');
+    console.log('🟣 [MODELO] Conversación recibida:', conversacion);
+    console.log('🟣 [MODELO] room_name que se usará:', conversacion.room_name);
+    console.log('🟣 [MODELO] room_name con sufijo _modelo:', conversacion.room_name + '_modelo');
+    
     setConversacionActiva(conversacion.room_name);
     await cargarMensajes(conversacion.room_name);
     setShowSidebar(false);
@@ -837,6 +1072,8 @@ export default function ChatPrivadoMobile() {
         mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
       }
     }, 100);
+    
+    console.log('🟣 [MODELO] ========== FIN abrirConversacion (éxito) ==========');
   };
 
   // 🔥 DETECTAR CHAT PENDIENTE
@@ -915,6 +1152,514 @@ export default function ChatPrivadoMobile() {
   const formatearTiempo = (timestamp) => {
     const fecha = new Date(timestamp);
     return fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // 🎁 FUNCIÓN PARA CONSTRUIR URL DE IMAGEN
+  const buildCompleteImageUrl = (imagePath, baseUrl = API_BASE_URL) => {
+    if (!imagePath) return null;
+    
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    let finalUrl;
+    let fileName;
+    
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
+    }
+    
+    const cleanImagePath = imagePath.replace(/\\/g, '/');
+    
+    if (cleanImagePath.startsWith('storage/')) {
+      // Codificar el nombre del archivo para caracteres especiales
+      const pathParts = cleanImagePath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
+    } else if (cleanImagePath.startsWith('/')) {
+      // Codificar el nombre del archivo
+      const pathParts = cleanImagePath.split('/');
+      fileName = pathParts.pop();
+      const directory = pathParts.join('/');
+      const encodedFileName = encodeURIComponent(fileName);
+      finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
+    } else {
+      // image.png -> http://domain.com/storage/gifts/image.png
+      fileName = cleanImagePath;
+      const encodedFileName = encodeURIComponent(cleanImagePath);
+      finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
+    }
+    
+    // Agregar nombre del archivo como versión para invalidar caché cuando cambie
+    const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+    return `${finalUrl}?v=${version}`;
+  };
+
+  // 🎁 RENDERIZAR MENSAJES CON CARDS DE REGALO Y TRADUCCIÓN
+  const renderMensaje = (mensaje) => {
+    const textoMensaje = mensaje.message || mensaje.text || null;
+    const esUsuarioActual = mensaje.user_id === usuario.id;
+
+    if ((!textoMensaje || textoMensaje.trim() === '') && 
+        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type)) {
+      return null;
+    }
+
+    switch (mensaje.type) {
+      case 'gift_request':
+        const giftData = mensaje.gift_data || mensaje.extra_data || {};
+        let finalGiftData = giftData;
+        
+        if (typeof mensaje.extra_data === 'string') {
+          try {
+            finalGiftData = JSON.parse(mensaje.extra_data);
+          } catch (e) {
+            finalGiftData = giftData;
+          }
+        }
+        
+        let imageUrl = null;
+        if (finalGiftData.gift_image) {
+          imageUrl = buildCompleteImageUrl(finalGiftData.gift_image);
+        }
+        
+        return (
+          <div className="bg-gradient-to-br from-[#ff007a]/20 via-[#cc0062]/20 to-[#990047]/20 rounded-xl p-4 max-w-xs border border-[#ff007a]/30 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="bg-gradient-to-r from-[#ff007a] to-[#cc0062] rounded-full p-2">
+                <Gift size={16} className="text-white" />
+              </div>
+              <span className="text-pink-100 text-sm font-semibold">Solicitud de Regalo</span>
+            </div>
+            
+            {imageUrl && (
+              <div className="mb-3 flex justify-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-purple-300/30">
+                  <img 
+                    src={imageUrl} 
+                    alt={finalGiftData.gift_name || 'Regalo'}
+                    className="w-12 h-12 object-contain"
+                    loading="lazy"
+                    decoding="async"
+                    key={`gift-request-mobile-${finalGiftData.gift_name}-${imageUrl}`}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
+                    <Gift size={20} className="text-purple-300" />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="text-center space-y-2">
+              <p className="text-white font-bold text-base">
+                {finalGiftData.gift_name || 'Regalo Especial'}
+              </p>
+              
+              {finalGiftData.gift_price && (
+                <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg px-3 py-1 border border-amber-300/30">
+                  <span className="text-amber-200 font-bold text-sm">
+                    ✨ {finalGiftData.gift_price} monedas
+                  </span>
+                </div>
+              )}
+              
+              {finalGiftData.original_message && (
+                <div className="bg-black/20 rounded-lg p-2 mt-3 border-l-4 border-[#ff007a]">
+                  <p className="text-purple-100 text-xs italic">
+                    💭 "{finalGiftData.original_message}"
+                  </p>
+                </div>
+              )}
+              
+              {/* 🔥 BOTÓN REGALAR PARA CLIENTES (cuando la modelo les pide un regalo) */}
+              {usuario.rol === 'cliente' && (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id) && (
+                <button
+                  onClick={async () => {
+                    const requestId = finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id;
+                    const securityHash = finalGiftData.security_hash || finalGiftData.securityHash || null;
+                    setSendingGiftId(requestId);
+                    try {
+                      await handleAcceptGift(requestId, securityHash);
+                    } finally {
+                      setSendingGiftId(null);
+                    }
+                  }}
+                  disabled={loadingGift || sendingGiftId === (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id)}
+                  className="mt-4 w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loadingGift || sendingGiftId === (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id) ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gift size={16} />
+                      <span>Regalar</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'gift_received':
+        // 🔥 Log para debugging
+        console.log('🎁 [MODELO] Renderizando gift_received:', {
+          mensajeId: mensaje.id,
+          type: mensaje.type,
+          hasGiftData: !!mensaje.gift_data,
+          hasExtraData: !!mensaje.extra_data,
+          extraDataType: typeof mensaje.extra_data,
+          giftDataType: typeof mensaje.gift_data
+        });
+        
+        let receivedGiftData = null;
+        
+        // 🔥 Intentar obtener datos del regalo de múltiples fuentes
+        if (mensaje.gift_data) {
+          if (typeof mensaje.gift_data === 'string') {
+            try {
+              receivedGiftData = JSON.parse(mensaje.gift_data);
+            } catch (e) {
+              console.warn('🎁 [MODELO] Error parseando gift_data:', e);
+            }
+          } else {
+            receivedGiftData = mensaje.gift_data;
+          }
+        }
+        
+        if (!receivedGiftData && mensaje.extra_data) {
+          if (typeof mensaje.extra_data === 'string') {
+            try {
+              receivedGiftData = JSON.parse(mensaje.extra_data);
+            } catch (e) {
+              console.warn('🎁 [MODELO] Error parseando extra_data:', e);
+            }
+          } else {
+            receivedGiftData = mensaje.extra_data;
+          }
+        }
+        
+        if (!receivedGiftData) {
+          console.warn('🎁 [MODELO] ⚠️ No se encontraron datos del regalo en gift_data ni extra_data');
+          receivedGiftData = {};
+        }
+        
+        console.log('🎁 [MODELO] Datos del regalo procesados:', receivedGiftData);
+        
+        let finalReceivedGiftData = receivedGiftData;
+        let receivedImageUrl = null;
+        if (finalReceivedGiftData.gift_image) {
+          receivedImageUrl = buildCompleteImageUrl(finalReceivedGiftData.gift_image);
+        }
+        
+        // 🔥 Si no hay datos del regalo, mostrar un mensaje genérico pero visible
+        if (!finalReceivedGiftData || Object.keys(finalReceivedGiftData).length === 0) {
+          console.warn('🎁 [MODELO] ⚠️ No hay datos del regalo, mostrando mensaje genérico');
+          return (
+            <div className="bg-gradient-to-br from-green-900/40 via-emerald-900/40 to-teal-900/40 rounded-xl p-4 max-w-xs border border-green-300/30 shadow-lg backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full p-2">
+                  <Gift size={16} className="text-white" />
+                </div>
+                <span className="text-green-100 text-sm font-semibold">¡Regalo Recibido!</span>
+              </div>
+              <div className="text-center">
+                <p className="text-white font-bold text-base">Regalo Especial</p>
+                <p className="text-green-100 text-xs mt-2">El cliente te envió un regalo</p>
+              </div>
+            </div>
+          );
+        }
+        
+        return (
+          <div className="bg-gradient-to-br from-green-900/40 via-emerald-900/40 to-teal-900/40 rounded-xl p-4 max-w-xs border border-green-300/30 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full p-2">
+                <Gift size={16} className="text-white" />
+              </div>
+              <span className="text-green-100 text-sm font-semibold">¡Regalo Recibido!</span>
+            </div>
+            
+            {receivedImageUrl && (
+              <div className="mb-3 flex justify-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-green-300/30">
+                  <img 
+                    src={receivedImageUrl} 
+                    alt={finalReceivedGiftData.gift_name || 'Regalo'}
+                    className="w-12 h-12 object-contain"
+                    loading="lazy"
+                    decoding="async"
+                    key={`gift-received-mobile-${finalReceivedGiftData.gift_name}-${receivedImageUrl}`}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
+                    <Gift size={20} className="text-green-300" />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="text-center space-y-2">
+              <p className="text-white font-bold text-base">
+                {finalReceivedGiftData.gift_name || 'Regalo Especial'}
+              </p>
+              
+              {finalReceivedGiftData.gift_price && (
+                <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg px-3 py-1 border border-green-300/30">
+                  <span className="text-green-200 font-bold text-sm">
+                    +{finalReceivedGiftData.gift_price} monedas
+                  </span>
+                </div>
+              )}
+              
+              <div className="bg-black/20 rounded-lg p-2 mt-3 border-l-4 border-green-400">
+                <p className="text-green-100 text-xs font-medium">
+                  💰 ¡{finalReceivedGiftData.client_name || 'El cliente'} te envió este regalo!
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'gift_sent':
+        const sentGiftData = mensaje.gift_data || mensaje.extra_data || {};
+        
+        let finalSentGiftData = sentGiftData;
+        if (typeof mensaje.extra_data === 'string') {
+          try {
+            finalSentGiftData = JSON.parse(mensaje.extra_data);
+          } catch (e) {
+            finalSentGiftData = sentGiftData;
+          }
+        }
+        
+        let sentImageUrl = null;
+        if (finalSentGiftData.gift_image) {
+          sentImageUrl = buildCompleteImageUrl(finalSentGiftData.gift_image);
+        }
+        
+        return (
+          <div className="bg-gradient-to-br from-blue-900/40 via-cyan-900/40 to-teal-900/40 rounded-xl p-4 max-w-xs border border-blue-300/30 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full p-2">
+                <Gift size={16} className="text-white" />
+              </div>
+              <span className="text-blue-100 text-sm font-semibold">Regalo Enviado</span>
+            </div>
+            
+            {sentImageUrl && (
+              <div className="mb-3 flex justify-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl flex items-center justify-center overflow-hidden border-2 border-blue-300/30">
+                  <img 
+                    src={sentImageUrl} 
+                    alt={finalSentGiftData.gift_name || 'Regalo'}
+                    className="w-12 h-12 object-contain"
+                    loading="lazy"
+                    decoding="async"
+                    key={`gift-sent-mobile-${finalSentGiftData.gift_name}-${sentImageUrl}`}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
+                    <Gift size={20} className="text-blue-300" />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="text-center space-y-2">
+              <p className="text-white font-bold text-base">
+                {finalSentGiftData.gift_name || 'Regalo Especial'}
+              </p>
+              
+              {finalSentGiftData.gift_price && (
+                <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-lg px-3 py-1 border border-blue-300/30">
+                  <span className="text-blue-200 font-bold text-sm">
+                    -{finalSentGiftData.gift_price} monedas
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'gift':
+        return (
+          <div className="flex items-center gap-2 text-yellow-400">
+            <Gift size={16} />
+            <span>Envió: {textoMensaje}</span>
+          </div>
+        );
+
+      case 'emoji':
+        return <div className="text-2xl">{textoMensaje}</div>;
+      
+      default:
+        // 🌐 USAR COMPONENTE DE TRADUCCIÓN PARA MENSAJES NORMALES
+        return renderMessageWithTranslation(mensaje, esUsuarioActual);
+    }
+  };
+
+  // 🎁 FUNCIÓN PARA PEDIR REGALO
+  const pedirRegalo = useCallback(async (giftId, recipientId, roomName, message = '') => {
+    try {
+      if (!requestGift) {
+        return { success: false, error: 'Función de solicitar regalo no disponible' };
+      }
+      
+      const result = await requestGift(recipientId, giftId, message, roomName);
+      
+      if (result.success) {
+        // 🔥 PROCESAR MENSAJE PARA EL CHAT (SOLO SI VIENE)
+        if (result.chatMessage) {
+          let processedExtraData = { ...result.chatMessage.extra_data };
+          
+          if (processedExtraData.gift_image) {
+            const completeImageUrl = buildCompleteImageUrl(processedExtraData.gift_image);
+            processedExtraData.gift_image = completeImageUrl;
+          }
+          
+          let processedMessage = {
+            ...result.chatMessage,
+            gift_data: processedExtraData,
+            extra_data: processedExtraData
+          };
+          
+          // Agregar mensaje al chat
+          setMensajes(prev => [...prev, processedMessage]);
+          
+          // Actualizar conversación
+          setConversaciones(prev => 
+            prev.map(conv => 
+              conv.room_name === roomName
+                ? {
+                    ...conv,
+                    last_message: `🎁 Solicitud: ${processedExtraData.gift_name || 'Regalo'}`,
+                    last_message_time: new Date().toISOString(),
+                    last_message_sender_id: usuario.id
+                  }
+                : conv
+            )
+          );
+          
+          // Scroll al final
+          setTimeout(() => {
+            if (mensajesRef.current) {
+              mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+            }
+          }, 100);
+        }
+        
+        return result;
+      } else {
+        return result;
+      }
+    } catch (error) {
+      return { success: false, error: 'Error de conexión' };
+    }
+  }, [requestGift, usuario.id, buildCompleteImageUrl, setMensajes, setConversaciones, mensajesRef]);
+
+  const handleRequestGift = useCallback(async (giftId, recipientId, roomName, message) => {
+    try {
+      setLoadingGift(true);
+      
+      const result = await pedirRegalo(giftId, recipientId, roomName, message);
+      
+      if (result.success) {
+        setShowGiftsModal(false);
+        
+        // 🎊 NOTIFICACIÓN DE ÉXITO (OPCIONAL)
+        if (Notification.permission === 'granted') {
+          new Notification('🎁 Solicitud Enviada', {
+            body: 'Tu solicitud de regalo ha sido enviada exitosamente',
+            icon: '/favicon.ico'
+          });
+        }
+      } else {
+        // 🚨 MOSTRAR ERROR AL USUARIO
+        alert(`Error al enviar solicitud: ${result.error}`);
+      }
+      
+      return result;
+    } catch (error) {
+      alert('Error inesperado al enviar solicitud');
+      return { success: false, error: 'Error inesperado' };
+    } finally {
+      setLoadingGift(false);
+    }
+  }, [pedirRegalo]);
+
+  // 🎁 MANEJO DE ACEPTAR REGALO
+  const handleAcceptGift = async (requestId, securityHash = null) => {
+    try {
+      setLoadingGift(true);
+      
+      // 🔥 Si no hay securityHash, intentar obtenerlo de pendingRequests
+      let finalSecurityHash = securityHash;
+      if (!finalSecurityHash && pendingRequests && pendingRequests.length > 0) {
+        const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
+        if (pendingRequest && pendingRequest.security_hash) {
+          finalSecurityHash = pendingRequest.security_hash;
+        }
+      }
+            
+      const result = await acceptGiftRequest(requestId, finalSecurityHash);
+      
+      if (result.success) {
+        // Recargar mensajes para actualizar la UI
+        if (conversacionActiva) {
+          setTimeout(() => {
+            cargarMensajes(conversacionActiva);
+          }, 500);
+        }
+        // No mostrar alert, el mensaje de éxito viene del backend
+      } else {
+        alert(result.error || 'Error aceptando el regalo');
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error aceptando regalo:', error);
+      alert('Error inesperado al aceptar el regalo');
+      return { success: false, error: 'Error inesperado' };
+    } finally {
+      setLoadingGift(false);
+    }
+  };
+
+  // 🎁 MANEJO DE RECHAZAR REGALO
+  const handleRejectGift = async (requestId) => {
+    try {
+      setLoadingGift(true);
+      const result = await rejectGiftRequest(requestId);
+      
+      if (result.success) {
+        // Sin acción adicional necesaria
+      } else {
+        alert(result.error || 'Error rechazando el regalo');
+      }
+      
+      return result;
+    } catch (error) {
+      alert('Error inesperado');
+      return { success: false, error: 'Error inesperado' };
+    } finally {
+      setLoadingGift(false);
+    }
   };
 
   // 🔥 CONVERSACIONES FILTRADAS
@@ -1208,6 +1953,16 @@ export default function ChatPrivadoMobile() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* 🎁 BOTÓN DE REGALO - PARA MODELOS */}
+                    {usuario.rol === 'modelo' && (
+                      <button
+                        onClick={() => setShowGiftsModal(true)}
+                        className="px-2 py-2 rounded-lg text-xs hover:scale-105 transition-transform flex items-center gap-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                      >
+                        <Gift size={14} />
+                      </button>
+                    )}
+                    
                     <button className="text-white hover:text-[#ff007a] transition-colors p-2">
                       <Video size={18} />
                     </button>
@@ -1226,7 +1981,11 @@ export default function ChatPrivadoMobile() {
                 <div
                   ref={mensajesRef}
                   className="flex-1 overflow-y-auto p-4 space-y-3"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#ff007a #2b2d31',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
                 >
                   {mensajes.length === 0 ? (
                     <div className="flex-1 flex items-center justify-center">
@@ -1235,11 +1994,12 @@ export default function ChatPrivadoMobile() {
                   ) : (
                     mensajes.map((mensaje) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
+                      const isGiftMessage = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type);
 
                       return (
                         <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
                           <div className="flex flex-col max-w-[280px]">
-                            {!esUsuarioActual && (
+                            {!esUsuarioActual && !isGiftMessage && (
                               <div className="flex items-center gap-2 mb-1 px-2">
                                 <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
                                   {getInitial(mensaje.user_name)}
@@ -1247,19 +2007,25 @@ export default function ChatPrivadoMobile() {
                                 <span className="text-xs text-white/60">{mensaje.user_name}</span>
                               </div>
                             )}
-                            <div
-                              className={`relative px-4 py-2 rounded-2xl text-sm ${
-                                esUsuarioActual
-                                  ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
-                                  : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
-                              }`}
-                            >
-                              {/* 🌐 USAR COMPONENTE DE TRADUCCIÓN */}
-                              {renderMessageWithTranslation(mensaje, esUsuarioActual)}
-                              <div className="text-xs opacity-70 mt-1">
-                                {formatearTiempo(mensaje.created_at)}
+                            {isGiftMessage ? (
+                              // Mensajes de regalo sin padding/fondo adicional
+                              renderMensaje(mensaje)
+                            ) : (
+                              <div
+                                className={`relative px-4 py-2 rounded-2xl text-sm break-words overflow-wrap-anywhere word-break-break-word ${
+                                  esUsuarioActual
+                                    ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
+                                    : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
+                                }`}
+                                style={{ maxWidth: '100%', overflowWrap: 'break-word', wordBreak: 'break-word' }}
+                              >
+                                {/* 🌐 USAR renderMensaje que maneja traducción internamente */}
+                                {renderMensaje(mensaje)}
+                                <div className="text-xs opacity-70 mt-1">
+                                  {formatearTiempo(mensaje.created_at)}
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1431,6 +2197,28 @@ export default function ChatPrivadoMobile() {
           </div>
         </div>
       )}
+
+      {/* 🎁 OVERLAY DE NOTIFICACIONES DE REGALO */}
+      <GiftNotificationOverlay
+        pendingRequests={pendingRequests}
+        onAccept={handleAcceptGift}
+        onReject={handleRejectGift}
+        onClose={() => setPendingRequests([])}
+        isVisible={pendingRequests.length > 0}
+      />
+
+      {/* 🎁 MODAL DE REGALOS */}
+      <GiftsModal
+        isOpen={showGiftsModal}
+        onClose={() => setShowGiftsModal(false)}
+        recipientName={conversacionSeleccionada?.other_user_name || 'Usuario'}
+        recipientId={conversacionSeleccionada?.other_user_id}
+        roomName={conversacionActiva}
+        userRole={usuario.rol}
+        gifts={gifts}
+        onRequestGift={handleRequestGift}
+        loading={loadingGift}
+      />
     </div>
   );
 }

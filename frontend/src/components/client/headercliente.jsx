@@ -22,7 +22,7 @@ import StoriesModal from './StoriesModal';
 import { useAppNotifications } from '../../contexts/NotificationContext';
 import { useCurrentUser } from '../hooks/useCurrentUser.js';
 
-export default function HeaderCliente() {
+export default function HeaderCliente({ showMessagesButton = false, onMessagesClick = null }) {
   const navigate = useNavigate();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [comprasAbierto, setComprasAbierto] = useState(false);
@@ -138,7 +138,9 @@ export default function HeaderCliente() {
       handleBlockedNavigation('Mensajes Móvil');
       return;
     }
-        navigate("/mensajesmobileclient");
+    // 🔥 En móvil, navegar directamente a la ruta móvil
+    const isMobileDevice = window.innerWidth < 768;
+    navigate(isMobileDevice ? "/mensajesmobileclient" : "/message");
   };
 
   // 🚫 FUNCIÓN PARA MANEJAR NAVEGACIÓN CON BLOQUEO
@@ -305,7 +307,17 @@ export default function HeaderCliente() {
 
         {/* Botón menú móvil - solo visible en móvil */}
         <div className="md:hidden flex items-center gap-2">
-        
+          {/* Botón de mensajes - al lado del menú */}
+          {showMessagesButton && onMessagesClick && (
+            <button
+              onClick={onMessagesClick}
+              className="w-10 h-10 rounded-full bg-[#ff007a] text-white hover:scale-105 transition flex items-center justify-center"
+              title={t('messages')}
+            >
+              <MessageSquare size={20} />
+            </button>
+          )}
+          
           <div className="relative" ref={mobileMenuRef}>
             <button
               onClick={toggleMobileMenu}

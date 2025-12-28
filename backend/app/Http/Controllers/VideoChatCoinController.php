@@ -33,8 +33,10 @@ class VideoChatCoinController extends Controller
             $user = Auth::user();
             $userCoins = $this->getUserCoins($user->id);
 
-            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
-            $minutesAvailable = floor($totalBalance / self::COST_PER_MINUTE);
+            // 🔥 CORRECCIÓN: Solo purchased_balance se usa para minutos de llamada
+            // gift_balance es solo para regalos, no para llamadas
+            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
+            $minutesAvailable = floor($userCoins->purchased_balance / self::COST_PER_MINUTE); // Solo purchased para minutos
 
             return response()->json([
                 'success' => true,
@@ -43,10 +45,11 @@ class VideoChatCoinController extends Controller
                     'gift_coins' => $userCoins->gift_balance,
                     'total_coins' => $totalBalance,
                     'minutes_available' => $minutesAvailable,
+                    'remaining_minutes' => $minutesAvailable, // 🔥 AGREGAR remaining_minutes basado solo en purchased
                     'cost_per_minute' => self::COST_PER_MINUTE,
                     'minimum_required' => self::MINIMUM_BALANCE
                 ],
-                'can_start_call' => $totalBalance >= self::MINIMUM_BALANCE
+                'can_start_call' => $userCoins->purchased_balance >= self::MINIMUM_BALANCE // 🔥 Solo purchased para validar
             ]);
             
         } catch (Exception $e) {
@@ -93,8 +96,8 @@ class VideoChatCoinController extends Controller
             }
             
             $userCoins = $this->getUserCoins($clientId);
-            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
-            $minutesAvailable = floor($totalBalance / self::COST_PER_MINUTE);
+            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
+            $minutesAvailable = floor($userCoins->purchased_balance / self::COST_PER_MINUTE); // Solo purchased para minutos
             
             return response()->json([
                 'success' => true,
@@ -106,7 +109,7 @@ class VideoChatCoinController extends Controller
                     'cost_per_minute' => self::COST_PER_MINUTE,
                     'minimum_required' => self::MINIMUM_BALANCE
                 ],
-                'can_start_call' => $totalBalance >= self::MINIMUM_BALANCE,
+                'can_start_call' => $userCoins->purchased_balance >= self::MINIMUM_BALANCE, // 🔥 Solo purchased para validar
                 'client_name' => $client->name
             ]);
             
@@ -128,11 +131,14 @@ class VideoChatCoinController extends Controller
             $userId = $userId ?? Auth::id();
             $userCoins = $this->getUserCoins($userId);
             
-            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
-            $canStart = $totalBalance >= self::MINIMUM_BALANCE;
+            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
+            // 🔥 CORRECCIÓN: Solo purchased_balance se usa para validar si puede iniciar llamada
+            $canStart = $userCoins->purchased_balance >= self::MINIMUM_BALANCE;
             
             Log::info('🔍 Verificación de saldo para videochat', [
                 'user_id' => $userId,
+                'purchased_balance' => $userCoins->purchased_balance,
+                'gift_balance' => $userCoins->gift_balance,
                 'total_balance' => $totalBalance,
                 'minimum_required' => self::MINIMUM_BALANCE,
                 'can_start' => $canStart
@@ -141,8 +147,8 @@ class VideoChatCoinController extends Controller
             return [
                 'can_start' => $canStart,
                 'total_balance' => $totalBalance,
-                'minutes_available' => floor($totalBalance / self::COST_PER_MINUTE),
-                'deficit' => $canStart ? 0 : (self::MINIMUM_BALANCE - $totalBalance)
+                'minutes_available' => floor($userCoins->purchased_balance / self::COST_PER_MINUTE), // Solo purchased
+                'deficit' => $canStart ? 0 : (self::MINIMUM_BALANCE - $userCoins->purchased_balance)
             ];
             
         } catch (Exception $e) {
@@ -290,8 +296,9 @@ class VideoChatCoinController extends Controller
                     'purchased_coins_used' => $purchasedConsumed
                 ],
                 'remaining_balance' => $newBalance,
-                'minutes_remaining' => floor($newBalance / self::COST_PER_MINUTE),
-                'can_continue' => $newBalance >= self::COST_PER_MINUTE
+                // 🔥 CORRECCIÓN: minutes_remaining debe basarse solo en purchased_balance, NO en newBalance (que incluye gift)
+                'minutes_remaining' => floor($userCoins->purchased_balance / self::COST_PER_MINUTE),
+                'can_continue' => $userCoins->purchased_balance >= self::COST_PER_MINUTE // 🔥 Solo purchased para continuar
             ]);
 
         } catch (Exception $e) {
@@ -544,7 +551,9 @@ class VideoChatCoinController extends Controller
 
             return [
                 'success' => true,
-                'remaining_balance' => $userCoins->purchased_balance + $userCoins->gift_balance
+                'remaining_balance' => $userCoins->purchased_balance + $userCoins->gift_balance, // Total para mostrar
+                'purchased_balance' => $userCoins->purchased_balance, // Solo purchased para calcular minutos
+                'gift_balance' => $userCoins->gift_balance
             ];
 
         } catch (\Exception $e) {
@@ -572,9 +581,10 @@ class VideoChatCoinController extends Controller
 
             $purchasedBalance = (int) $userCoins->purchased_balance;
             $giftBalance = (int) $userCoins->gift_balance;
-            $totalBalance = $purchasedBalance + $giftBalance;
-            $minutesAvailable = floor($totalBalance / self::COST_PER_MINUTE);
-            $canStartCall = $totalBalance >= self::MINIMUM_BALANCE;
+            $totalBalance = $purchasedBalance + $giftBalance; // Total para mostrar
+            // 🔥 CORRECCIÓN: Solo purchased_balance se usa para minutos de llamada
+            $minutesAvailable = floor($purchasedBalance / self::COST_PER_MINUTE);
+            $canStartCall = $purchasedBalance >= self::MINIMUM_BALANCE;
 
             Log::info("✅ Balance obtenido", [
                 'user_id' => $user->id,
@@ -606,8 +616,8 @@ class VideoChatCoinController extends Controller
                 'can_start_call' => $canStartCall,
                 'validation' => [
                     'sufficient_for_call' => $canStartCall,
-                    'deficit_coins' => $canStartCall ? 0 : (self::MINIMUM_BALANCE - $totalBalance),
-                    'deficit_minutes' => $canStartCall ? 0 : ceil((self::MINIMUM_BALANCE - $totalBalance) / self::COST_PER_MINUTE)
+                    'deficit_coins' => $canStartCall ? 0 : (self::MINIMUM_BALANCE - $purchasedBalance), // 🔥 Solo purchased
+                    'deficit_minutes' => $canStartCall ? 0 : ceil((self::MINIMUM_BALANCE - $purchasedBalance) / self::COST_PER_MINUTE) // 🔥 Solo purchased
                 ]
             ], 200);
 
@@ -638,9 +648,10 @@ class VideoChatCoinController extends Controller
             }
 
             $userCoins = $this->getUserCoins($user->id);
-            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
-            $canStart = $totalBalance >= self::MINIMUM_BALANCE;
-            $minutesAvailable = floor($totalBalance / self::COST_PER_MINUTE);
+            $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
+            // 🔥 CORRECCIÓN: Solo purchased_balance se usa para validar si puede iniciar llamada
+            $canStart = $userCoins->purchased_balance >= self::MINIMUM_BALANCE;
+            $minutesAvailable = floor($userCoins->purchased_balance / self::COST_PER_MINUTE); // Solo purchased
 
             Log::info("🔍 Validación para videollamada", [
                 'user_id' => $user->id,
@@ -650,7 +661,7 @@ class VideoChatCoinController extends Controller
             ]);
 
             if (!$canStart) {
-                $deficit = self::MINIMUM_BALANCE - $totalBalance;
+                $deficit = self::MINIMUM_BALANCE - $userCoins->purchased_balance; // 🔥 Solo purchased
                 return response()->json([
                     'success' => false,
                     'can_start' => false,

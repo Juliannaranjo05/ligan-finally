@@ -1775,9 +1775,10 @@ private function checkClientBalance($clienteId)
             ]
         );
 
-        $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance;
+        $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
         $costPerMinute = VideoChatCoinController::COST_PER_MINUTE;
-        $minutesLeft = floor($totalBalance / $costPerMinute);
+        // 🔥 CORRECCIÓN: Solo purchased_balance se usa para minutos de llamada
+        $minutesLeft = floor($userCoins->purchased_balance / $costPerMinute);
 
         // 🚨 CRÍTICO: Menos de 2 minutos = finalizar automáticamente
         $sufficient = $minutesLeft >= 2;
@@ -2843,61 +2844,318 @@ private function getNotificationMessage($endReason)
             try {
                 $userId = auth()->id();
                 if (!$userId) {
-                    \Log::error('❌ Usuario no autenticado en getChatMessages');
                     return response()->json([
                         'success' => false,
                         'error' => 'Usuario no autenticado'
                     ], 401);
                 }
 
-                \Log::info('📥 Obteniendo mensajes de chat', [
-                    'user_id' => $userId,
-                    'room_name' => $roomName
-                ]);
-
-                // 🔥 AGREGAR VERIFICACIÓN DE ACCESO
+                // Verificar acceso
                 if (!$this->userHasAccessToRoom($userId, $roomName)) {
-                    \Log::warning('❌ Acceso denegado a room en LiveKit', [
-                        'user_id' => $userId,
-                        'room_name' => $roomName
-                    ]);
                     return response()->json([
                         'success' => false,
                         'error' => 'Acceso denegado a esta sala'
                     ], 403);
                 }
 
-                // Obtener mensajes usando tu modelo ChatMessage
-                $messages = ChatMessage::where('room_name', $roomName)
-                    ->orderBy('created_at', 'asc') // Del más antiguo al más nuevo
-                    ->limit(50) // Últimos 50 mensajes
-                    ->get()
-                    ->map(function ($message) {
-                        return [
-                            'id' => $message->id,
-                            'user_id' => $message->user_id,
-                            'user_name' => $message->user_name,
-                            'user_role' => $message->user_role,
-                            'message' => $message->message,
-                            'type' => $message->type,
-                            'extra_data' => $message->extra_data,
-                            'timestamp' => $message->created_at->toISOString(),
-                            'created_at' => $message->created_at->toISOString()
-                        ];
-                    })
-                    ->toArray();
-
-                \Log::info('✅ Mensajes obtenidos exitosamente', [
+                $user = auth()->user();
+                $userRole = $user->rol ?? null;
+                
+                // 🔥 LÓGICA ULTRA SIMPLIFICADA: Consultar TODOS los mensajes directamente
+                // Usar una sola consulta que busque en ambos rooms
+                $allMessages = ChatMessage::where(function($query) use ($roomName, $userRole) {
+                    $query->where('room_name', $roomName);
+                    if ($userRole === 'modelo') {
+                        $query->orWhere('room_name', $roomName . '_modelo');
+                    } elseif ($userRole === 'cliente') {
+                        $query->orWhere('room_name', $roomName . '_client');
+                    }
+                })
+                ->orderBy('created_at', 'asc')
+                ->limit(200) // Aumentar límite para asegurar que se incluyan todos
+                ->get();
+                
+                // 🔥 DEBUG: Verificar que los mensajes gift_received se están incluyendo
+                $giftReceivedInCollection = $allMessages->filter(function($msg) {
+                    return $msg->type === 'gift_received';
+                });
+                
+                \Log::info('🔍 [getChatMessages] Verificación después de consulta:', [
+                    'total_messages' => $allMessages->count(),
+                    'gift_received_count' => $giftReceivedInCollection->count(),
+                    'gift_received_ids' => $giftReceivedInCollection->pluck('id')->take(5)->toArray(),
+                    'user_role' => $userRole,
                     'room_name' => $roomName,
-                    'count' => count($messages)
+                    'room_name_modelo' => $roomName . '_modelo',
+                    'first_5_types' => $allMessages->take(5)->pluck('type')->toArray()
                 ]);
-
-                return response()->json([
+                
+                // 4. Mapear mensajes de forma simple y robusta
+                $mappedMessages = [];
+                $giftReceivedInMapping = 0;
+                $processedIds = [];
+                
+                foreach ($allMessages as $msg) {
+                    // Evitar duplicados
+                    if (in_array($msg->id, $processedIds)) {
+                        continue;
+                    }
+                    $processedIds[] = $msg->id;
+                    
+                    // 🔥 DEBUG: Verificar mensajes gift_received durante el mapeo
+                    if ($msg->type === 'gift_received') {
+                        $giftReceivedInMapping++;
+                    }
+                    
+                    // 🔥 FORZAR tipo explícitamente - no usar ?? 'text' que puede ocultar problemas
+                    $msgType = $msg->type;
+                    if (empty($msgType)) {
+                        $msgType = 'text';
+                    }
+                    
+                    $messageArray = [
+                        'id' => $msg->id,
+                        'user_id' => $msg->user_id,
+                        'user_name' => $msg->user_name ?? 'Usuario',
+                        'user_role' => $msg->user_role ?? 'cliente',
+                        'message' => $msg->message ?? '',
+                        'type' => $msgType, // 🔥 USAR tipo explícito
+                        'room_name' => $msg->room_name ?? $roomName,
+                        'extra_data' => $msg->extra_data,
+                        'timestamp' => $msg->created_at->toISOString(),
+                        'created_at' => $msg->created_at->toISOString()
+                    ];
+                    
+                    // Parsear gift_data desde extra_data si es necesario
+                    if ($msg->extra_data) {
+                        try {
+                            $extraData = is_string($msg->extra_data) 
+                                ? json_decode($msg->extra_data, true) 
+                                : $msg->extra_data;
+                            
+                            if (is_array($extraData)) {
+                                // Si tiene datos de regalo, agregar como gift_data
+                                if (isset($extraData['gift_name']) || isset($extraData['gift_image']) || isset($extraData['gift_price'])) {
+                                    $messageArray['gift_data'] = $extraData;
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            // Ignorar errores de parsing
+                        }
+                    }
+                    
+                    // Si tiene gift_data en la columna, usarlo
+                    if (isset($msg->gift_data) && $msg->gift_data) {
+                        try {
+                            $giftData = is_string($msg->gift_data) 
+                                ? json_decode($msg->gift_data, true) 
+                                : $msg->gift_data;
+                            if (is_array($giftData)) {
+                                $messageArray['gift_data'] = $giftData;
+                            }
+                        } catch (\Exception $e) {
+                            // Ignorar errores de parsing
+                        }
+                    }
+                    
+                    $mappedMessages[] = $messageArray;
+                }
+                
+                // 🔥 SIMPLIFICACIÓN TOTAL: Para modelos, SIEMPRE agregar gift_received directamente
+                if ($userRole === 'modelo') {
+                    $existingIds = array_map(function($m) { return $m['id'] ?? null; }, $mappedMessages);
+                    
+                    // Consultar DIRECTAMENTE todos los gift_received
+                    $giftReceivedDirect = ChatMessage::where('room_name', $roomName . '_modelo')
+                        ->where('type', 'gift_received')
+                        ->orderBy('created_at', 'asc')
+                        ->get();
+                    
+                    foreach ($giftReceivedDirect as $msg) {
+                        if (!in_array($msg->id, $existingIds)) {
+                            // Parsear extra_data
+                            $giftData = null;
+                            if ($msg->extra_data) {
+                                try {
+                                    $giftData = is_string($msg->extra_data) ? json_decode($msg->extra_data, true) : $msg->extra_data;
+                                } catch (\Exception $e) {
+                                    $giftData = null;
+                                }
+                            }
+                            
+                            $mappedMessages[] = [
+                                'id' => $msg->id,
+                                'user_id' => $msg->user_id,
+                                'user_name' => $msg->user_name ?? 'Usuario',
+                                'user_role' => $msg->user_role ?? 'cliente',
+                                'message' => $msg->message ?? '',
+                                'type' => 'gift_received', // 🔥 TIPO FIJO
+                                'room_name' => $msg->room_name,
+                                'extra_data' => $msg->extra_data,
+                                'gift_data' => $giftData, // 🔥 AGREGAR gift_data directamente
+                                'timestamp' => $msg->created_at->toISOString(),
+                                'created_at' => $msg->created_at->toISOString()
+                            ];
+                            $existingIds[] = $msg->id;
+                        }
+                    }
+                    
+                    // Reordenar
+                    usort($mappedMessages, function($a, $b) {
+                        return strtotime($a['created_at'] ?? '1970-01-01') <=> strtotime($b['created_at'] ?? '1970-01-01');
+                    });
+                }
+                
+                // Verificar después de forzar inclusión
+                $giftReceivedAfterMapping = array_filter($mappedMessages, function($m) {
+                    return ($m['type'] ?? '') === 'gift_received';
+                });
+                
+                // 🔥 FALLBACK FINAL: Si aún no hay gift_received, intentar una vez más
+                if (count($giftReceivedAfterMapping) === 0 && $userRole === 'modelo') {
+                    // Forzar consulta directa de gift_received
+                    $forceGiftReceived = ChatMessage::where('room_name', $roomName . '_modelo')
+                        ->where('type', 'gift_received')
+                        ->orderBy('created_at', 'asc')
+                        ->limit(50)
+                        ->get();
+                    
+                    $existingIds = array_map(function($m) { return $m['id'] ?? null; }, $mappedMessages);
+                    
+                    foreach ($forceGiftReceived as $msg) {
+                        if (!in_array($msg->id, $existingIds)) {
+                            $messageArray = [
+                                'id' => $msg->id,
+                                'user_id' => $msg->user_id,
+                                'user_name' => $msg->user_name ?? 'Usuario',
+                                'user_role' => $msg->user_role ?? 'cliente',
+                                'message' => $msg->message ?? '',
+                                'type' => $msg->type,
+                                'room_name' => $msg->room_name ?? $roomName,
+                                'extra_data' => $msg->extra_data,
+                                'timestamp' => $msg->created_at->toISOString(),
+                                'created_at' => $msg->created_at->toISOString()
+                            ];
+                            
+                            // Parsear gift_data
+                            if ($msg->extra_data) {
+                                try {
+                                    $extraData = is_string($msg->extra_data) 
+                                        ? json_decode($msg->extra_data, true) 
+                                        : $msg->extra_data;
+                                    if (is_array($extraData) && (isset($extraData['gift_name']) || isset($extraData['gift_image']) || isset($extraData['gift_price']))) {
+                                        $messageArray['gift_data'] = $extraData;
+                                    }
+                                } catch (\Exception $e) {
+                                    // Ignorar
+                                }
+                            }
+                            
+                            $mappedMessages[] = $messageArray;
+                            $existingIds[] = $msg->id;
+                        }
+                    }
+                    
+                    // Reordenar por fecha
+                    usort($mappedMessages, function($a, $b) {
+                        $timeA = strtotime($a['created_at'] ?? $a['timestamp'] ?? '1970-01-01');
+                        $timeB = strtotime($b['created_at'] ?? $b['timestamp'] ?? '1970-01-01');
+                        return $timeA <=> $timeB;
+                    });
+                }
+                
+                // 5. Contar tipos de mensajes DESPUÉS de forzar inclusión
+                $giftReceivedCount = 0;
+                $giftRequestCount = 0;
+                $giftReceivedIds = [];
+                $giftRequestIds = [];
+                
+                foreach ($mappedMessages as $msg) {
+                    $msgType = $msg['type'] ?? 'unknown';
+                    if ($msgType === 'gift_received') {
+                        $giftReceivedCount++;
+                        $giftReceivedIds[] = $msg['id'] ?? null;
+                    } elseif ($msgType === 'gift_request') {
+                        $giftRequestCount++;
+                        $giftRequestIds[] = $msg['id'] ?? null;
+                    }
+                }
+                
+                // 🔥 VERIFICACIÓN FINAL: Si aún no hay gift_received, algo está mal
+                if ($giftReceivedCount === 0 && $userRole === 'modelo') {
+                    \Log::error('❌ [getChatMessages] CRÍTICO: No hay gift_received después de forzar inclusión', [
+                        'total_mapped' => count($mappedMessages),
+                        'room_name' => $roomName,
+                        'room_name_modelo' => $roomName . '_modelo',
+                        'all_types' => array_count_values(array_map(function($m) { return $m['type'] ?? 'unknown'; }, $mappedMessages))
+                    ]);
+                }
+                
+                // 🔥 DEBUG: Verificar conteo después del mapeo
+                \Log::info('🔍 [getChatMessages] Después del mapeo:', [
+                    'total_mapped' => count($mappedMessages),
+                    'gift_received_during_mapping' => $giftReceivedInMapping,
+                    'gift_received_count' => $giftReceivedCount,
+                    'gift_request_count' => $giftRequestCount,
+                    'gift_received_ids' => array_slice($giftReceivedIds, 0, 5),
+                    'all_types' => array_count_values(array_map(function($m) { return $m['type'] ?? 'unknown'; }, $mappedMessages)),
+                    'first_5_mapped_types' => array_map(function($m) { return $m['type'] ?? 'unknown'; }, array_slice($mappedMessages, 0, 5))
+                ]);
+                
+                // 6. Devolver respuesta simple y directa
+                // 🔥 FORZAR conteo final basado en el array real
+                $finalGiftReceivedArray = array_filter($mappedMessages, function($m) {
+                    return ($m['type'] ?? '') === 'gift_received';
+                });
+                $finalGiftRequestArray = array_filter($mappedMessages, function($m) {
+                    return ($m['type'] ?? '') === 'gift_request';
+                });
+                
+                $finalGiftReceivedCount = count($finalGiftReceivedArray);
+                $finalGiftRequestCount = count($finalGiftRequestArray);
+                
+                $responseData = [
                     'success' => true,
-                    'messages' => $messages,
+                    'messages' => $mappedMessages,
                     'room_name' => $roomName,
-                    'total_count' => count($messages)
+                    'total_count' => count($mappedMessages),
+                    'gift_received_count' => $finalGiftReceivedCount, // 🔥 USAR conteo del array
+                    'gift_request_count' => $finalGiftRequestCount, // 🔥 USAR conteo del array
+                    'debug_info' => [
+                        'gift_received_count' => $finalGiftReceivedCount,
+                        'gift_request_count' => $finalGiftRequestCount,
+                        'gift_received_ids' => array_slice(array_map(function($m) { return $m['id'] ?? null; }, $finalGiftReceivedArray), 0, 10),
+                        'gift_request_ids' => array_slice(array_map(function($m) { return $m['id'] ?? null; }, $finalGiftRequestArray), 0, 10),
+                        'user_role' => $userRole,
+                        'room_base' => $roomName,
+                        'room_role' => $userRole === 'modelo' ? $roomName . '_modelo' : ($userRole === 'cliente' ? $roomName . '_client' : null),
+                        'total_messages_in_array' => count($mappedMessages),
+                        'all_types_count' => array_count_values(array_map(function($m) { return $m['type'] ?? 'unknown'; }, $mappedMessages))
+                    ]
+                ];
+                
+                // 🔥 VERIFICACIÓN FINAL: Contar gift_received en el array final
+                $finalGiftReceivedCheck = array_filter($mappedMessages, function($m) {
+                    return ($m['type'] ?? '') === 'gift_received';
+                });
+                
+                // 🔥 DEBUG: Verificar respuesta final antes de devolver
+                \Log::info('🚀 [getChatMessages] RESPUESTA FINAL:', [
+                    'total_messages' => count($mappedMessages),
+                    'gift_received_count_calculated' => $giftReceivedCount,
+                    'gift_received_count_in_array' => count($finalGiftReceivedCheck),
+                    'gift_request_count' => $giftRequestCount,
+                    'has_debug_info' => isset($responseData['debug_info']),
+                    'debug_info_keys' => isset($responseData['debug_info']) ? array_keys($responseData['debug_info']) : [],
+                    'gift_received_ids_in_response' => array_slice($giftReceivedIds, 0, 5),
+                    'first_10_message_types' => array_map(function($m) { return $m['type'] ?? 'unknown'; }, array_slice($mappedMessages, 0, 10)),
+                    'all_types_count' => array_count_values(array_map(function($m) { return $m['type'] ?? 'unknown'; }, $mappedMessages))
                 ]);
+                
+                // 🔥 FORZAR que gift_received_count sea correcto
+                $responseData['gift_received_count'] = count($finalGiftReceivedCheck);
+                
+                return response()->json($responseData);
 
             } catch (\Exception $e) {
                 \Log::error('❌ Error obteniendo mensajes de chat', [
@@ -2919,6 +3177,7 @@ private function getNotificationMessage($endReason)
                 ], 500);
             }
         }
+        
         private function limpiarDatosRelacionados($roomName)
         {
             // Aquí defines la lógica para limpiar participantes, mensajes, etc.
@@ -3721,11 +3980,16 @@ private function getNotificationMessage($endReason)
             $payableMinutes = floor($durationMinutes);
             $qualifyingSession = $payableMinutes >= 1;
             
-            // Obtener valores dinámicos desde PlatformSettingsService
-            $MODEL_EARNINGS_PER_MINUTE = PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+            // 🔥 Obtener valores dinámicos desde PlatformSettingsService
+            // 30 USD/hora = 0.50 USD/minuto total
+            // 20 USD/hora para modelo = 0.333 USD/minuto
+            // 10 USD/hora para plataforma = 0.167 USD/minuto
+            $MODEL_EARNINGS_PER_MINUTE = PlatformSettingsService::getDecimal('earnings_per_minute', 0.333);
+            $PLATFORM_EARNINGS_PER_MINUTE = PlatformSettingsService::getDecimal('platform_earnings_per_minute', 0.167);
             $COINS_PER_MINUTE = PlatformSettingsService::getInteger('coins_per_minute', 10);
             
             $modelEarnings = $qualifyingSession ? round($payableMinutes * $MODEL_EARNINGS_PER_MINUTE, 2) : 0;
+            $platformEarnings = $qualifyingSession ? round($payableMinutes * $PLATFORM_EARNINGS_PER_MINUTE, 2) : 0;
             $theoreticalCoinsConsumed = ceil($payableMinutes * $COINS_PER_MINUTE);
 
             // 🔥 CREAR SESSION EARNING
@@ -3746,9 +4010,9 @@ private function getNotificationMessage($endReason)
                 'model_time_earnings' => $modelEarnings,
                 'model_gift_earnings' => 0,
                 'model_total_earnings' => $modelEarnings,
-                'platform_time_earnings' => 0,
+                'platform_time_earnings' => $platformEarnings,
                 'platform_gift_earnings' => 0,
-                'platform_total_earnings' => 0,
+                'platform_total_earnings' => $platformEarnings,
                 'gift_count' => 0,
                 'gift_details' => [],
                 'session_started_at' => now()->subSeconds($durationSeconds),
@@ -3763,6 +4027,49 @@ private function getNotificationMessage($endReason)
                 ]
             ]);
 
+            // 🔥 ACTUALIZAR BILLETERA DE LA MODELO CON LOCK Y VALIDACIONES
+            if ($modelEarnings > 0 && is_numeric($modelEarnings)) {
+                try {
+                    // 🔒 USAR LOCK FOR UPDATE PARA EVITAR RACE CONDITIONS
+                    $model = User::lockForUpdate()->find($modeloUserId);
+                    if ($model && ($model->rol === 'modelo' || $model->role === 'modelo')) {
+                        $oldBalance = $model->balance ?? 0;
+                        $oldTotalEarned = $model->total_earned ?? 0;
+                        
+                        $model->increment('balance', $modelEarnings);
+                        $model->increment('total_earned', $modelEarnings);
+                        $model->last_earning_at = now();
+                        
+                        if ($model->save()) {
+                            $model->refresh();
+                            Log::info('💰 [WALLET] Billetera de modelo actualizada desde LiveKitController', [
+                                'model_user_id' => $modeloUserId,
+                                'earnings_added' => $modelEarnings,
+                                'old_balance' => $oldBalance,
+                                'new_balance' => $model->balance,
+                                'old_total_earned' => $oldTotalEarned,
+                                'new_total_earned' => $model->total_earned
+                            ]);
+                        } else {
+                            Log::error('❌ [WALLET] Error al guardar modelo desde LiveKitController', [
+                                'model_user_id' => $modeloUserId
+                            ]);
+                        }
+                    } else {
+                        Log::warning('⚠️ [WALLET] Modelo no encontrada o no es modelo desde LiveKitController', [
+                            'model_user_id' => $modeloUserId,
+                            'found' => !!$model
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('❌ [WALLET] Excepción actualizando billetera desde LiveKitController: ' . $e->getMessage(), [
+                        'model_user_id' => $modeloUserId,
+                        'earnings_amount' => $modelEarnings,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+            }
+            
             Log::info('✅ [EARNINGS] Ganancias creadas', [
                 'earning_id' => $sessionEarning->id,
                 'modelo_earnings' => $modelEarnings,
@@ -3803,15 +4110,24 @@ private function getNotificationMessage($endReason)
             $newPayableMinutes = floor($newDurationMinutes);
             $newQualifying = $newPayableMinutes >= 1;
             
-            // Obtener configuraciones dinámicas desde la base de datos
-            $MODEL_EARNINGS_PER_MINUTE = \App\Services\PlatformSettingsService::getDecimal('earnings_per_minute', 0.24);
+            // 🔥 Obtener configuraciones dinámicas desde la base de datos
+            // 30 USD/hora = 0.50 USD/minuto total
+            // 20 USD/hora para modelo = 0.333 USD/minuto
+            // 10 USD/hora para plataforma = 0.167 USD/minuto
+            $MODEL_EARNINGS_PER_MINUTE = \App\Services\PlatformSettingsService::getDecimal('earnings_per_minute', 0.333);
+            $PLATFORM_EARNINGS_PER_MINUTE = \App\Services\PlatformSettingsService::getDecimal('platform_earnings_per_minute', 0.167);
             $COINS_PER_MINUTE = \App\Services\PlatformSettingsService::getInteger('coins_per_minute', 10);
             
             $newModelEarnings = $newQualifying ? round($newPayableMinutes * $MODEL_EARNINGS_PER_MINUTE, 2) : 0;
+            $newPlatformEarnings = $newQualifying ? round($newPayableMinutes * $PLATFORM_EARNINGS_PER_MINUTE, 2) : 0;
             $newTheoreticalCoins = ceil($newPayableMinutes * $COINS_PER_MINUTE);
 
             // Mantener gift earnings
             $newTotalEarnings = $newModelEarnings + $existingEarning->model_gift_earnings;
+            $newPlatformTotalEarnings = $newPlatformEarnings + ($existingEarning->platform_gift_earnings ?? 0);
+            
+            // 🔥 Calcular diferencia de ganancias para actualizar billetera
+            $earningsDifference = $newModelEarnings - $existingEarning->model_time_earnings;
 
             $existingEarning->update([
                 'session_duration_seconds' => $newDurationSeconds,
@@ -3820,6 +4136,8 @@ private function getNotificationMessage($endReason)
                 'total_coins_spent' => $newTheoreticalCoins + $existingEarning->total_gifts_coins_spent,
                 'model_time_earnings' => $newModelEarnings,
                 'model_total_earnings' => $newTotalEarnings,
+                'platform_time_earnings' => $newPlatformEarnings,
+                'platform_total_earnings' => $newPlatformTotalEarnings,
                 'processed_at' => now(),
                 'metadata' => array_merge($existingEarning->metadata ?? [], [
                     'updated_at' => now()->toISOString(),
@@ -3828,6 +4146,49 @@ private function getNotificationMessage($endReason)
                     'updated_ended_by' => $endedBy
                 ])
             ]);
+            
+            // 🔥 ACTUALIZAR BILLETERA DE LA MODELO CON LA DIFERENCIA (CON LOCK Y VALIDACIONES)
+            if ($earningsDifference > 0 && is_numeric($earningsDifference)) {
+                try {
+                    // 🔒 USAR LOCK FOR UPDATE PARA EVITAR RACE CONDITIONS
+                    $model = User::lockForUpdate()->find($existingEarning->model_user_id);
+                    if ($model && ($model->rol === 'modelo' || $model->role === 'modelo')) {
+                        $oldBalance = $model->balance ?? 0;
+                        $oldTotalEarned = $model->total_earned ?? 0;
+                        
+                        $model->increment('balance', $earningsDifference);
+                        $model->increment('total_earned', $earningsDifference);
+                        $model->last_earning_at = now();
+                        
+                        if ($model->save()) {
+                            $model->refresh();
+                            Log::info('💰 [WALLET] Billetera de modelo actualizada (diferencia)', [
+                                'model_user_id' => $existingEarning->model_user_id,
+                                'earnings_difference' => $earningsDifference,
+                                'old_balance' => $oldBalance,
+                                'new_balance' => $model->balance,
+                                'old_total_earned' => $oldTotalEarned,
+                                'new_total_earned' => $model->total_earned
+                            ]);
+                        } else {
+                            Log::error('❌ [WALLET] Error al guardar modelo (diferencia)', [
+                                'model_user_id' => $existingEarning->model_user_id
+                            ]);
+                        }
+                    } else {
+                        Log::warning('⚠️ [WALLET] Modelo no encontrada o no es modelo (diferencia)', [
+                            'model_user_id' => $existingEarning->model_user_id,
+                            'found' => !!$model
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('❌ [WALLET] Excepción actualizando billetera (diferencia): ' . $e->getMessage(), [
+                        'model_user_id' => $existingEarning->model_user_id,
+                        'earnings_difference' => $earningsDifference,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+            }
 
             Log::info('🔄 Earning actualizado', [
                 'earning_id' => $existingEarning->id,
@@ -4442,12 +4803,16 @@ private function getNotificationMessage($endReason)
                 'reason' => $request->input('reason')
             ]);
 
+            // 🔥 CORRECCIÓN: minutes_remaining debe basarse solo en purchased_balance, NO en remaining_balance (que incluye gift)
+            $purchasedBalance = $result['purchased_balance'] ?? ($result['remaining_balance'] ?? 0);
+            $minutesRemaining = floor($purchasedBalance / VideoChatCoinController::COST_PER_MINUTE);
+            
             return response()->json([
                 'success' => true,
                 'coins_deducted' => $coinsToDeduct,
                 'remaining_balance' => $result['remaining_balance'],
-                'minutes_remaining' => floor($result['remaining_balance'] / VideoChatCoinController::COST_PER_MINUTE),
-                'can_continue' => $result['remaining_balance'] >= VideoChatCoinController::COST_PER_MINUTE
+                'minutes_remaining' => $minutesRemaining, // 🔥 Solo purchased_balance / 10
+                'can_continue' => $purchasedBalance >= VideoChatCoinController::COST_PER_MINUTE // 🔥 Solo purchased_balance para continuar
             ]);
 
         } catch (\Exception $e) {
@@ -4538,10 +4903,28 @@ private function getNotificationMessage($endReason)
                     return $this->handleRoomFinished($event, $roomName);
                     
                 case 'participant_joined':
-                    // Solo loggear, no requiere acción inmediata
+                    // 🔥 VERIFICAR SI HAY UNA DESCONEXIÓN PENDIENTE Y CANCELARLA
+                    $participant = $event['participant'] ?? null;
+                    $participantIdentity = $participant['identity'] ?? null;
+                    
+                    if ($participantIdentity && preg_match('/^user_(\d+)_(cliente|modelo)$/', $participantIdentity, $matches)) {
+                        $userId = (int)$matches[1];
+                        $disconnectionKey = "disconnect_grace_{$roomName}_{$userId}";
+                        
+                        // Si hay una desconexión pendiente, cancelarla
+                        if (Cache::has($disconnectionKey)) {
+                            Cache::forget($disconnectionKey);
+                            Log::info('✅ [LiveKit Webhook] Usuario se reconectó - cancelando notificación pendiente', [
+                                'room_name' => $roomName,
+                                'user_id' => $userId,
+                                'participant_identity' => $participantIdentity
+                            ]);
+                        }
+                    }
+                    
                     Log::info('✅ [LiveKit Webhook] Participante se unió', [
                         'room_name' => $roomName,
-                        'participant_identity' => $event['participant']['identity'] ?? null
+                        'participant_identity' => $participantIdentity
                     ]);
                     return response('OK', 200);
                     
@@ -4638,38 +5021,98 @@ private function getNotificationMessage($endReason)
                 return response('OK', 200);
             }
 
-            // Finalizar ChatSession
-            $chatSession->update([
-                'status' => 'ended',
-                'ended_at' => now(),
-                'end_reason' => 'participant_disconnected'
-            ]);
-
-            // Limpiar VideoChatSession del usuario que se desconectó
-            $this->cleanupVideoChatSession($userId, $roomName, 'participant_left');
-
-            // Notificar al partner
-            $notificationData = [
+            // 🔥 PERÍODO DE GRACIA PARA RECONEXIONES (evitar notificaciones prematuras por refresh)
+            // Esperar 8 segundos antes de enviar la notificación para permitir reconexiones
+            $gracePeriodSeconds = 8;
+            $disconnectionKey = "disconnect_grace_{$roomName}_{$userId}";
+            
+            // Guardar información de la desconexión en cache con TTL
+            Cache::put($disconnectionKey, [
                 'room_name' => $roomName,
-                'partner_id' => $userId,
-                'partner_role' => $userRole,
-                'disconnection_type' => 'participant_left',
-                'timestamp' => now()->toISOString()
-            ];
+                'user_id' => $userId,
+                'user_role' => $userRole,
+                'partner_id' => $partnerId,
+                'partner_role' => $partnerRole,
+                'chat_session_id' => $chatSession->id,
+                'disconnected_at' => now()->toISOString()
+            ], now()->addSeconds($gracePeriodSeconds + 2));
+            
+            Log::info('⏳ [LiveKit Webhook] Iniciando período de gracia para reconexión', [
+                'room_name' => $roomName,
+                'user_id' => $userId,
+                'grace_period_seconds' => $gracePeriodSeconds,
+                'disconnection_key' => $disconnectionKey
+            ]);
+            
+            // Programar la notificación después del período de gracia
+            // Usar un proceso en segundo plano simple con sleep
+            $chatSessionId = $chatSession->id;
+            $roomNameEscaped = addslashes($roomName);
+            $userRoleEscaped = addslashes($userRole);
+            
+            // Crear un script PHP temporal que se ejecutará en segundo plano
+            $script = base_path("storage/app/temp_disconnect_{$userId}_{$chatSessionId}.php");
+            $scriptContent = "<?php
+require '" . base_path("vendor/autoload.php") . "';
+\$app = require_once '" . base_path("bootstrap/app.php") . "';
+\$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 
-            // Enviar notificación según el tipo
-            // Cuando se desconecta CUALQUIERA, el partner siempre recibe 'partner_left_session'
-            // El frontend decidirá qué acción tomar según su rol:
-            // - Si es MODELO → buscar nuevo cliente (find_new_client)
-            // - Si es CLIENTE → buscar nueva modelo (siguiente)
-            NotificationController::sendNotification($partnerId, 'partner_left_session', $notificationData);
+sleep({$gracePeriodSeconds});
 
-            Log::info('✅ [LiveKit Webhook] Desconexión procesada exitosamente', [
+\$disconnectionKey = '{$disconnectionKey}';
+\$disconnectionInfo = \\Illuminate\\Support\\Facades\\Cache::get(\$disconnectionKey);
+
+if (!\$disconnectionInfo) {
+    exit(0); // Usuario se reconectó
+}
+
+\$session = \\App\\Models\\ChatSession::find({$chatSessionId});
+if (\$session && \$session->status === 'active') {
+    // Verificar si el usuario se reconectó
+    if ((\$session->cliente_id === {$userId} && '{$userRoleEscaped}' === 'cliente') ||
+        (\$session->modelo_id === {$userId} && '{$userRoleEscaped}' === 'modelo')) {
+        \\Illuminate\\Support\\Facades\\Cache::forget(\$disconnectionKey);
+        exit(0); // Usuario se reconectó
+    }
+    
+    // Finalizar sesión
+    \$session->update([
+        'status' => 'ended',
+        'ended_at' => now(),
+        'end_reason' => 'participant_disconnected'
+    ]);
+}
+
+// Limpiar VideoChatSession
+\$controller = new \\App\\Http\\Controllers\\LiveKitController();
+\$reflection = new ReflectionClass(\$controller);
+\$method = \$reflection->getMethod('cleanupVideoChatSession');
+\$method->setAccessible(true);
+\$method->invoke(\$controller, {$userId}, '{$roomNameEscaped}', 'participant_left');
+
+// Enviar notificación
+\\App\\Http\\Controllers\\NotificationController::sendNotification({$partnerId}, 'partner_left_session', [
+    'room_name' => '{$roomNameEscaped}',
+    'partner_id' => {$userId},
+    'partner_role' => '{$userRoleEscaped}',
+    'disconnection_type' => 'participant_left',
+    'timestamp' => now()->toISOString()
+]);
+
+\\Illuminate\\Support\\Facades\\Cache::forget(\$disconnectionKey);
+unlink(__FILE__); // Eliminar script temporal
+";
+            
+            file_put_contents($script, $scriptContent);
+            exec("php {$script} > /dev/null 2>&1 &");
+
+            Log::info('⏳ [LiveKit Webhook] Período de gracia iniciado - notificación programada', [
                 'room_name' => $roomName,
                 'disconnected_user_id' => $userId,
                 'disconnected_user_role' => $userRole,
-                'notified_partner_id' => $partnerId,
-                'notified_partner_role' => $partnerRole
+                'partner_id' => $partnerId,
+                'partner_role' => $partnerRole,
+                'grace_period_seconds' => $gracePeriodSeconds
             ]);
 
             return response('OK', 200);

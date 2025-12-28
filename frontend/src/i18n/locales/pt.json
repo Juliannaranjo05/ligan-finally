@@ -8,6 +8,39 @@
   "idioma": "Idioma",
   "iniciarSesion": "Entrar",
   "ayuda": "Ajuda",
+  "helpModal": {
+    "title": "Central de Ajuda",
+    "subtitle": "Tudo o que você precisa saber",
+    "login": {
+      "title": "Como fazer login?",
+      "description": "Para fazer login no Ligando, clique no botão \"Entrar\" no topo da página. Você pode usar seu e-mail e senha, ou fazer login com Google.",
+      "step1": "Clique em \"Entrar\" no cabeçalho",
+      "step2": "Digite seu e-mail e senha, ou use o Google",
+      "step3": "Pronto! Você já pode começar a conversar"
+    },
+    "register": {
+      "title": "Não tem uma conta?",
+      "description": "Criar uma conta no Ligando é muito fácil. Você só precisa de um endereço de e-mail e seguir alguns passos simples.",
+      "step1": "Clique em \"Entrar\"",
+      "step2": "Selecione \"Registre-se aqui\" ou \"Criar conta\"",
+      "step3": "Preencha o formulário e verifique seu e-mail"
+    },
+    "about": {
+      "title": "O que é Ligando?",
+      "description": "Ligando é uma plataforma de chat de vídeo onde você pode se conectar com pessoas de todo o mundo. Você pode conversar, fazer vide chamadas e conhecer novas pessoas de forma segura e divertida."
+    },
+    "faq": {
+      "title": "Perguntas Frequentes",
+      "q1": "É gratuito?",
+      "a1": "O registro é completamente gratuito. Alguns recursos premium podem exigir moedas.",
+      "q2": "Como funcionam as vide chamadas?",
+      "a2": "Você pode iniciar uma vide chamada com qualquer usuário online. As chamadas são feitas em tempo real e são completamente privadas.",
+      "q3": "Preciso verificar minha conta?",
+      "a3": "Sim, após se registrar, você receberá um código de verificação em seu e-mail para ativar sua conta."
+    },
+    "footer": "Precisa de mais ajuda? Entre em contato com nossa equipe de suporte.",
+    "startButton": "Começar agora"
+  },
   "comenzar": "Começar a conversar",
   "subtitulo": "Vídeo chat com pessoas aleatórias instantaneamente",
   "activa": "Ativa",
@@ -149,7 +182,7 @@
     "yourHistory": "Seu Histórico",
     "yourBalance": "Seu Saldo",
     "total": "Total:",
-    "minutes": "Minutos:",
+    "minutes": "Minutos",
     "status": "Status:",
     "insufficientBalance": "❌ Insuficiente",
     "minimumBalance": "⚠️ Mínimo",
@@ -178,7 +211,6 @@
     "coinsClaimedSuccess": "Moedas reivindicadas com sucesso!",
     "claimed": "Reivindicado",
     "coins": "Moedas",
-    "minutes": "Minutos",
     "paymentProblemTitle": "Problema com seu pagamento?",
     "paymentProblemMessage": "Se o pagamento não foi efetuado ou as moedas não foram adicionadas, vá em \"Comprar Moedas\" e revise suas transações. Processe o pagamento pendente ou entre em contato com o suporte se precisar de ajuda."
   },
@@ -917,7 +949,9 @@
       "minimumCharacters": "Mínimo de 8 caracteres",
       "canUseGoogle": "Você pode continuar usando o Google para fazer login",
       "canUseEmail": "Ou usar seu e-mail e senha"
-    }
+    },
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts."
   },
   "subirHistoria": {
     "titulo": "Envie ou grave sua história",
@@ -1009,7 +1043,93 @@
     "gifts": "Presentes",
     "minutes": "Minutos",
     "connected": "Conectado",
-    "connectionEstablished": "Vide chamada estabelecida com sucesso"
+    "connectionEstablished": "Vide chamada estabelecida com sucesso",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "Tempo"
@@ -1052,7 +1172,8 @@
     },
     "hints": {
       "passwordLength": "{{current}}/{{required}} caracteres"
-    },  "google_button": "Continuar com Google"
+    },
+    "google_button": "Continuar com Google"
   },
   "chat": {
     "title": "Chat Privado",
@@ -1268,7 +1389,8 @@
       "redirecting": "Redirecionando...",
       "error_message": "Erro ao verificar o status. Tentando novamente..."
     }
-  },"stopverification": {
+  },
+  "stopverification": {
     "title": "Verificação de identidade",
     "description": "Para começar, você deve ler nossa documentação e aceitar nossos termos.",
     "startButton": "Iniciar verificação",
@@ -1499,70 +1621,71 @@
     "gifts": "Presentes"
   },
   "gifts": {
-      "sendGift": "Enviar Presente",
-      "requestGift": "Pedir Presente", 
-      "forRecipient": "Para {{name}}",
-      "requestFrom": "Solicitar de {{name}}",
-      "clickToSend": "Clique para enviar",
-      "clickToRequest": "Clique para pedir",
-      "yourBalance": "Seu saldo: {{balance}} moedas",
-      "optionalMessage": "Mensagem opcional para acompanhar seu presente:",
-      "optionalRequestMessage": "Mensagem opcional (aparecerá com sua solicitação):",
-      "placeholderGift": "Ex: Você é incrível! 💖",
-      "placeholderRequest": "Ex: Por favor! 🥺",
-      "characters": "{{current}}/{{max}} caracteres",
-      "giftsAvailable": "{{count}} presentes disponíveis",
-      "insufficient": "Faltam {{amount}}",
-      "confirmSend": "Enviar {{giftName}} para {{recipientName}}?\nCusto: {{price}} moedas\nSeu saldo atual: {{balance}} moedas",
-      "giftSent": "{{giftName}} enviado para {{recipientName}}! 🎉",
-      "requestSent": "Solicitação de {{giftName}} enviada para {{recipientName}}! 🎁",
-      "sendingGift": "Enviando presente...",
-      "sendingRequest": "Enviando solicitação...",
-      "invalidGiftId": "Erro: ID do presente inválido",
-      "invalidRecipientId": "Erro: ID do destinatário inválido", 
-      "insufficientBalance": "Moedas insuficientes. Você precisa de {{required}} mas tem {{current}}.",
-      "processingError": "Erro ao processar presente"
-    },"disconnect": {
-      "modelSkippedYou": "A modelo passou para o próximo",
-      "searchedOtherClient": "Procurou outro cliente",
-      "modelDisconnected": "A modelo se desconectou",
-      "endedVideoCall": "Terminou a videochamada",
-      "modelLeft": "A modelo deixou a sala",
-      "leftSession": "Saiu da sessão",
-      "balanceExhausted": "Saldo esgotado",
-      "ranOutOfCoins": "Você ficou sem moedas",
-      "sessionEnded": "Sessão finalizada",
-      "connectionLost": "Conexão perdida",
-      "details": "Detalhes",
-      "dontWorryClient": "Não se preocupe!",
-      "connectingWithOther": "Conectando com outra modelo...",
-      "inSeconds": "Em {{seconds}}s",
-      "connecting": "Conectando...",
-      "keepSufficientCoins": "Mantenha moedas suficientes",
-      "beRespectful": "Seja sempre respeitoso",
-      "eachConnectionUnique": "Cada conexão é única"
-    },
-    "sessionSuspended": {
-      "title": "Uma nova sessão foi aberta em outro dispositivo",
-      "message": "Sua sessão atual foi suspensa porque uma nova sessão foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
-      "continueSession": "Continuar com esta sessão",
-      "reactivating": "Reativando sessão...",
-      "noToken": "Nenhum token disponível",
-      "reactivateError": "Erro ao reativar sessão",
-      "networkError": "Erro de conexão. Por favor, tente novamente."
-    },
-    "sessionClosed": {
-      "title": "Sua conta foi aberta em outro dispositivo",
-      "message": "Sua conta foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
-      "continueSession": "Continuar com esta sessão",
-      "reclaiming": "Reivindicando...",
-      "successTitle": "Sessão reivindicada",
-      "successMessage": "Sua sessão foi reivindicada com sucesso. Recarregando...",
-      "noToken": "Nenhum token disponível",
-      "invalidResponse": "Resposta inválida do servidor",
-      "reclaimError": "Erro ao reivindicar sessão",
-      "networkError": "Erro de conexão. Por favor, tente novamente."
-    },
+    "sendGift": "Enviar Presente",
+    "requestGift": "Pedir Presente",
+    "forRecipient": "Para {{name}}",
+    "requestFrom": "Solicitar de {{name}}",
+    "clickToSend": "Clique para enviar",
+    "clickToRequest": "Clique para pedir",
+    "yourBalance": "Seu saldo: {{balance}} moedas",
+    "optionalMessage": "Mensagem opcional para acompanhar seu presente:",
+    "optionalRequestMessage": "Mensagem opcional (aparecerá com sua solicitação):",
+    "placeholderGift": "Ex: Você é incrível! 💖",
+    "placeholderRequest": "Ex: Por favor! 🥺",
+    "characters": "{{current}}/{{max}} caracteres",
+    "giftsAvailable": "{{count}} presentes disponíveis",
+    "insufficient": "Faltam {{amount}}",
+    "confirmSend": "Enviar {{giftName}} para {{recipientName}}?\nCusto: {{price}} moedas\nSeu saldo atual: {{balance}} moedas",
+    "giftSent": "{{giftName}} enviado para {{recipientName}}! 🎉",
+    "requestSent": "Solicitação de {{giftName}} enviada para {{recipientName}}! 🎁",
+    "sendingGift": "Enviando presente...",
+    "sendingRequest": "Enviando solicitação...",
+    "invalidGiftId": "Erro: ID do presente inválido",
+    "invalidRecipientId": "Erro: ID do destinatário inválido",
+    "insufficientBalance": "Moedas insuficientes. Você precisa de {{required}} mas tem {{current}}.",
+    "processingError": "Erro ao processar presente"
+  },
+  "disconnect": {
+    "modelSkippedYou": "A modelo passou para o próximo",
+    "searchedOtherClient": "Procurou outro cliente",
+    "modelDisconnected": "A modelo se desconectou",
+    "endedVideoCall": "Terminou a videochamada",
+    "modelLeft": "A modelo deixou a sala",
+    "leftSession": "Saiu da sessão",
+    "balanceExhausted": "Saldo esgotado",
+    "ranOutOfCoins": "Você ficou sem moedas",
+    "sessionEnded": "Sessão finalizada",
+    "connectionLost": "Conexão perdida",
+    "details": "Detalhes",
+    "dontWorryClient": "Não se preocupe!",
+    "connectingWithOther": "Conectando com outra modelo...",
+    "inSeconds": "Em {{seconds}}s",
+    "connecting": "Conectando...",
+    "keepSufficientCoins": "Mantenha moedas suficientes",
+    "beRespectful": "Seja sempre respeitoso",
+    "eachConnectionUnique": "Cada conexão é única"
+  },
+  "sessionSuspended": {
+    "title": "Uma nova sessão foi aberta em outro dispositivo",
+    "message": "Sua sessão atual foi suspensa porque uma nova sessão foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
+    "continueSession": "Continuar com esta sessão",
+    "reactivating": "Reativando sessão...",
+    "noToken": "Nenhum token disponível",
+    "reactivateError": "Erro ao reativar sessão",
+    "networkError": "Erro de conexão. Por favor, tente novamente."
+  },
+  "sessionClosed": {
+    "title": "Sua conta foi aberta em outro dispositivo",
+    "message": "Sua conta foi aberta em outro dispositivo. Você pode continuar com esta sessão clicando no botão abaixo.",
+    "continueSession": "Continuar com esta sessão",
+    "reclaiming": "Reivindicando...",
+    "successTitle": "Sessão reivindicada",
+    "successMessage": "Sua sessão foi reivindicada com sucesso. Recarregando...",
+    "noToken": "Nenhum token disponível",
+    "invalidResponse": "Resposta inválida do servidor",
+    "reclaimError": "Erro ao reivindicar sessão",
+    "networkError": "Erro de conexão. Por favor, tente novamente."
+  },
   "earnings": {
     "title": "Sistema de Pagamentos",
     "subtitle": "Ganhos e pagamentos semanais",
@@ -1619,7 +1742,77 @@
       "onlySessions": "Apenas Sessões",
       "onlyGifts": "Apenas Presentes",
       "noSessionEarnings": "Você não tem ganhos por sessões esta semana",
-      "noGiftEarnings": "Você não tem ganhos por presentes esta semana"
+      "noGiftEarnings": "Você não tem ganhos por presentes esta semana",
+      "errorLoadingEarnings": "Error loading weekly earnings",
+      "connectionError": "Connection error"
+    },
+    "pending": {
+      "title": "Total Pending",
+      "subtitle": "payment(s) waiting",
+      "processing": "Processing...",
+      "loadingPending": "Loading pending payments...",
+      "errorLoadingPending": "Error loading pending payments",
+      "allClear": "All clear!",
+      "noPendingPayments": "No pending payments",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessing": "Payments are processed weekly. Your money will arrive soon."
+    },
+    "history": {
+      "title": "Total Paid",
+      "subtitle": "payment(s) completed",
+      "completed": "Completed",
+      "loadingHistory": "Loading history...",
+      "errorLoadingHistory": "Error loading payment history",
+      "noHistory": "No history",
+      "noPayments": "No payments made yet",
+      "week": "Week",
+      "paid": "Paid",
+      "paidOn": "Paid:",
+      "method": "Method:",
+      "reference": "Ref:",
+      "by": "By:",
+      "received": "Received"
+    },
+    "duration": {
+      "lessThanMinute": "< 1 min",
+      "hours": "h",
+      "minutes": "m"
+    },
+    "weekdays": {
+      "monday": "monday",
+      "tuesday": "tuesday",
+      "wednesday": "wednesday",
+      "thursday": "thursday",
+      "friday": "friday",
+      "saturday": "saturday",
+      "sunday": "sunday"
+    },
+    "sourceTypes": {
+      "video_session": "Videochat",
+      "direct_gift": "Direct Gift",
+      "chat_gift": "Chat Gift",
+      "session": "Session"
+    },
+    "pendingPayments": {
+      "loading": "Loading pending payments...",
+      "retry": "Retry",
+      "allClear": "All clear!",
+      "noPendingPayments": "You have no pending payments",
+      "totalPending": "Total Pending",
+      "paymentsWaiting": "payment(s) waiting",
+      "processing": "Processing...",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessingInfo": "💡 Payments are processed weekly. Your money will arrive soon."
     }
   },
   "roulette": {
@@ -1630,7 +1823,9 @@
     "start_button": "Iniciar Busca",
     "random_user_notice": "Você será conectado com um usuário aleatório",
     "default_camera": "Câmera {{number}}",
-    "default_microphone": "Microfone {{number}}"
+    "default_microphone": "Microfone {{number}}",
+    "cameraInUse": "Error: Camera is being used by another application. Please close other applications that may be using the camera (Zoom, Teams, etc.) and reload the page.",
+    "cameraAccessError": "Cannot access camera. Please make sure it is not being used by another application."
   },
   "mirror": {
     "label": "Modo espelho",

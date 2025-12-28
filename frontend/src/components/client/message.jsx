@@ -31,6 +31,7 @@ import {
 import CallingSystem from '../CallingOverlay';
 import IncomingCallOverlay from '../IncomingCallOverlay';
 import { useGiftSystem, GiftMessageComponent, GiftNotificationOverlay, GiftsModal, giftSystemStyles } from '../GiftSystem';
+import { getGiftCardText, translateGift } from '../GiftSystem/giftTranslations';
 import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
 import { createLogger } from '../../utils/logger';
 import { useSessionValidation } from '../hooks/useSessionValidation';
@@ -48,7 +49,43 @@ export default function ChatPrivado() {
   // 🔥 VALIDACIÓN DE SESIÓN: Solo clientes pueden acceder
   useSessionValidation('cliente');
   
+  // 🔥 VALIDACIÓN DE DISPOSITIVO: Solo desktop puede acceder
+  useEffect(() => {
+    // Verificar que no estemos ya en la ruta móvil para evitar loops
+    if (location.pathname === '/mensajesmobileclient') {
+      return;
+    }
+    
+    const checkDevice = () => {
+      const isMobileDevice = window.innerWidth < 768;
+      if (isMobileDevice && location.pathname === '/message') {
+        // Redirigir inmediatamente sin mostrar pantalla de carga
+        navigate('/mensajesmobileclient', { replace: true });
+        return;
+      }
+    };
+    
+    // Verificar al montar inmediatamente
+    checkDevice();
+    
+    // Verificar en resize (solo si cambia a móvil)
+    const handleResize = () => {
+      const isMobileDevice = window.innerWidth < 768;
+      if (isMobileDevice && location.pathname === '/message') {
+        navigate('/mensajesmobileclient', { replace: true });
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [navigate, location.pathname]);
+  
 
+  // 🔥 ESTADO PARA CONTROLAR REDIRECCIÓN MÓVIL
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  
   // 🔥 ESTADOS PRINCIPALES OPTIMIZADOS
   const [usuario, setUsuario] = useState({ id: null, name: "Usuario", rol: "cliente" });
   const [conversaciones, setConversaciones] = useState([]);
@@ -1923,22 +1960,14 @@ useEffect(() => {
   const updateBalance = useCallback(async () => {
   try {
     const authToken = localStorage.getItem('token');
-    if (!authToken) return;
-
-    // OBTENER BALANCE DE COINS (monedas generales)
-    const coinsResponse = await fetch(`${API_BASE_URL}/api/client-balance/my-balance/quick`, {
-      method: 'GET',
-      headers: getAuthHeaders()
-    });
-
-    if (coinsResponse.ok) {
-      const coinsData = await coinsResponse.json();
-      if (coinsData.success) {
-        setUserBalance(coinsData.total_coins || 0);
-      }
+    if (!authToken) {
+      console.warn('⚠️ No hay token de autenticación');
+      return;
     }
 
-    // OBTENER BALANCE DE GIFTS (regalos específicos) - Usar el mismo método que homecliente
+    console.log('💰 [BALANCE] Iniciando carga de balance...');
+
+    // OBTENER BALANCE DE GIFTS (regalos específicos) - Este endpoint devuelve el balance total
     const giftsResponse = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
       method: 'GET',
       headers: getAuthHeaders()
@@ -1947,26 +1976,55 @@ useEffect(() => {
     if (giftsResponse.ok) {
       const giftsData = await giftsResponse.json();
 
-      console.log('💰 Respuesta completa de gift balance:', giftsData);
+      console.log('💰 [BALANCE] Respuesta completa de gift balance:', giftsData);
       
-      if (giftsData.success) {
+      if (giftsData.success && giftsData.balance) {
         // 🔥 FIX: Acceder correctamente a los datos
-        const giftBalanceValue = giftsData.balance?.gift_balance ?? 0;
-        console.log('💰 Gift Balance obtenido del API:', giftBalanceValue);
-        console.log('💰 Estructura de balance:', giftsData.balance);
+        const giftBalanceValue = giftsData.balance.gift_balance ?? 0;
+        const purchasedBalanceValue = giftsData.balance.purchased_balance ?? 0;
+        const totalBalanceValue = giftsData.balance.total_balance ?? (purchasedBalanceValue + giftBalanceValue);
+        
+        console.log('💰 [BALANCE] Valores obtenidos:', {
+          gift_balance: giftBalanceValue,
+          purchased_balance: purchasedBalanceValue,
+          total_balance: totalBalanceValue,
+          estructura_completa: giftsData.balance
+        });
+        
+        // 🔥 ACTUALIZAR AMBOS BALANCES
         setGiftBalance(giftBalanceValue);
+        setUserBalance(totalBalanceValue); // 🔥 SIEMPRE actualizar con el total
+        
+        console.log('✅ [BALANCE] Balance actualizado - Total:', totalBalanceValue, 'Gift:', giftBalanceValue);
       } else {
-        console.error('❌ Error en respuesta de gift balance:', giftsData.error);
+        console.error('❌ [BALANCE] Error en respuesta de gift balance:', giftsData.error || 'No success');
       }
     } else {
       const errorText = await giftsResponse.text().catch(() => 'No se pudo leer el error');
-      console.error('❌ Error HTTP al obtener gift balance:', giftsResponse.status, errorText);
+      console.error('❌ [BALANCE] Error HTTP al obtener gift balance:', giftsResponse.status, errorText);
+    }
+
+    // OBTENER BALANCE DE COINS (monedas generales) como respaldo
+    const coinsResponse = await fetch(`${API_BASE_URL}/api/client-balance/my-balance/quick`, {
+      method: 'GET',
+      headers: getAuthHeaders()
+    });
+
+    if (coinsResponse.ok) {
+      const coinsData = await coinsResponse.json();
+      if (coinsData.success && coinsData.total_coins) {
+        console.log('💰 [BALANCE] Balance de coins obtenido:', coinsData.total_coins);
+        // Si userBalance sigue en 0, usar este valor
+        if (userBalance === 0) {
+          setUserBalance(coinsData.total_coins);
+        }
+      }
     }
 
   } catch (error) {
-    console.error('❌ Excepción al obtener gift balance:', error);
+    console.error('❌ [BALANCE] Excepción al obtener balance:', error);
   }
-  }, []);
+  }, [getAuthHeaders, userBalance]);
 
 useEffect(() => {
   if (usuario.id && usuario.rol === 'cliente') {
@@ -2287,9 +2345,9 @@ const renderMensaje = useCallback((mensaje) => {
             const encodedFileName = encodeURIComponent(cleanPath);
             finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
-          // Agregar nombre del archivo como versión para invalidar caché cuando cambie
-          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
-          imageUrl = `${finalUrl}?v=${version}`;
+          // 🔥 Agregar versión fija basada en el nombre del archivo para evitar caché pero mantener estabilidad
+          const fileHash = fileName ? fileName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15) : 'img';
+          imageUrl = `${finalUrl}?v=${fileHash}`;
         }
       }
       
@@ -2299,7 +2357,7 @@ const renderMensaje = useCallback((mensaje) => {
             <div className="bg-gradient-to-r from-[#ff007a] to-[#cc0062] rounded-full p-2">
               <Gift size={16} className="text-white" />
             </div>
-            <span className="text-pink-100 text-sm font-semibold">Solicitud de Regalo</span>
+            <span className="text-pink-100 text-sm font-semibold">{getGiftCardText('requestGift', i18nInstance.language || 'es', 'Solicitud de Regalo')}</span>
           </div>
           
           {imageUrl && (
@@ -2309,13 +2367,25 @@ const renderMensaje = useCallback((mensaje) => {
                   src={imageUrl} 
                   alt={finalGiftData.gift_name || 'Regalo'}
                   className="w-12 h-12 object-contain"
-                  loading="lazy"
-                  decoding="async"
-                  key={`gift-request-mensajes-cliente-${finalGiftData.gift_name}-${imageUrl}`}
+                  loading="eager"
+                  decoding="sync"
+                  key={`gift-request-${mensaje.id}-${finalGiftData.gift_name}`}
+                  style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    e.target.style.display = 'none';
+                    console.warn('⚠️ Error cargando imagen de regalo:', imageUrl);
+                    // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                    if (fallback) fallback.style.display = 'flex';
+                    if (fallback) {
+                      fallback.style.display = 'flex';
+                      e.target.style.opacity = '0.3';
+                    }
+                  }}
+                  onLoad={(e) => {
+                    // Asegurar que la imagen se muestre cuando carga
+                    e.target.style.display = 'block';
+                    e.target.style.opacity = '1';
+                    const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                    if (fallback) fallback.style.display = 'none';
                   }}
                 />
                 <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
@@ -2327,13 +2397,13 @@ const renderMensaje = useCallback((mensaje) => {
           
           <div className="text-center space-y-2">
             <p className="text-white font-bold text-base">
-              {finalGiftData.gift_name || 'Regalo Especial'}
+              {translateGift({ name: finalGiftData.gift_name, id: finalGiftData.gift_id || finalGiftData.gift_name }, i18nInstance.language || 'es') || getGiftCardText('giftReceived', i18nInstance.language || 'es', 'Regalo Especial')}
             </p>
             
             {finalGiftData.gift_price && (
               <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg px-3 py-1 border border-amber-300/30">
                 <span className="text-amber-200 font-bold text-sm">
-                  ✨ {finalGiftData.gift_price} monedas
+                  ✨ {finalGiftData.gift_price} {getGiftCardText('coins', i18nInstance.language || 'es', 'monedas')}
                 </span>
               </div>
             )}
@@ -2370,16 +2440,26 @@ const renderMensaje = useCallback((mensaje) => {
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         
         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          receivedImageUrl = imagePath;
+          // Si ya es URL completa, mantenerla sin cambios adicionales
+          receivedImageUrl = imagePath.split('?')[0]; // Remover query params existentes
         } else {
           const cleanPath = imagePath.replace(/\\/g, '');
+          let baseImageUrl;
+          
           if (cleanPath.startsWith('storage/')) {
-            receivedImageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            baseImageUrl = `${cleanBaseUrl}/${cleanPath}`;
           } else if (cleanPath.startsWith('/')) {
-            receivedImageUrl = `${cleanBaseUrl}${cleanPath}`;
+            baseImageUrl = `${cleanBaseUrl}${cleanPath}`;
           } else {
-            receivedImageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            // Codificar el nombre del archivo
+            const encodedFileName = encodeURIComponent(cleanPath);
+            baseImageUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
+          
+          // 🔥 Agregar versión fija basada en el nombre del archivo para evitar caché pero mantener estabilidad
+          const fileName = cleanPath.split('/').pop() || cleanPath;
+          const fileHash = fileName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15);
+          receivedImageUrl = `${baseImageUrl}?v=${fileHash}`;
         }
       }
       
@@ -2389,7 +2469,7 @@ const renderMensaje = useCallback((mensaje) => {
             <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-full p-2">
               <Gift size={16} className="text-white" />
             </div>
-            <span className="text-green-100 text-sm font-semibold">¡Regalo Recibido!</span>
+            <span className="text-green-100 text-sm font-semibold">{getGiftCardText('giftReceived', i18nInstance.language || 'es', '¡Regalo Recibido!')}</span>
           </div>
           
           {receivedImageUrl && (
@@ -2399,10 +2479,25 @@ const renderMensaje = useCallback((mensaje) => {
                   src={receivedImageUrl} 
                   alt={finalReceivedGiftData.gift_name || 'Regalo'}
                   className="w-12 h-12 object-contain"
+                  loading="eager"
+                  decoding="sync"
+                  key={`gift-received-${mensaje.id}-${finalReceivedGiftData.gift_name}`}
+                  style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    e.target.style.display = 'none';
+                    console.warn('⚠️ Error cargando imagen de regalo recibido:', receivedImageUrl);
+                    // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                    if (fallback) fallback.style.display = 'flex';
+                    if (fallback) {
+                      fallback.style.display = 'flex';
+                      e.target.style.opacity = '0.3';
+                    }
+                  }}
+                  onLoad={(e) => {
+                    // Asegurar que la imagen se muestre cuando carga
+                    e.target.style.display = 'block';
+                    e.target.style.opacity = '1';
+                    const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                    if (fallback) fallback.style.display = 'none';
                   }}
                 />
                 <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
@@ -2414,7 +2509,7 @@ const renderMensaje = useCallback((mensaje) => {
           
           <div className="text-center space-y-2">
             <p className="text-white font-bold text-base">
-              {finalReceivedGiftData.gift_name || 'Regalo Especial'}
+              {translateGift({ name: finalReceivedGiftData.gift_name, id: finalReceivedGiftData.gift_id || finalReceivedGiftData.gift_name }, i18nInstance.language || 'es') || getGiftCardText('giftReceived', i18nInstance.language || 'es', 'Regalo Especial')}
             </p>
             
             <div className="bg-black/20 rounded-lg p-2 mt-3 border-l-4 border-green-400">
@@ -2439,7 +2534,7 @@ const renderMensaje = useCallback((mensaje) => {
         }
       }
       
-      // Construir URL de imagen
+      // Construir URL de imagen con versión fija para mantener estabilidad
       let sentImageUrl = null;
       if (finalSentGiftData.gift_image) {
         const imagePath = finalSentGiftData.gift_image;
@@ -2447,16 +2542,26 @@ const renderMensaje = useCallback((mensaje) => {
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         
         if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          sentImageUrl = imagePath;
+          // Si ya es URL completa, mantenerla sin cambios adicionales
+          sentImageUrl = imagePath.split('?')[0]; // Remover query params existentes
         } else {
           const cleanPath = imagePath.replace(/\\/g, '');
+          let baseImageUrl;
+          
           if (cleanPath.startsWith('storage/')) {
-            sentImageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            baseImageUrl = `${cleanBaseUrl}/${cleanPath}`;
           } else if (cleanPath.startsWith('/')) {
-            sentImageUrl = `${cleanBaseUrl}${cleanPath}`;
+            baseImageUrl = `${cleanBaseUrl}${cleanPath}`;
           } else {
-            sentImageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            // Codificar el nombre del archivo para preservar caracteres especiales
+            const encodedFileName = encodeURIComponent(cleanPath);
+            baseImageUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
+          
+          // 🔥 Agregar versión fija basada en el nombre del archivo para evitar caché pero mantener estabilidad
+          const fileName = cleanPath.split('/').pop() || cleanPath;
+          const fileHash = fileName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15);
+          sentImageUrl = `${baseImageUrl}?v=${fileHash}`;
         }
       }
       
@@ -2466,7 +2571,7 @@ const renderMensaje = useCallback((mensaje) => {
             <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full p-2">
               <Gift size={16} className="text-white" />
             </div>
-            <span className="text-blue-100 text-sm font-semibold">Regalo Enviado</span>
+            <span className="text-blue-100 text-sm font-semibold">{getGiftCardText('giftSent', i18nInstance.language || 'es', 'Regalo Enviado')}</span>
           </div>
           
           {sentImageUrl && (
@@ -2476,10 +2581,25 @@ const renderMensaje = useCallback((mensaje) => {
                   src={sentImageUrl} 
                   alt={finalSentGiftData.gift_name || 'Regalo'}
                   className="w-12 h-12 object-contain"
+                  loading="eager"
+                  decoding="sync"
+                  key={`gift-sent-${mensaje.id}-${finalSentGiftData.gift_name}`}
+                  style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    e.target.style.display = 'none';
+                    console.warn('⚠️ Error cargando imagen de regalo enviado:', sentImageUrl);
+                    // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
-                    if (fallback) fallback.style.display = 'flex';
+                    if (fallback) {
+                      fallback.style.display = 'flex';
+                      e.target.style.opacity = '0.3';
+                    }
+                  }}
+                  onLoad={(e) => {
+                    // Asegurar que la imagen se muestre cuando carga
+                    e.target.style.display = 'block';
+                    e.target.style.opacity = '1';
+                    const fallback = e.target.parentNode.querySelector('.gift-fallback');
+                    if (fallback) fallback.style.display = 'none';
                   }}
                 />
                 <div className="gift-fallback hidden w-12 h-12 items-center justify-center">
@@ -2491,13 +2611,13 @@ const renderMensaje = useCallback((mensaje) => {
           
           <div className="text-center space-y-2">
             <p className="text-white font-bold text-base">
-              {finalSentGiftData.gift_name || 'Regalo Especial'}
+              {translateGift({ name: finalSentGiftData.gift_name, id: finalSentGiftData.gift_id || finalSentGiftData.gift_name }, i18nInstance.language || 'es') || getGiftCardText('giftSent', i18nInstance.language || 'es', 'Regalo Especial')}
             </p>
             
             {finalSentGiftData.gift_price && (
               <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-lg px-3 py-1 border border-blue-300/30">
                 <span className="text-blue-200 font-bold text-sm">
-                  -{finalSentGiftData.gift_price} monedas
+                  -{finalSentGiftData.gift_price} {getGiftCardText('coins', i18nInstance.language || 'es', 'monedas')}
                 </span>
               </div>
             )}
@@ -2945,8 +3065,30 @@ const renderMensaje = useCallback((mensaje) => {
     }
   }, [usuario.id, getAuthHeaders]);
 
+  // 🔥 Si está redirigiendo, mostrar carga
+  if (isRedirecting) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff007a] mx-auto mb-4"></div>
+          <p className="text-white/60">Redirigiendo...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white overflow-hidden flex flex-col p-4 sm:p-6">
+    <div 
+      className="bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white overflow-hidden flex flex-col p-4 sm:p-6"
+      style={isMobile ? {
+        height: '100vh',
+        height: '-webkit-fill-available',
+        minHeight: '100vh',
+        minHeight: '-webkit-fill-available'
+      } : {
+        height: '100vh'
+      }}
+    >
       <div className="relative">
         <Header />
         
@@ -3673,7 +3815,7 @@ const renderMensaje = useCallback((mensaje) => {
           onRequestGift: handleRequestGift,  // Solo modelos
         } : {
           onSendGift: handleSendGift,       // Solo clientes
-          giftBalance: giftBalance,          // Balance de gift coins (para enviar regalos)
+          userBalance: userBalance + giftBalance,  // 🔥 Balance total (purchased + gift) para mostrar en el modal
         })}
         loading={loadingGift}
       />

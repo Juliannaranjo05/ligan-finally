@@ -1,4 +1,5 @@
 import axios from "../api/axios";
+import axiosDirect from "axios"; // Axios directo sin interceptores para registro y verificación
 import userCache from "./userCache"; // 🔥 IMPORTAR CACHE GLOBAL
 import { useRateLimitHandler } from '../components/RateLimitLigand';
 
@@ -111,17 +112,25 @@ const markUserOffline = async () => {
 // ✅ Registrar usuario
 export const register = async (email, password) => {
   try {
-    const response = await axios.post(`${API_BASE_URL}/api/register`, { email, password }, { skipInterceptor: true });
+    // Usar axios directamente (sin instancia) para evitar el interceptor que podría limpiar el token
+    const response = await axiosDirect.post(`${API_BASE_URL}/api/register`, { email, password });
 
     const token = response.data.access_token;
     if (token) {
       localStorage.setItem("token", token);
-          } else {
-          }
+    } else {
+      throw new Error("No se recibió token de autenticación");
+    }
 
     return response.data;
   } catch (error) {
-        throw error;
+    // Manejar error 429 (Too Many Requests) específicamente
+    if (error.response?.status === 429) {
+      const errorMessage = error.response?.data?.message || "Demasiados intentos. Por favor espera un momento antes de intentar nuevamente.";
+      const retryAfter = error.response?.headers?.['retry-after'] || 60;
+      throw new Error(`${errorMessage} (Intenta de nuevo en ${retryAfter} segundos)`);
+    }
+    throw error;
   }
 };
 
@@ -536,7 +545,8 @@ export const refreshUser = async () => {
 
 // ✅ Verificar código
 export async function verificarCodigo(email, code) {
-    const response = await axios.post(`${API_BASE_URL}/api/verify-email-code`, {
+    // No requiere token según la API, usar axios directamente para evitar el interceptor que podría limpiar el token
+    const response = await axiosDirect.post(`${API_BASE_URL}/api/verify-email-code`, {
     email,
     code,
   });

@@ -38,6 +38,7 @@ use App\Http\Controllers\AdminChatController;
 
 Route::get('/stories', [StoryController::class, 'getActiveStories']);
 Route::get('/stories/active', [StoryController::class, 'getActiveStories']); // Nueva ruta
+Route::post('/logs/frontend', [App\Http\Controllers\ErrorLogController::class, 'storeFrontendLog'])->middleware('throttle:100,1');
 Route::post('/request-password-reset', [SecurityController::class, 'requestPasswordReset']);
 Route::post('/validate-reset-token', [SecurityController::class, 'validateResetToken']);
 Route::post('/reset-password-with-token', [SecurityController::class, 'resetPasswordWithToken']);
@@ -95,7 +96,7 @@ Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin')->group(funct
     Route::post('/weekly-payment', [SessionEarningsController::class, 'processWeeklyPayment']);
 });
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
     
     // 💓 HEARTBEAT - CRÍTICO para mantener sesión (se ejecuta cada 10s)
     Route::post('/heartbeat', [AuthController::class, 'heartbeat']);
@@ -358,6 +359,9 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         // ✅ CLIENTE ACEPTA REGALO (Step 2)
         Route::post('/gifts/requests/{request}/accept', [GiftSystemController::class, 'acceptGiftRequest']);
         
+        // 🎁 CLIENTE ENVÍA REGALO SIMPLE (Endpoint directo sin validaciones complejas)
+        Route::post('/gifts/send-simple', [GiftSystemController::class, 'sendGiftSimple']);
+        
         // ❌ CLIENTE RECHAZA REGALO
         Route::post('/gifts/requests/{request}/reject', [GiftSystemController::class, 'rejectGiftRequest']);
         Route::post('/send-direct', [GiftSystemController::class, 'sendDirectGift']); // Nueva ruta
@@ -471,6 +475,10 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         });
     });
 
+    // Webhook de Wompi - Ruta pública (sin autenticación) porque Wompi lo llama directamente
+    Route::post('/wompi/webhook', [App\Http\Controllers\WompiController::class, 'handleWebhook'])
+        ->middleware('throttle:60,1'); // Rate limiting para prevenir abuso
+
     Route::middleware('auth:sanctum')->group(function () {
         // Wompi routes
         Route::get('/wompi/config', [App\Http\Controllers\WompiController::class, 'getWompiConfig']);
@@ -484,7 +492,7 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     
 
     });
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
     
     // ❌ RUTA DUPLICADA ELIMINADA - Ya existe en línea 70 (AuthController::heartbeat)
     // Route::post('/heartbeat', [HeartbeatController::class, 'updateHeartbeat']);
@@ -617,7 +625,7 @@ Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin/dashboard')->g
 });
 
 Route::middleware(['throttle:30,1'])->post('/login', [AuthController::class, 'loginModel']);
-Route::middleware(['throttle:10,1'])->post('/register', [AuthController::class, 'registerModel']);
+Route::middleware(['throttle:20,1'])->post('/register', [AuthController::class, 'registerModel']);
 Route::middleware(['throttle:20,1'])->post('/verify-email-code', [AuthController::class, 'verifyCode']);
 Route::middleware(['throttle:20,1'])->get('/public-info', fn () => response()->json(['info' => 'Esto es público']));
 Route::middleware(['throttle:60,1'])->get('/admin/verificaciones', [VerificacionController::class, 'indexSinAuth']);
@@ -674,6 +682,70 @@ Route::middleware(['throttle:30,1'])->post('/reclamar-sesion', function (Request
     return response()->json([
         'message' => 'Sesión reclamada correctamente.',
         'nuevo_token' => $nuevoToken,
+    ]);
+});
+
+// 🔥 REACTIVAR SESIÓN - Reactiva la sesión suspendida y suspende la activa
+Route::middleware(['throttle:30,1'])->post('/reactivar-sesion', function (Request $request) {
+    $token = $request->bearerToken();
+
+    if (!$token || !str_contains($token, '|')) {
+        return response()->json(['message' => 'Token inválido o malformado'], 401);
+    }
+
+    $tokenId = explode('|', $token)[0];
+    $suspendedToken = PersonalAccessToken::find($tokenId);
+
+    if (!$suspendedToken) {
+        return response()->json(['message' => 'Token no encontrado'], 401);
+    }
+
+    // Verificar que el token esté suspendido
+    if ($suspendedToken->status !== 'suspended') {
+        return response()->json([
+            'success' => false,
+            'message' => 'El token no está suspendido'
+        ], 400);
+    }
+
+    $user = $suspendedToken->tokenable;
+
+    if (!$user) {
+        return response()->json(['message' => 'Usuario no encontrado'], 404);
+    }
+
+    // Obtener el token activo actual (si existe)
+    $activeTokenId = $user->current_access_token_id;
+    
+    if ($activeTokenId) {
+        $activeToken = PersonalAccessToken::find($activeTokenId);
+        if ($activeToken && $activeToken->status === 'active') {
+            // Suspender el token activo actual
+            $activeToken->update(['status' => 'suspended']);
+            Log::info("⏸️ Suspendiendo token activo para reactivar sesión anterior", [
+                'user' => $user->email,
+                'active_token_id' => $activeTokenId,
+                'suspended_token_id' => $tokenId
+            ]);
+        }
+    }
+
+    // Reactivar el token suspendido
+    $suspendedToken->update(['status' => 'active']);
+    
+    // Actualizar el current_access_token_id al token reactivado
+    $user->current_access_token_id = $tokenId;
+    $user->save();
+
+    Log::info("✅ Sesión reactivada exitosamente para {$user->email}", [
+        'reactivated_token_id' => $tokenId,
+        'previous_active_token_id' => $activeTokenId
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Sesión reactivada correctamente',
+        'token' => $token // Devolver el mismo token (ya está activo)
     ]);
 });
 

@@ -15,9 +15,19 @@ export const checkAndHandleSuspendedSession = async (response) => {
       const codigo = errorData.code || errorData.codigo || '';
       
       if (codigo === 'SESSION_SUSPENDED') {
-        console.warn('⏸️ [SessionUtils] Sesión suspendida detectada - cerrando inmediatamente');
+        const reason = errorData.reason || '';
+        const action = errorData.action || '';
         
-        // 🔥 LIMPIAR TODO Y RECARGAR INMEDIATAMENTE
+        // Solo cerrar inmediatamente si es por reactivación de otra sesión
+        const shouldCloseImmediately = action === 'close_immediately' || 
+                                      reason?.includes('reactivada') || 
+                                      reason?.includes('reactivó') ||
+                                      reason === 'Otra sesión fue reactivada en otro dispositivo';
+        
+        if (shouldCloseImmediately) {
+          console.warn('⏸️ [SessionUtils] Sesión suspendida por reactivación - cerrando inmediatamente');
+        
+          // 🔥 LIMPIAR TODO Y RECARGAR INMEDIATAMENTE solo si es por reactivación
         try {
           localStorage.clear();
           sessionStorage.clear();
@@ -25,11 +35,27 @@ export const checkAndHandleSuspendedSession = async (response) => {
           // Ignorar errores de storage
         }
         
-        // 🔥 RECARGAR INMEDIATAMENTE - Sin delays, sin eventos, sin modales
+          // 🔥 RECARGAR INMEDIATAMENTE - Sin delays
         console.warn('🔄 [SessionUtils] Recargando página...');
         window.location.reload();
         
         return true; // Indica que se recargó
+        }
+        
+        // Si NO es por reactivación, disparar evento para que el modal lo maneje
+        console.info('✅ [SessionUtils] Disparando evento sessionSuspended para que el modal lo maneje');
+        const suspendedEvent = new CustomEvent("sessionSuspended", {
+          detail: {
+            status: response.status,
+            codigo: codigo,
+            code: codigo,
+            reason,
+            action,
+          }
+        });
+        window.dispatchEvent(suspendedEvent);
+        
+        return false; // No se recargó, el modal se encargará
       }
     } catch (error) {
       // Si no se puede parsear el JSON, no es SESSION_SUSPENDED
@@ -53,6 +79,11 @@ export const handleFetchError = async (error) => {
   
   return false;
 };
+
+
+
+
+
 
 
 

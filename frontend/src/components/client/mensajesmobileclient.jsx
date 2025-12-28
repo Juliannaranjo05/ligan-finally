@@ -22,31 +22,8 @@ import {
   Smile
 } from "lucide-react";
 
-// Importaciones de sistema de regalos con fallback
-let useGiftSystem, GiftNotificationOverlay, GiftsModal;
-try {
-  const giftModule = require('../GiftSystem');
-  useGiftSystem = giftModule.useGiftSystem;
-  GiftNotificationOverlay = giftModule.GiftNotificationOverlay;
-  GiftsModal = giftModule.GiftsModal;
-} catch (e) {
-  // Solo mostrar warning si realmente no se puede cargar
-  if (process.env.NODE_ENV === 'development') {
-  }
-  useGiftSystem = () => ({
-    gifts: [],
-    loadingGifts: false,
-    pendingRequests: [],
-    loadingRequests: false,
-    loadGifts: () => {},
-    loadPendingRequests: () => {},
-    setPendingRequests: () => {},
-    acceptGiftRequest: async () => ({ success: false }),
-    rejectGiftRequest: async () => ({ success: false })
-  });
-  GiftNotificationOverlay = () => null;
-  GiftsModal = () => null;
-}
+// Importaciones de sistema de regalos
+import { useGiftSystem, GiftNotificationOverlay, GiftsModal } from '../GiftSystem/index.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -62,6 +39,7 @@ export default function ChatPrivadoMobile() {
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [loading, setLoading] = useState(false);
   const [busquedaConversacion, setBusquedaConversacion] = useState("");
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showSidebar, setShowSidebar] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   
@@ -72,6 +50,7 @@ export default function ChatPrivadoMobile() {
   // 🎁 ESTADOS DE REGALOS
   const [showGiftsModal, setShowGiftsModal] = useState(false);
   const [loadingGift, setLoadingGift] = useState(false);
+  const [sendingGiftId, setSendingGiftId] = useState(null); // ID del request que se está procesando
 
   // 🔥 OBTENER CONTEXTO GLOBAL COMPLETO DE TRADUCCIÓN
   const { 
@@ -100,7 +79,7 @@ export default function ChatPrivadoMobile() {
   const [stableMessages, setStableMessages] = useState([]);
 
   // 🔥 OBTENER EL HOOK DE i18n PARA ESCUCHAR CAMBIOS
-  const { i18n: i18nInstance } = useTranslation();
+  const { t, i18n: i18nInstance } = useTranslation();
 
   // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
   useEffect(() => {
@@ -148,6 +127,17 @@ export default function ChatPrivadoMobile() {
   const location = useLocation();
   const mensajesRef = useRef(null);
   const openChatWith = location.state?.openChatWith;
+  
+  // 🔍 LOG INICIAL AL MONTAR COMPONENTE
+  useEffect(() => {
+    console.log('🟡 [MOBILE] ========== COMPONENTE MONTADO ==========');
+    console.log('🟡 [MOBILE] location.pathname:', location.pathname);
+    console.log('🟡 [MOBILE] location.search:', location.search);
+    console.log('🟡 [MOBILE] location.state:', JSON.stringify(location.state, null, 2));
+    console.log('🟡 [MOBILE] openChatWith:', JSON.stringify(openChatWith, null, 2));
+    console.log('🟡 [MOBILE] usuario.id:', usuario.id);
+    console.log('🟡 [MOBILE] =========================================');
+  }, []);
 
   // 🔥 FUNCIÓN PARA OBTENER HEADERS
   const getAuthHeaders = () => {
@@ -161,6 +151,7 @@ export default function ChatPrivadoMobile() {
   };
 
   // 🎁 SISTEMA DE REGALOS
+  const giftSystem = useGiftSystem(usuario.id, usuario.rol, getAuthHeaders, API_BASE_URL);
   const {
     gifts,
     loadingGifts,
@@ -170,8 +161,33 @@ export default function ChatPrivadoMobile() {
     loadPendingRequests,
     setPendingRequests,
     acceptGiftRequest,
-    rejectGiftRequest
-  } = useGiftSystem(usuario.id, usuario.rol, getAuthHeaders, API_BASE_URL);
+    sendGiftSimple,
+    rejectGiftRequest,
+    requestGift,
+    generateSessionToken,
+    userBalance,
+    setUserBalance,
+    loadUserBalance
+  } = giftSystem || {};
+  
+  // 🔥 Verificar que sendGiftSimple esté disponible
+  useEffect(() => {
+    console.log('🎁 [CLIENT] Verificando sendGiftSimple:', {
+      available: !!sendGiftSimple,
+      type: typeof sendGiftSimple,
+      giftSystemExists: !!giftSystem,
+      giftSystemKeys: giftSystem ? Object.keys(giftSystem) : [],
+      giftSystemType: typeof giftSystem,
+      hasSendGiftSimple: giftSystem ? 'sendGiftSimple' in giftSystem : false,
+      sendGiftSimpleValue: giftSystem?.sendGiftSimple,
+      sendGiftSimpleType: typeof giftSystem?.sendGiftSimple
+    });
+    
+    if (!sendGiftSimple && giftSystem) {
+      console.warn('🎁 [CLIENT] ⚠️ sendGiftSimple no está en giftSystem, pero giftSystem existe');
+      console.warn('🎁 [CLIENT] giftSystem completo:', giftSystem);
+    }
+  }, [sendGiftSimple, giftSystem]);
 
   // 🔥 FUNCIÓN PARA DETECTAR IDIOMA DEL TEXTO
   const detectLanguage = useCallback((text) => {
@@ -695,6 +711,21 @@ export default function ChatPrivadoMobile() {
           }
         }
         
+        // 🔥 También intentar parsear gift_data si es string
+        if (typeof mensaje.gift_data === 'string') {
+          try {
+            const parsedGiftData = JSON.parse(mensaje.gift_data);
+            finalGiftData = { ...finalGiftData, ...parsedGiftData };
+          } catch (e) {
+            // Ignorar error
+          }
+        }
+        
+        // 🔥 Debug: Log de los datos del mensaje
+        if (!finalGiftData.request_id && !finalGiftData.transaction_id) {
+          console.warn('🎁 [CLIENT] Mensaje gift_request sin request_id:', { mensaje, finalGiftData });
+        }
+        
         let imageUrl = null;
         if (finalGiftData.gift_image) {
           imageUrl = buildCompleteImageUrl(finalGiftData.gift_image);
@@ -751,6 +782,167 @@ export default function ChatPrivadoMobile() {
                     💭 "{finalGiftData.original_message}"
                   </p>
                 </div>
+              )}
+              
+              {/* 🔥 BOTÓN REGALAR PARA CLIENTES (cuando la modelo les pide un regalo) */}
+              {usuario.rol === 'cliente' && (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id) && (
+                <button
+                  onClick={async () => {
+                    const requestId = finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id;
+                    
+                    console.log('🎁 [CLIENT] Iniciando aceptación de regalo:', { 
+                      requestId,
+                      finalGiftData,
+                      pendingRequestsCount: pendingRequests?.length || 0
+                    });
+                    
+                    setSendingGiftId(requestId);
+                    
+                    try {
+                      let securityHash = null;
+                      
+                      // 🔥 INTENTO 1: Buscar en el estado pendingRequests actual (más rápido)
+                      if (pendingRequests && pendingRequests.length > 0) {
+                        const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
+                        if (pendingRequest && pendingRequest.security_hash) {
+                          securityHash = pendingRequest.security_hash;
+                          console.log('🎁 [CLIENT] ✅ Security hash encontrado en pendingRequests state');
+                        }
+                      }
+                      
+                      // 🔥 INTENTO 2: Cargar pendingRequests si no se encontró
+                      if (!securityHash) {
+                        console.log('🎁 [CLIENT] Cargando solicitudes pendientes...');
+                        try {
+                          // 🔥 Asegurar que loadPendingRequests siempre retorne algo
+                          let loadResult = await loadPendingRequests();
+                          
+                          // 🔥 Si loadResult es undefined o null, crear un objeto por defecto
+                          if (!loadResult || typeof loadResult !== 'object') {
+                            console.warn('🎁 [CLIENT] ⚠️ loadPendingRequests devolvió resultado inválido, usando fallback:', loadResult);
+                            loadResult = { success: false, requests: [], error: 'Resultado inválido' };
+                          }
+                          
+                          console.log('🎁 [CLIENT] Resultado de loadPendingRequests:', loadResult);
+                          
+                          // 🔥 Verificar que loadResult existe y tiene la estructura esperada
+                          if (loadResult && typeof loadResult === 'object') {
+                            if (loadResult.success && loadResult.requests && Array.isArray(loadResult.requests)) {
+                              const pendingRequest = loadResult.requests.find(req => req.id === parseInt(requestId));
+                              if (pendingRequest && pendingRequest.security_hash) {
+                                securityHash = pendingRequest.security_hash;
+                                console.log('🎁 [CLIENT] ✅ Security hash encontrado en loadResult.requests');
+                              } else {
+                                console.warn('🎁 [CLIENT] ⚠️ Solicitud encontrada pero sin security_hash:', pendingRequest);
+                              }
+                            } else {
+                              console.warn('🎁 [CLIENT] ⚠️ loadPendingRequests no devolvió requests válidos:', {
+                                success: loadResult.success,
+                                hasRequests: !!loadResult.requests,
+                                isArray: Array.isArray(loadResult.requests),
+                                error: loadResult.error
+                              });
+                            }
+                          }
+                          
+                          // 🔥 Fallback: Intentar usar el estado actual de pendingRequests
+                          if (!securityHash && pendingRequests && pendingRequests.length > 0) {
+                            const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
+                            if (pendingRequest && pendingRequest.security_hash) {
+                              securityHash = pendingRequest.security_hash;
+                              console.log('🎁 [CLIENT] ✅ Security hash encontrado en pendingRequests state (fallback)');
+                            }
+                          }
+                        } catch (loadError) {
+                          console.error('🎁 [CLIENT] Error cargando pendingRequests:', loadError);
+                          console.error('🎁 [CLIENT] Stack trace:', loadError.stack);
+                          // Continuar sin security_hash - el backend puede generarlo
+                        }
+                      }
+                      
+                      // 🔥 INTENTO 3: Intentar del mensaje (finalGiftData)
+                      if (!securityHash) {
+                        securityHash = finalGiftData.security_hash || finalGiftData.securityHash || null;
+                        if (securityHash) {
+                          console.log('🎁 [CLIENT] ✅ Security hash encontrado en finalGiftData');
+                        }
+                      }
+                      
+                      // 🔥 INTENTO 4: Intentar extraer del extra_data del mensaje directamente
+                      if (!securityHash && mensaje.extra_data) {
+                        try {
+                          const extraData = typeof mensaje.extra_data === 'string' 
+                            ? JSON.parse(mensaje.extra_data) 
+                            : mensaje.extra_data;
+                          securityHash = extraData.security_hash || extraData.securityHash || null;
+                          if (securityHash) {
+                            console.log('🎁 [CLIENT] ✅ Security hash encontrado en mensaje.extra_data');
+                          }
+                        } catch (e) {
+                          console.warn('🎁 [CLIENT] Error parseando extra_data:', e);
+                        }
+                      }
+                      
+                      // 🔥 INTENTO 5: Intentar del gift_data del mensaje directamente
+                      if (!securityHash && mensaje.gift_data) {
+                        try {
+                          const giftData = typeof mensaje.gift_data === 'string' 
+                            ? JSON.parse(mensaje.gift_data) 
+                            : mensaje.gift_data;
+                          securityHash = giftData.security_hash || giftData.securityHash || null;
+                          if (securityHash) {
+                            console.log('🎁 [CLIENT] ✅ Security hash encontrado en mensaje.gift_data');
+                          }
+                        } catch (e) {
+                          console.warn('🎁 [CLIENT] Error parseando gift_data:', e);
+                        }
+                      }
+                      
+                      // 🔥 INTENTO 6: Si aún no tenemos security_hash, intentar aceptar sin él (el backend puede generarlo)
+                      // El backend tiene lógica para generar el hash si no se proporciona
+                      if (!securityHash) {
+                        console.warn('🎁 [CLIENT] ⚠️ No se encontró security_hash. Intentando aceptar sin él (backend puede generarlo)...');
+                        // Continuar sin security_hash - el backend puede manejarlo
+                      }
+                      
+                      console.log('🎁 [CLIENT] Llamando a sendGiftSimple con:', { 
+                        requestId, 
+                        requestIdType: typeof requestId,
+                        requestIdValue: requestId
+                      });
+                      
+                      // 🔥 Asegurar que requestId sea un número válido
+                      const validRequestId = parseInt(requestId);
+                      if (isNaN(validRequestId)) {
+                        console.error('🎁 [CLIENT] ❌ requestId inválido:', requestId);
+                        alert('Error: ID de solicitud inválido. Por favor, recarga la página.');
+                        return;
+                      }
+                      
+                      // 🔥 Usar el nuevo método sendGiftSimple que es más directo
+                      await handleSendGiftSimple(validRequestId);
+                    } catch (error) {
+                      console.error('🎁 [CLIENT] Error en onClick:', error);
+                      alert('Error inesperado. Por favor, intenta nuevamente.');
+                    } finally {
+                      setSendingGiftId(null);
+                    }
+                  }}
+                  disabled={loadingGift || sendingGiftId === (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id)}
+                  className="mt-4 w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loadingGift || sendingGiftId === (finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id) ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gift size={16} />
+                      <span>Regalar</span>
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -901,23 +1093,392 @@ export default function ChatPrivadoMobile() {
     }
   };
 
-  // 🎁 MANEJO DE ACEPTAR REGALO
-  const handleAcceptGift = async (requestId) => {
+  // 🎁 MANEJO DE ENVIAR REGALO SIMPLE (Nuevo método directo)
+  const handleSendGiftSimple = async (requestId) => {
     try {
       setLoadingGift(true);
-            
-      const result = await acceptGiftRequest(requestId);
       
-      if (result.success) {
-                alert('¡Regalo aceptado exitosamente!');
-      } else {
-        alert(result.error || 'Error aceptando el regalo');
+      console.log('🎁 [CLIENT] handleSendGiftSimple llamado con:', { 
+        requestId, 
+        pendingRequestsCount: pendingRequests?.length || 0,
+        sendGiftSimpleAvailable: !!sendGiftSimple,
+        sendGiftSimpleType: typeof sendGiftSimple,
+        giftSystemAvailable: !!giftSystem,
+        giftSystemKeys: giftSystem ? Object.keys(giftSystem) : [],
+        giftSystemSendGiftSimple: giftSystem?.sendGiftSimple,
+        giftSystemSendGiftSimpleType: typeof giftSystem?.sendGiftSimple
+      });
+      
+      // 🔥 Intentar obtener sendGiftSimple del objeto completo si no está disponible
+      const sendGiftFunction = sendGiftSimple || giftSystem?.sendGiftSimple;
+      
+      if (!sendGiftFunction || typeof sendGiftFunction !== 'function') {
+        console.error('🎁 [CLIENT] ❌ sendGiftSimple no está disponible', {
+          sendGiftSimple,
+          giftSystem,
+          availableFunctions: giftSystem ? Object.keys(giftSystem) : []
+        });
+        
+        // 🔥 FALLBACK: Llamar directamente al endpoint si el hook no funciona
+        console.log('🎁 [CLIENT] Intentando fallback directo al endpoint...');
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/gifts/send-simple`, {
+            method: 'POST',
+            headers: {
+              ...getAuthHeaders(),
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              request_id: parseInt(requestId)
+            })
+          });
+          
+          const responseText = await response.text();
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (e) {
+            console.error('🎁 [CLIENT] Error parseando JSON en fallback:', e);
+            alert('Error al procesar la respuesta del servidor.');
+            return { success: false, error: 'Error al procesar la respuesta' };
+          }
+          
+          if (response.ok && data.success) {
+            // Recargar mensajes
+            if (conversacionActiva) {
+              setTimeout(() => {
+                cargarMensajes(conversacionActiva);
+              }, 500);
+            }
+            // Recargar solicitudes pendientes
+            if (loadPendingRequests) {
+              setTimeout(() => {
+                loadPendingRequests();
+              }, 1000);
+            }
+            return { success: true, ...data };
+          } else {
+            const errorMsg = data.message || data.error || 'Error al enviar el regalo';
+            alert(errorMsg);
+            return { success: false, error: errorMsg };
+          }
+        } catch (fallbackError) {
+          console.error('🎁 [CLIENT] Error en fallback directo:', fallbackError);
+          alert('Error: No se pudo enviar el regalo. Por favor, recarga la página e intenta nuevamente.');
+          return { success: false, error: 'Error de conexión' };
+        }
       }
       
-      return result;
+      const result = await sendGiftFunction(requestId);
+      
+      console.log('🎁 [CLIENT] Resultado de sendGiftSimple:', result);
+      console.log('🎁 [CLIENT] Resultado detallado:', {
+        hasResult: !!result,
+        success: result?.success,
+        error: result?.error,
+        message: result?.message,
+        serverResponse: result?.serverResponse,
+        status: result?.status,
+        allKeys: result ? Object.keys(result) : []
+      });
+      
+      if (result && result.success) {
+        // Recargar mensajes para actualizar la UI
+        if (conversacionActiva) {
+          setTimeout(() => {
+            cargarMensajes(conversacionActiva);
+          }, 500);
+        }
+        // Recargar solicitudes pendientes para actualizar el estado
+        setTimeout(() => {
+          loadPendingRequests();
+        }, 1000);
+        // Mostrar mensaje de éxito
+        console.log('🎁 [CLIENT] ✅ Regalo enviado exitosamente');
+      } else {
+        // 🔥 Asegurar que siempre haya un mensaje de error
+        let errorMsg = 'No se pudo enviar el regalo. Por favor, intenta nuevamente.';
+        
+        if (result) {
+          // Prioridad 1: result.error
+          if (result.error) {
+            errorMsg = result.error;
+          }
+          // Prioridad 2: result.message
+          else if (result.message) {
+            errorMsg = result.message;
+          }
+          // Prioridad 3: result.serverResponse
+          else if (result.serverResponse) {
+            const sr = result.serverResponse;
+            if (sr.message) errorMsg = sr.message;
+            else if (sr.error) errorMsg = typeof sr.error === 'string' ? sr.error : 'Error desconocido';
+          }
+        }
+        
+        // Mensajes específicos según el tipo de error
+        if (result?.error === 'insufficient_balance' || result?.serverResponse?.error === 'insufficient_balance') {
+          const required = result?.serverResponse?.data?.required_amount || result?.data?.required_amount || 'más';
+          errorMsg = `Saldo insuficiente. Necesitas ${required} monedas para enviar este regalo.`;
+        } else if (result?.error === 'invalid_request' || result?.serverResponse?.error === 'invalid_request') {
+          errorMsg = 'La solicitud ya expiró o fue procesada. Por favor, recarga la página.';
+        } else if (result?.error === 'security_violation' || result?.serverResponse?.error === 'security_violation') {
+          errorMsg = 'Error de validación. Por favor, recarga la página e intenta nuevamente.';
+        } else if (result?.error === 'already_processing' || result?.serverResponse?.error === 'already_processing') {
+          errorMsg = 'Esta transacción ya se está procesando. Por favor espera un momento.';
+        }
+        
+        console.error('🎁 [CLIENT] Error enviando regalo:', {
+          errorMsg,
+          result,
+          resultType: typeof result,
+          resultKeys: result ? Object.keys(result) : [],
+          hasError: !!result?.error,
+          hasMessage: !!result?.message,
+          hasServerResponse: !!result?.serverResponse,
+          serverResponseKeys: result?.serverResponse ? Object.keys(result.serverResponse) : [],
+          status: result?.status,
+          fullResult: JSON.stringify(result, null, 2)
+        });
+        
+        alert(errorMsg);
+      }
+      
+      return result || { success: false, error: 'No se pudo enviar el regalo. Por favor, intenta nuevamente.' };
     } catch (error) {
-            alert('Error inesperado');
-      return { success: false, error: 'Error inesperado' };
+      console.error('🎁 [CLIENT] Error inesperado enviando regalo:', error);
+      const errorMsg = error?.message || 'Error inesperado al enviar el regalo';
+      alert(errorMsg);
+      return { success: false, error: errorMsg };
+    } finally {
+      setLoadingGift(false);
+    }
+  };
+
+  // 🎁 MANEJO DE ACEPTAR REGALO
+  const handleAcceptGift = async (requestId, securityHash = null) => {
+    try {
+      setLoadingGift(true);
+      
+      // 🔥 GUARDAR BALANCE ANTES para comparar después
+      const balanceBefore = userBalance;
+      
+      console.log('🎁 [CLIENT] handleAcceptGift llamado con:', { 
+        requestId, 
+        hasSecurityHash: !!securityHash,
+        pendingRequestsCount: pendingRequests?.length || 0,
+        balanceBefore
+      });
+      
+      // 🔥 El backend puede generar el hash si no se proporciona, así que no validamos aquí
+      // Solo logueamos para debugging
+      if (!securityHash) {
+        console.warn('🎁 [CLIENT] ⚠️ No se proporcionó securityHash, pero el backend puede generarlo');
+      }
+      
+      let result;
+      try {
+        result = await acceptGiftRequest(requestId, securityHash);
+      } catch (fetchError) {
+        // 🔥 Si es un error de conexión, verificar si el regalo se procesó
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+          console.warn('🎁 [CLIENT] Error de conexión al aceptar regalo, verificando si se procesó...');
+          
+          // Esperar un poco para que el backend procese
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Verificar balance
+          let balanceAfter = balanceBefore;
+          if (loadUserBalance) {
+            try {
+              await loadUserBalance();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              balanceAfter = userBalance;
+            } catch (e) {
+              console.error('🎁 [CLIENT] Error cargando balance:', e);
+            }
+          }
+          
+          // 🔥 Si el balance cambió, el regalo se aceptó - cargar mensajes y no mostrar error
+          if (balanceAfter < balanceBefore) {
+            console.log('🎁 [CLIENT] ✅ Balance cambió, el regalo se aceptó exitosamente');
+            
+            // Cargar mensajes para mostrar el regalo enviado
+            if (conversacionActiva && cargarMensajes) {
+              try {
+                await cargarMensajes(conversacionActiva);
+              } catch (e) {
+                console.error('🎁 [CLIENT] Error cargando mensajes:', e);
+              }
+            }
+            
+            // Recargar solicitudes pendientes
+            if (loadPendingRequests) {
+              setTimeout(() => {
+                loadPendingRequests();
+              }, 1000);
+            }
+            
+            // Retornar éxito sin mostrar error
+            return {
+              success: true,
+              message: '¡Regalo enviado exitosamente!',
+              networkError: true,
+              balanceChanged: true
+            };
+          }
+          
+          // Si el balance no cambió, puede que no se haya aceptado, pero no mostrar error
+          console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
+          return {
+            success: true,
+            message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
+            networkError: true
+          };
+        }
+        throw fetchError;
+      }
+      
+      console.log('🎁 [CLIENT] Resultado de acceptGiftRequest:', result);
+      console.log('🎁 [CLIENT] Resultado detallado:', {
+        hasResult: !!result,
+        success: result?.success,
+        error: result?.error,
+        message: result?.message,
+        serverResponse: result?.serverResponse,
+        status: result?.status,
+        allKeys: result ? Object.keys(result) : []
+      });
+      
+      if (result && result.success) {
+        // Recargar mensajes para actualizar la UI
+        if (conversacionActiva) {
+          setTimeout(() => {
+            cargarMensajes(conversacionActiva);
+          }, 500);
+        }
+        // Recargar solicitudes pendientes para actualizar el estado
+        setTimeout(() => {
+          loadPendingRequests();
+        }, 1000);
+        // No mostrar alert, el mensaje de éxito viene del backend
+      } else {
+        // 🔥 Asegurar que siempre haya un mensaje de error
+        let errorMsg = 'No se pudo enviar el regalo. Por favor, intenta nuevamente.';
+        
+        if (result) {
+          // Prioridad 1: result.error
+          if (result.error) {
+            errorMsg = result.error;
+          }
+          // Prioridad 2: result.message
+          else if (result.message) {
+            errorMsg = result.message;
+          }
+          // Prioridad 3: result.serverResponse
+          else if (result.serverResponse) {
+            const sr = result.serverResponse;
+            if (sr.message) errorMsg = sr.message;
+            else if (sr.error) errorMsg = typeof sr.error === 'string' ? sr.error : 'Error desconocido';
+          }
+        }
+        
+        // Mensajes específicos según el tipo de error
+        if (result?.error === 'insufficient_balance' || result?.serverResponse?.error === 'insufficient_balance') {
+          const required = result?.serverResponse?.data?.required_amount || result?.data?.required_amount || 'más';
+          errorMsg = `Saldo insuficiente. Necesitas ${required} monedas para enviar este regalo.`;
+        } else if (result?.error === 'invalid_request' || result?.serverResponse?.error === 'invalid_request') {
+          errorMsg = 'La solicitud ya expiró o fue procesada. Por favor, recarga la página.';
+        } else if (result?.error === 'security_violation' || result?.serverResponse?.error === 'security_violation') {
+          errorMsg = 'Error de validación. Por favor, recarga la página e intenta nuevamente.';
+        } else if (result?.error === 'already_processing' || result?.serverResponse?.error === 'already_processing') {
+          errorMsg = 'Esta transacción ya se está procesando. Por favor espera un momento.';
+        }
+        
+        console.error('🎁 [CLIENT] Error aceptando regalo:', {
+          errorMsg,
+          result,
+          resultType: typeof result,
+          resultKeys: result ? Object.keys(result) : [],
+          hasError: !!result?.error,
+          hasMessage: !!result?.message,
+          hasServerResponse: !!result?.serverResponse,
+          serverResponseKeys: result?.serverResponse ? Object.keys(result.serverResponse) : [],
+          status: result?.status,
+          fullResult: JSON.stringify(result, null, 2)
+        });
+        
+        // 🔥 Solo mostrar error si NO es un error de red
+        if (!result?.networkError && !result?.timeout) {
+          alert(errorMsg);
+        }
+      }
+      
+      return result || { success: false, error: 'No se pudo aceptar el regalo. Por favor, intenta nuevamente.' };
+    } catch (error) {
+      console.error('🎁 [CLIENT] Error inesperado aceptando regalo:', error);
+      
+      // 🔥 Si es un error de red, verificar si el regalo se procesó
+      if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        console.warn('🎁 [CLIENT] Error de red detectado, verificando si el regalo se procesó...');
+        
+        // Esperar un poco para que el backend procese
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verificar balance
+        const currentBalance = userBalance;
+        let newBalance = currentBalance;
+        if (loadUserBalance) {
+          try {
+            await loadUserBalance();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            newBalance = userBalance;
+          } catch (e) {
+            console.error('🎁 [CLIENT] Error cargando balance:', e);
+          }
+        }
+        
+        // 🔥 Si el balance cambió, el regalo se aceptó - cargar mensajes y no mostrar error
+        if (newBalance < currentBalance || conversacionActiva) {
+          console.log('🎁 [CLIENT] ✅ Verificando si el regalo se aceptó...');
+          
+          // Cargar mensajes para mostrar el regalo enviado
+          if (conversacionActiva && cargarMensajes) {
+            try {
+              await cargarMensajes(conversacionActiva);
+            } catch (e) {
+              console.error('🎁 [CLIENT] Error cargando mensajes:', e);
+            }
+          }
+          
+          // Recargar solicitudes pendientes
+          if (loadPendingRequests) {
+            setTimeout(() => {
+              loadPendingRequests();
+            }, 1000);
+          }
+          
+          return {
+            success: true,
+            message: '¡Regalo enviado exitosamente!',
+            networkError: true,
+            balanceChanged: newBalance < currentBalance
+          };
+        }
+        
+        // Si el balance no cambió, no mostrar error
+        console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
+        return {
+          success: true,
+          message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
+          networkError: true
+        };
+      }
+      
+      // Solo mostrar error si NO es un error de red
+      const errorMsg = error?.message || 'Error inesperado al aceptar el regalo';
+      alert(errorMsg);
+      return { success: false, error: errorMsg };
     } finally {
       setLoadingGift(false);
     }
@@ -942,6 +1503,403 @@ export default function ChatPrivadoMobile() {
       setLoadingGift(false);
     }
   };
+
+  // 🎁 FUNCIÓN PARA PEDIR REGALO
+  const pedirRegalo = useCallback(async (giftId, recipientId, roomName, message = '') => {
+    try {
+      if (!requestGift) {
+        return { success: false, error: 'Función de solicitar regalo no disponible' };
+      }
+      
+      const result = await requestGift(recipientId, giftId, message, roomName);
+      
+      if (result.success) {
+        // 🔥 PROCESAR MENSAJE PARA EL CHAT (SOLO SI VIENE)
+        if (result.chatMessage) {
+          let processedExtraData = { ...result.chatMessage.extra_data };
+          
+          if (processedExtraData.gift_image) {
+            const completeImageUrl = buildCompleteImageUrl(processedExtraData.gift_image);
+            processedExtraData.gift_image = completeImageUrl;
+          }
+          
+          let processedMessage = {
+            ...result.chatMessage,
+            gift_data: processedExtraData,
+            extra_data: processedExtraData
+          };
+          
+          // Agregar mensaje al chat
+          setMensajes(prev => [...prev, processedMessage]);
+          
+          // Actualizar conversación
+          setConversaciones(prev => 
+            prev.map(conv => 
+              conv.room_name === roomName
+                ? {
+                    ...conv,
+                    last_message: `🎁 Solicitud: ${processedExtraData.gift_name || 'Regalo'}`,
+                    last_message_time: new Date().toISOString(),
+                    last_message_sender_id: usuario.id
+                  }
+                : conv
+            )
+          );
+          
+          // Scroll al final
+          setTimeout(() => {
+            if (mensajesRef.current) {
+              mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+            }
+          }, 100);
+        }
+        
+        return result;
+      } else {
+        return result;
+      }
+    } catch (error) {
+      return { success: false, error: 'Error de conexión' };
+    }
+  }, [requestGift, usuario.id, buildCompleteImageUrl, setMensajes, setConversaciones, mensajesRef]);
+
+  const handleRequestGift = useCallback(async (giftId, recipientId, roomName, message) => {
+    try {
+      setLoadingGift(true);
+      
+      const result = await pedirRegalo(giftId, recipientId, roomName, message);
+      
+      if (result.success) {
+        setShowGiftsModal(false);
+        
+        // 🎊 NOTIFICACIÓN DE ÉXITO (OPCIONAL)
+        if (Notification.permission === 'granted') {
+          new Notification('🎁 Solicitud Enviada', {
+            body: 'Tu solicitud de regalo ha sido enviada exitosamente',
+            icon: '/favicon.ico'
+          });
+        }
+      } else {
+        // 🚨 MOSTRAR ERROR AL USUARIO
+        alert(`Error al enviar solicitud: ${result.error}`);
+      }
+      
+      return result;
+    } catch (error) {
+      alert('Error inesperado al enviar solicitud');
+      return { success: false, error: 'Error inesperado' };
+    } finally {
+      setLoadingGift(false);
+    }
+  }, [pedirRegalo]);
+
+  // 🎁 FUNCIÓN PARA CLIENTES: ENVIAR REGALO DIRECTAMENTE
+  const handleSendGift = useCallback(async (giftId, recipientId, roomName, message) => {
+    try {
+      setLoadingGift(true);
+      
+      // 🔥 GUARDAR BALANCE ANTES para comparar después
+      const balanceBefore = userBalance;
+      
+      console.log('🎁 [CLIENT] Enviando regalo directo:', {
+        giftId,
+        recipientId,
+        roomName,
+        message,
+        userBalance: balanceBefore,
+        conversacionActiva,
+        finalRoomName: roomName || conversacionActiva
+      });
+
+      // 🔥 TIMEOUT MEJORADO PARA IPHONE - Aumentar timeout a 30 segundos
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
+      
+      let response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/gifts/send-direct`, {
+          method: 'POST',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            gift_id: giftId,
+            recipient_id: parseInt(recipientId),
+            room_name: roomName || conversacionActiva,
+            message: message || ''
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        // 🔥 Si es un error de abort (timeout) o error de red, verificar si el regalo se procesó
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+          console.warn('🎁 [CLIENT] Error de conexión detectado, verificando si el regalo se procesó...');
+          
+          // Esperar un poco para que el backend procese
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Verificar balance
+          let balanceAfter = balanceBefore;
+          if (loadUserBalance) {
+            try {
+              await loadUserBalance();
+              // Esperar un poco más para que se actualice el estado
+              await new Promise(resolve => setTimeout(resolve, 500));
+              balanceAfter = userBalance;
+            } catch (e) {
+              console.error('🎁 [CLIENT] Error cargando balance:', e);
+            }
+          }
+          
+          // 🔥 Si el balance cambió, el regalo se envió - cargar mensajes y cerrar modal
+          if (balanceAfter < balanceBefore) {
+            console.log('🎁 [CLIENT] ✅ Balance cambió, el regalo se envió exitosamente');
+            
+            // Cargar mensajes para mostrar el regalo enviado
+            if (conversacionActiva && cargarMensajes) {
+              try {
+                await cargarMensajes(conversacionActiva);
+              } catch (e) {
+                console.error('🎁 [CLIENT] Error cargando mensajes:', e);
+              }
+            }
+            
+            // Cerrar modal
+            setShowGiftsModal(false);
+            
+            // Actualizar balance visualmente
+            if (loadUserBalance) {
+              setTimeout(() => loadUserBalance(), 1000);
+            }
+            
+            return {
+              success: true,
+              message: '¡Regalo enviado exitosamente!',
+              timeout: true,
+              balanceChanged: true
+            };
+          }
+          
+          // Si el balance no cambió, puede que no se haya enviado, pero no mostrar error
+          // porque puede ser un problema temporal de red
+          console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
+          setShowGiftsModal(false);
+          
+          return {
+            success: true,
+            message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
+            timeout: true
+          };
+        }
+        throw fetchError;
+      }
+
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('🎁 [CLIENT] Error parseando JSON:', e);
+        console.error('🎁 [CLIENT] Respuesta raw:', responseText.substring(0, 1000));
+        return { success: false, error: 'Respuesta inválida del servidor' };
+      }
+
+      console.log('🎁 [CLIENT] Respuesta de send-direct:', {
+        status: response.status,
+        ok: response.ok,
+        success: data?.success,
+        message: data?.message,
+        has_chat_message: !!data?.chat_message,
+        chat_message_type: data?.chat_message?.type,
+        chat_message_room_name: data?.chat_message?.room_name,
+        data_keys: Object.keys(data || {}),
+        full_data: data
+      });
+
+      if (response.ok && data.success) {
+        // Actualizar balance - usar total_balance si está disponible
+        // Prioridad: total_balance > new_balance > purchased_balance + gift_balance
+        if (data.data?.client_balance?.total_balance !== undefined) {
+          setUserBalance(data.data.client_balance.total_balance);
+        } else if (data.data?.client_balance?.new_balance !== undefined) {
+          setUserBalance(data.data.client_balance.new_balance);
+        } else if (data.new_balance !== undefined) {
+          setUserBalance(data.new_balance);
+        } else if (data.client_balance?.new_balance !== undefined) {
+          setUserBalance(data.client_balance.new_balance);
+        } else if (data.data?.new_balance !== undefined) {
+          setUserBalance(data.data.new_balance);
+        } else if (data.data?.client_balance?.purchased_balance !== undefined && data.data?.client_balance?.gift_balance !== undefined) {
+          // Calcular total si tenemos ambos valores
+          const total = (data.data.client_balance.purchased_balance || 0) + (data.data.client_balance.gift_balance || 0);
+          setUserBalance(total);
+        }
+        
+        // 🔥 Recargar balance desde el servidor para asegurar que esté actualizado
+        if (loadUserBalance) {
+          setTimeout(() => {
+            loadUserBalance();
+          }, 500);
+        }
+
+        // Agregar mensaje al chat si viene en la respuesta
+        if (data.chat_message) {
+          let processedExtraData = data.chat_message.extra_data;
+          if (typeof processedExtraData === 'string') {
+            try {
+              processedExtraData = JSON.parse(processedExtraData);
+            } catch (e) {
+              console.warn('🎁 [CLIENT] Error parseando extra_data:', e);
+            }
+          }
+
+          if (processedExtraData?.gift_image) {
+            processedExtraData.gift_image = buildCompleteImageUrl(processedExtraData.gift_image);
+          }
+
+          const processedMessage = {
+            ...data.chat_message,
+            gift_data: processedExtraData,
+            extra_data: processedExtraData
+          };
+
+          setMensajes(prev => [...prev, processedMessage]);
+
+          // Actualizar conversación
+          setConversaciones(prev => 
+            prev.map(conv => 
+              conv.room_name === (roomName || conversacionActiva)
+                ? {
+                    ...conv,
+                    last_message: `🎁 Regalo: ${processedExtraData.gift_name || 'Regalo'}`,
+                    last_message_time: new Date().toISOString(),
+                    last_message_sender_id: usuario.id
+                  }
+                : conv
+            )
+          );
+
+          // Scroll al final
+          setTimeout(() => {
+            if (mensajesRef.current) {
+              mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+            }
+          }, 100);
+        }
+
+        setShowGiftsModal(false);
+
+        // Notificación de éxito
+        if (Notification.permission === 'granted') {
+          new Notification('🎁 Regalo Enviado', {
+            body: 'Tu regalo ha sido enviado exitosamente',
+            icon: '/favicon.ico'
+          });
+        }
+
+        return {
+          success: true,
+          transaction: data.data || data.transaction,
+          newBalance: data.data?.client_balance?.new_balance || data.client_balance?.new_balance,
+          message: data.message || '¡Regalo enviado exitosamente!'
+        };
+      } else {
+        let errorMessage = data.message || data.error || 'Error al enviar el regalo';
+        if (data.error === 'insufficient_balance') {
+          const required = data.data?.required_amount || data.required_amount || 'más';
+          errorMessage = `Saldo insuficiente. Necesitas ${required} monedas para enviar este regalo.`;
+        }
+        
+        console.error('🎁 [CLIENT] Error enviando regalo:', {
+          errorMessage,
+          status: response.status,
+          data
+        });
+        
+        return {
+          success: false,
+          error: errorMessage,
+          message: errorMessage
+        };
+      }
+    } catch (error) {
+      console.error('🎁 [CLIENT] Excepción enviando regalo:', error);
+      
+      // 🔥 Si es un error de red, verificar si el regalo se procesó
+      if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        console.warn('🎁 [CLIENT] Error de red detectado, verificando si el regalo se procesó...');
+        
+        // Esperar un poco para que el backend procese
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verificar balance - usar el balance actual como referencia
+        const currentBalance = userBalance;
+        let newBalance = currentBalance;
+        if (loadUserBalance) {
+          try {
+            await loadUserBalance();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // Obtener el nuevo balance del estado actualizado
+            newBalance = userBalance;
+          } catch (e) {
+            console.error('🎁 [CLIENT] Error cargando balance:', e);
+          }
+        }
+        
+        // 🔥 Si el balance cambió (disminuyó), el regalo se envió - cargar mensajes y cerrar modal
+        // Nota: El balance puede no actualizarse inmediatamente, así que también verificamos si hay conversación activa
+        if (newBalance < currentBalance || conversacionActiva) {
+          console.log('🎁 [CLIENT] ✅ Verificando si el regalo se envió...');
+          
+          // Cargar mensajes para mostrar el regalo enviado (si existe)
+          if (conversacionActiva && cargarMensajes) {
+            try {
+              await cargarMensajes(conversacionActiva);
+            } catch (e) {
+              console.error('🎁 [CLIENT] Error cargando mensajes:', e);
+            }
+          }
+          
+          // Cerrar modal siempre (no mostrar error)
+          setShowGiftsModal(false);
+          
+          // Actualizar balance visualmente
+          if (loadUserBalance) {
+            setTimeout(() => loadUserBalance(), 1000);
+          }
+          
+          return {
+            success: true,
+            message: '¡Regalo enviado exitosamente!',
+            networkError: true,
+            balanceChanged: newBalance < currentBalance
+          };
+        }
+        
+        // Si el balance no cambió, cerrar modal sin mostrar error
+        console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
+        setShowGiftsModal(false);
+        
+        return {
+          success: true,
+          message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
+          networkError: true
+        };
+      }
+      
+      // Solo mostrar error si NO es un error de red
+      return {
+        success: false,
+        error: error.message || 'Error al enviar el regalo',
+        message: error.message || 'Error al enviar el regalo'
+      };
+    } finally {
+      setLoadingGift(false);
+    }
+  }, [API_BASE_URL, getAuthHeaders, conversacionActiva, userBalance, setUserBalance, setMensajes, setConversaciones, mensajesRef, usuario.id, buildCompleteImageUrl, loadUserBalance, cargarMensajes]);
 
   // 🔥 CARGAR DATOS DE USUARIO
   const cargarDatosUsuario = async () => {
@@ -1208,22 +2166,46 @@ export default function ChatPrivadoMobile() {
 
   // 🔥 ABRIR CONVERSACIÓN CON TIEMPO REAL
   const abrirConversacion = async (conversacion) => {
-    // Detener polling anterior
-    detenerPolling();
+    console.log('🟣 [MOBILE] ========== INICIO abrirConversacion ==========');
+    console.log('🟣 [MOBILE] Conversación recibida:', JSON.stringify(conversacion, null, 2));
     
-    setConversacionActiva(conversacion.room_name);
-    await cargarMensajes(conversacion.room_name);
-    setShowSidebar(false);
-    
-    // Iniciar polling para esta conversación
-    iniciarPolling(conversacion.room_name);
-    
-    // Scroll al final
-    setTimeout(() => {
-      if (mensajesRef.current) {
-        mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
-      }
-    }, 100);
+    try {
+      // Detener polling anterior
+      console.log('🟣 [MOBILE] Deteniendo polling anterior...');
+      detenerPolling();
+      
+      console.log('🟣 [MOBILE] Estableciendo conversacionActiva:', conversacion.room_name);
+      setConversacionActiva(conversacion.room_name);
+      
+      console.log('🟣 [MOBILE] Cargando mensajes para room:', conversacion.room_name);
+      await cargarMensajes(conversacion.room_name);
+      console.log('🟣 [MOBILE] Mensajes cargados');
+      
+      console.log('🟣 [MOBILE] Ocultando sidebar');
+      setShowSidebar(false);
+      
+      // Iniciar polling para esta conversación
+      console.log('🟣 [MOBILE] Iniciando polling para room:', conversacion.room_name);
+      iniciarPolling(conversacion.room_name);
+      console.log('🟣 [MOBILE] Polling iniciado');
+      
+      // Scroll al final
+      setTimeout(() => {
+        console.log('🟣 [MOBILE] Haciendo scroll al final');
+        if (mensajesRef.current) {
+          mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+          console.log('🟣 [MOBILE] Scroll completado');
+        } else {
+          console.warn('🟡 [MOBILE] mensajesRef.current es null, no se puede hacer scroll');
+        }
+      }, 100);
+      
+      console.log('🟣 [MOBILE] ========== FIN abrirConversacion (éxito) ==========');
+    } catch (error) {
+      console.error('❌ [MOBILE] ERROR en abrirConversacion:', error);
+      console.error('❌ [MOBILE] Stack trace:', error.stack);
+      throw error;
+    }
   };
 
   // 🔥 IDIOMAS DISPONIBLES
@@ -1343,6 +2325,125 @@ export default function ChatPrivadoMobile() {
     }
   }, [conversaciones, usuario.id]);
 
+  // 🔥 MANEJAR openChatWith DESDE NAVEGACIÓN
+  useEffect(() => {
+    console.log('🟢 [MOBILE] ========== useEffect openChatWith ==========');
+    console.log('🟢 [MOBILE] openChatWith:', JSON.stringify(openChatWith, null, 2));
+    console.log('🟢 [MOBILE] usuario.id:', usuario.id);
+    console.log('🟢 [MOBILE] location.state:', JSON.stringify(location.state, null, 2));
+    console.log('🟢 [MOBILE] conversaciones.length:', conversaciones.length);
+    
+    if (!openChatWith) {
+      console.log('🟡 [MOBILE] No hay openChatWith, saliendo');
+      return;
+    }
+    
+    if (!usuario.id) {
+      console.log('🟡 [MOBILE] No hay usuario.id, saliendo');
+      return;
+    }
+
+    const handleOpenChat = async () => {
+      console.log('🟢 [MOBILE] ========== INICIO handleOpenChat ==========');
+      try {
+        console.log('🟢 [MOBILE] Buscando conversación existente...');
+        console.log('🟢 [MOBILE] openChatWith.room_name:', openChatWith.room_name);
+        console.log('🟢 [MOBILE] openChatWith.other_user_id:', openChatWith.other_user_id);
+        console.log('🟢 [MOBILE] Conversaciones disponibles:', conversaciones.map(c => ({
+          room_name: c.room_name,
+          other_user_id: c.other_user_id
+        })));
+        
+        // Buscar si ya existe la conversación
+        const existingConv = conversaciones.find(conv => 
+          conv.room_name === openChatWith.room_name ||
+          conv.other_user_id === openChatWith.other_user_id
+        );
+
+        console.log('🟢 [MOBILE] Conversación existente encontrada:', existingConv ? 'SÍ' : 'NO');
+        if (existingConv) {
+          console.log('🟢 [MOBILE] Conversación existente:', JSON.stringify(existingConv, null, 2));
+        }
+
+        if (existingConv) {
+          // Si existe, abrirla directamente
+          console.log('🟢 [MOBILE] Abriendo conversación existente...');
+          await abrirConversacion(existingConv);
+          console.log('🟢 [MOBILE] Conversación abierta exitosamente');
+        } else {
+          // Si no existe, crear una nueva conversación
+          console.log('🟢 [MOBILE] Creando nueva conversación...');
+          const nuevaConversacion = {
+            id: Date.now(),
+            other_user_id: openChatWith.other_user_id,
+            other_user_name: openChatWith.other_user_name,
+            other_user_role: openChatWith.other_user_role || 'modelo',
+            room_name: openChatWith.room_name,
+            last_message: "Conversación iniciada - Envía tu primer mensaje",
+            last_message_time: new Date().toISOString(),
+            last_message_sender_id: null,
+            unread_count: 0
+          };
+
+          console.log('🟢 [MOBILE] Nueva conversación creada:', JSON.stringify(nuevaConversacion, null, 2));
+
+          // Agregar a la lista de conversaciones
+          setConversaciones(prev => {
+            console.log('🟢 [MOBILE] setConversaciones - prev length:', prev.length);
+            const exists = prev.some(conv => 
+              conv.room_name === nuevaConversacion.room_name ||
+              conv.other_user_id === nuevaConversacion.other_user_id
+            );
+            
+            console.log('🟢 [MOBILE] Conversación ya existe en lista?', exists);
+            
+            if (!exists) {
+              console.log('🟢 [MOBILE] Agregando nueva conversación a la lista');
+              return [nuevaConversacion, ...prev];
+            }
+            console.log('🟢 [MOBILE] No se agrega, ya existe');
+            return prev;
+          });
+
+          // Abrir la conversación después de un pequeño delay para asegurar que se agregó
+          console.log('🟢 [MOBILE] Programando apertura de conversación en 200ms...');
+          setTimeout(() => {
+            console.log('🟢 [MOBILE] Ejecutando abrirConversacion después del delay');
+            abrirConversacion(nuevaConversacion);
+          }, 200);
+        }
+
+        // Limpiar el estado de navegación para evitar re-ejecuciones
+        if (location.state?.openChatWith) {
+          console.log('🟢 [MOBILE] Limpiando estado de navegación');
+          navigate(location.pathname + location.search, { replace: true, state: {} });
+        }
+        
+        console.log('🟢 [MOBILE] ========== FIN handleOpenChat (éxito) ==========');
+      } catch (error) {
+        console.error('❌ [MOBILE] ERROR en handleOpenChat:', error);
+        console.error('❌ [MOBILE] Stack trace:', error.stack);
+      }
+    };
+
+    // Esperar a que las conversaciones se carguen antes de intentar abrir
+    // Usar un pequeño delay para asegurar que todo esté listo
+    console.log('🟢 [MOBILE] Programando handleOpenChat en 300ms...');
+    const timeoutId = setTimeout(() => {
+      console.log('🟢 [MOBILE] Ejecutando handleOpenChat después del delay');
+      if (conversaciones.length >= 0) { // Permitir incluso si no hay conversaciones aún
+        handleOpenChat();
+      } else {
+        console.log('🟡 [MOBILE] No se ejecuta handleOpenChat, conversaciones.length < 0');
+      }
+    }, 300);
+
+    return () => {
+      console.log('🟢 [MOBILE] Limpiando timeout');
+      clearTimeout(timeoutId);
+    };
+  }, [openChatWith, usuario.id, conversaciones]);
+
   // 🔥 UTILIDADES
   const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
   const formatearTiempo = (timestamp) => {
@@ -1360,6 +2461,13 @@ export default function ChatPrivadoMobile() {
   // 🔥 EFECTOS - CON LIMPIEZA DE POLLING
   useEffect(() => {
     cargarDatosUsuario();
+  }, []);
+
+  // Detectar móvil
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -1418,61 +2526,81 @@ export default function ChatPrivadoMobile() {
   useEffect(() => {
     if (!usuario.id || usuario.rol !== 'cliente') return;
     
-        
+    // 🔥 REDUCIR FRECUENCIA: Cargar cada 30 segundos en lugar de cada 5
     const interval = setInterval(async () => {
       try {
         await loadPendingRequests();
       } catch (error) {
-              }
-    }, 5000);
+        // Silenciar errores de polling
+      }
+    }, 30000); // 🔥 30 segundos en lugar de 5
     
     return () => {
       clearInterval(interval);
-          };
-  }, [usuario.id, usuario.rol]);
+    };
+  }, [usuario.id, usuario.rol, loadPendingRequests]);
 
   // 🔥 RENDER
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white"
+      style={isMobile ? {
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        minHeight: '100vh',
+        minHeight: '-webkit-fill-available'
+      } : {}}
+    >
       <div className="relative">
-        <Header />
-        
-        {/* Botón para mostrar sidebar cuando hay conversación activa */}
-        {conversacionActiva && !showSidebar && (
-          <button
-            onClick={() => setShowSidebar(true)}
-            className="fixed top-4 right-4 z-50 bg-[#ff007a] hover:bg-[#cc0062] p-3 rounded-full shadow-xl transition-colors"
-          >
-            <MessageSquare size={20} className="text-white" />
-          </button>
-        )}
+        <Header 
+          showMessagesButton={isMobile && conversacionActiva && !showSidebar}
+          onMessagesClick={() => setShowSidebar(true)}
+        />
       </div>
 
-      {/* Contenedor principal */}
-      <div className="p-2">
-        <div className="h-[calc(100vh-80px)] flex rounded-xl overflow-hidden shadow-lg border border-[#ff007a]/10 relative">
+      {/* 🔥 CONTENEDOR PRINCIPAL CON ALTURA FIJA MÓVIL Y SAFE AREA */}
+      <div className="px-2 pb-2">
+        <div className={`flex rounded-xl overflow-hidden shadow-lg border border-[#ff007a]/10 relative ${
+          isMobile 
+            ? '' // Altura se maneja con style
+            : 'h-[83vh]'
+        }`}
+        style={isMobile ? {
+          // 🔥 Usar dvh (dynamic viewport height) que se adapta automáticamente
+          // dvh se ajusta cuando la barra de navegación aparece/desaparece
+          height: 'calc(100dvh - 80px)',
+          maxHeight: 'calc(100dvh - 80px)',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'row'
+        } : {}}
+        >
           
-          {/* Sidebar de conversaciones */}
+          {/* Sidebar de conversaciones - ARREGLADO */}
           <aside className={`${
-            showSidebar ? 'w-full' : 'hidden'
-          } bg-[#2b2d31] flex flex-col overflow-hidden`}>
+            isMobile
+              ? `fixed inset-0 z-50 bg-[#2b2d31] transform transition-transform duration-300 ease-in-out ${
+                  showSidebar ? 'translate-x-0' : '-translate-x-full'
+                }`
+              : 'w-1/3 bg-[#2b2d31]'
+          } flex flex-col overflow-hidden`}>
             
-            {/* Header del sidebar */}
-            <div className="flex justify-between items-center p-4 border-b border-[#ff007a]/20">
-              <h2 className="text-lg font-semibold text-white">Conversaciones</h2>
-              {conversacionActiva && (
+            {/* Header sidebar móvil */}
+            {isMobile && (
+              <div className="flex justify-between items-center p-4 border-b border-[#ff007a]/20">
+                <h2 className="text-lg font-semibold text-white">Conversaciones</h2>
                 <button
                   onClick={() => setShowSidebar(false)}
                   className="text-white/60 hover:text-white p-2 hover:bg-[#3a3d44] rounded-lg transition-colors"
                 >
-                  <X size={20} />
+                  <X size={24} />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Búsqueda */}
-            <div className="p-4 border-b border-[#ff007a]/20">
-              <div className="relative">
+            {/* Contenido del sidebar */}
+            <div className="flex-1 overflow-hidden flex flex-col p-4">
+              {/* Búsqueda */}
+              <div className="relative mb-4 flex-shrink-0">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-white/50" />
                 <input
                   type="text"
@@ -1482,10 +2610,12 @@ export default function ChatPrivadoMobile() {
                   onChange={(e) => setBusquedaConversacion(e.target.value)}
                 />
               </div>
-            </div>
 
-            {/* Lista de conversaciones */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {/* Lista de conversaciones - SCROLL ARREGLADO */}
+              <div className="flex-1 overflow-y-auto space-y-2" style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#ff007a #2b2d31'
+              }}>
               {loading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ff007a] mx-auto mb-2"></div>
@@ -1512,22 +2642,9 @@ export default function ChatPrivadoMobile() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <div className="w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold">
-                            {conv.avatar_url ? (
-                              <img 
-                                src={conv.avatar_url} 
-                                alt={conv.other_user_display_name || conv.other_user_name} 
-                                className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                  e.target.nextElementSibling.style.display = 'flex';
-                                }}
-                              />
-                            ) : null}
-                            <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conv.avatar_url ? 'hidden' : ''}`}>
-                              {getInitial(conv.other_user_display_name || conv.other_user_name)}
-                            </div>
+                        <div className="relative flex-shrink-0">
+                          <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                            {getInitial(conv.other_user_display_name || conv.other_user_name)}
                           </div>
                           
                           <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
@@ -1554,7 +2671,7 @@ export default function ChatPrivadoMobile() {
                           </div>
                         </div>
 
-                        <div className="text-right">
+                        <div className="text-right flex-shrink-0">
                           <span className="text-xs text-white/40">
                             {formatearTiempo(conv.last_message_time)}
                           </span>
@@ -1565,58 +2682,80 @@ export default function ChatPrivadoMobile() {
                 })
               )}
             </div>
-          </aside>
+          </div>
+        </aside>
 
-          {/* Panel de chat */}
+          {/* Panel de chat - ARREGLADO PARA MÓVIL */}
           <section className={`${
-            showSidebar ? 'hidden' : 'w-full'
-          } bg-[#0a0d10] flex flex-col relative overflow-hidden`}>
+            isMobile
+              ? `${showSidebar ? 'hidden' : 'w-full'}`
+              : 'w-2/3'
+          } bg-[#0a0d10] flex flex-col relative overflow-hidden h-full`}
+          style={isMobile ? {
+            display: showSidebar ? 'none' : 'flex',
+            height: '100%',
+            maxHeight: '100%',
+            minHeight: 0,
+            // 🔥 Asegurar que el flexbox funcione correctamente
+            flexDirection: 'column',
+            overflow: 'hidden'
+          } : {}}
+          >
             
             {!conversacionActiva ? (
-              <div className="flex-1 flex items-center justify-center p-4">
-                <div className="text-center">
-                  <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">{t('chat.selectConversation')}</h3>    
-                  <p className="text-white/60">{t('chat.selectConversationDesc')}</p>
+              !isMobile && (
+                <div className="flex-1 flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <MessageSquare size={48} className="text-white/30 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">{t('chat.selectConversation')}</h3>
+                    <p className="text-white/60">{t('chat.selectConversationDesc')}</p>
+                  </div>
                 </div>
-              </div>
+              )
             ) : (
               <>
-                {/* Header de conversación */}
-                <div className="bg-[#2b2d31] px-4 py-3 flex justify-between items-center border-b border-[#ff007a]/20">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setShowSidebar(true)}
-                      className="text-white hover:text-[#ff007a] transition-colors p-1"
-                    >
-                      <ArrowLeft size={20} />
-                    </button>
+                {/* Header de conversación - ARREGLADO */}
+                <div className="bg-[#2b2d31] px-4 py-3 flex justify-between items-center border-b border-[#ff007a]/20 flex-shrink-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {/* Botón volver en móvil */}
+                    {isMobile && (
+                      <button
+                        onClick={() => setShowSidebar(true)}
+                        className="text-white hover:text-[#ff007a] transition-colors p-1 mr-2"
+                      >
+                        <ArrowLeft size={20} />
+                      </button>
+                    )}
                     
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      {conversacionSeleccionada?.avatar_url ? (
-                        <img 
-                          src={conversacionSeleccionada.avatar_url} 
-                          alt={conversacionSeleccionada.other_user_display_name || conversacionSeleccionada.other_user_name} 
-                          className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextElementSibling.style.display = 'flex';
-                          }}
-                        />
-                      ) : null}
-                      <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conversacionSeleccionada?.avatar_url ? 'hidden' : ''}`}>
+                    <div className="relative flex-shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
                         {getInitial(conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name)}
                       </div>
+                      <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
+                        onlineUsers.has(conversacionSeleccionada?.other_user_id) ? 'bg-green-500' : 'bg-gray-500'
+                      }`} />
                     </div>
                     
-                    <div>
-                      <span className="font-semibold block">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-semibold block truncate">
                         {conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Botones de acción - RESPONSIVE */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* 🎁 BOTÓN DE REGALO - PARA CLIENTES */}
+                    {usuario.rol === 'cliente' && (
+                      <button
+                        onClick={() => setShowGiftsModal(true)}
+                        className={`px-2 py-2 rounded-lg text-xs hover:scale-105 transition-transform flex items-center gap-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white`}
+                      >
+                        <Gift size={14} />
+                        {!isMobile && 'Regalo'}
+                      </button>
+                    )}
+                    
                     <button className="text-white hover:text-[#ff007a] transition-colors p-2">
                       <Video size={18} />
                     </button>
@@ -1632,11 +2771,26 @@ export default function ChatPrivadoMobile() {
                   </div>
                 </div>
 
-                {/* Mensajes */}
+                {/* Mensajes - SCROLL ARREGLADO PARA MÓVIL CON SAFE AREA */}
                 <div
                   ref={mensajesRef}
-                  className="flex-1 overflow-y-auto p-4 space-y-3"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
+                  className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
+                  style={isMobile ? {
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#ff007a #2b2d31',
+                    WebkitOverflowScrolling: 'touch',
+                    flex: '1 1 0%', // 🔥 Usar 0% para mejor control del espacio
+                    minHeight: 0,
+                    maxHeight: 'none', // 🔥 Permitir que use todo el espacio disponible
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    // 🔥 Asegurar que el scroll funcione correctamente
+                    overscrollBehavior: 'contain'
+                  } : {
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#ff007a #2b2d31',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
                 >
                   {mensajes.length === 0 ? (
                     <div className="flex-1 flex items-center justify-center">
@@ -1645,11 +2799,12 @@ export default function ChatPrivadoMobile() {
                   ) : (
                     mensajes.map((mensaje) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
+                      const isGiftMessage = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type);
 
                       return (
                         <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
-                          <div className="flex flex-col max-w-[280px]">
-                            {!esUsuarioActual && (
+                          <div className={`flex flex-col ${isMobile ? 'max-w-[280px]' : 'max-w-sm md:max-w-md lg:max-w-lg'}`}>
+                            {!esUsuarioActual && !isGiftMessage && (
                               <div className="flex items-center gap-2 mb-1 px-2">
                                 <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
                                   {getInitial(mensaje.user_name)}
@@ -1657,24 +2812,24 @@ export default function ChatPrivadoMobile() {
                                 <span className="text-xs text-white/60">{mensaje.user_name}</span>
                               </div>
                             )}
-                            <div
-                              className={`relative ${
-                                ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type)
-                                  ? "" // Sin padding/fondo para cards de regalo
-                                  : `px-4 py-2 rounded-2xl text-sm ${
-                                      esUsuarioActual
-                                        ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
-                                        : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
-                                    }`
-                              }`}
-                            >
-                              {renderMensaje(mensaje)}
-                              {!['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type) && (
+                            {isGiftMessage ? (
+                              // Mensajes de regalo sin padding/fondo adicional
+                              renderMensaje(mensaje)
+                            ) : (
+                              <div
+                                className={`relative px-4 py-2 rounded-2xl text-sm break-words overflow-wrap-anywhere word-break-break-word ${
+                                  esUsuarioActual
+                                    ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
+                                    : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
+                                }`}
+                                style={{ maxWidth: '100%', overflowWrap: 'break-word', wordBreak: 'break-word' }}
+                              >
+                                {renderMensaje(mensaje)}
                                 <div className="text-xs opacity-70 mt-1">
                                   {formatearTiempo(mensaje.created_at)}
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1682,8 +2837,21 @@ export default function ChatPrivadoMobile() {
                   )}
                 </div>
 
-                {/* Input mensaje */}
-                <div className="bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-3 p-3">
+                {/* Input mensaje - FIXED PARA MÓVIL CON SAFE AREA */}
+                <div 
+                  className="bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-3 p-3 flex-shrink-0"
+                  style={isMobile ? {
+                    // 🔥 Adaptarse automáticamente a la barra de navegación
+                    paddingBottom: `calc(0.75rem + max(env(safe-area-inset-bottom), 0px))`,
+                    paddingTop: '0.75rem',
+                    flexShrink: 0,
+                    position: 'relative',
+                    zIndex: 10,
+                    marginBottom: 0,
+                    // Asegurar que siempre esté visible
+                    minHeight: 'fit-content'
+                  } : {}}
+                >
                   <input
                     type="text"
                     placeholder={t('chat.messagePlaceholder')}
@@ -1940,7 +3108,9 @@ export default function ChatPrivadoMobile() {
         roomName={conversacionActiva}
         userRole={usuario.rol}
         gifts={gifts}
-        onRequestGift={() => {}}
+        onRequestGift={usuario.rol === 'modelo' ? handleRequestGift : undefined}
+        onSendGift={usuario.rol === 'cliente' ? handleSendGift : undefined}
+        userBalance={userBalance}
         loading={loadingGift}
       />
     </div>

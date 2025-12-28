@@ -10,6 +10,7 @@ import {
   TranslatedMessage
 } from '../../utils/translationSystem.jsx';
 import { useGlobalTranslation } from '../../contexts/GlobalTranslationContext';
+import { useSessionValidation } from '../hooks/useSessionValidation';
 
 import {
   MessageSquare,
@@ -23,6 +24,7 @@ import {
   Settings,
   Globe,
   ArrowRight,
+  ArrowLeft,
   X,
   Bell
 } from "lucide-react";
@@ -36,6 +38,16 @@ import { useGlobalCall } from '../../contexts/GlobalCallContext.jsx';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivado() {
+  // 🔥 DEBUG: Log para verificar que el componente se monta
+  useEffect(() => {
+    console.log('🟢 [MENSAJES] Componente montado');
+    console.log('🟢 [MENSAJES] User Agent:', navigator.userAgent);
+    console.log('🟢 [MENSAJES] Es móvil:', window.innerWidth < 768);
+  }, []);
+  
+  // 🔥 VALIDACIÓN DE SESIÓN: Solo modelos pueden acceder
+  useSessionValidation('modelo');
+  
   const { settings: translationSettings, setSettings: setTranslationSettings, languages } = useCustomTranslation();
   const { translateGlobalText, isEnabled: globalTranslationEnabled, changeGlobalLanguage, currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
   const location = useLocation();
@@ -49,6 +61,7 @@ export default function ChatPrivado() {
   const [conversacionActiva, setConversacionActiva] = useState(null);
   const [mensajes, setMensajes] = useState([]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true); // 🔥 Estado de carga inicial
   
   // Estados UI simplificados
   const [loading, setLoading] = useState(false);
@@ -411,13 +424,16 @@ useEffect(() => {
         name: userData.name || userData.alias || `Usuario_${userData.id}`,
         rol: userData.rol
       });
+      setInitialLoading(false); // 🔥 Marcar como cargado
     } catch (error) {
+            console.error('Error cargando usuario:', error);
             // 🔥 USAR DATOS DE EJEMPLO COMO FALLBACK
             setUsuario({
         id: 1,
         name: "Usuario Demo",
         rol: "cliente"
       });
+      setInitialLoading(false); // 🔥 Marcar como cargado incluso en error
     }
   }, []);
 
@@ -2151,10 +2167,91 @@ const cargarMensajes = useCallback(async (roomName) => {
   }, [openChatWith]);
 
   
+  // 🔥 DEBUG: Log del estado
+  useEffect(() => {
+    console.log('🟡 [MENSAJES] Estado actual:', {
+      initialLoading,
+      usuarioId: usuario.id,
+      usuarioRol: usuario.rol,
+      conversacionesCount: conversaciones.length,
+      isMobile
+    });
+  }, [initialLoading, usuario.id, usuario.rol, conversaciones.length, isMobile]);
+  
+  // 🔥 Mostrar loading mientras se carga el usuario inicialmente
+  if (initialLoading) {
+    console.log('🟡 [MENSAJES] Mostrando pantalla de carga');
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white flex items-center justify-center" style={{
+        minHeight: '100vh',
+        minHeight: '-webkit-fill-available',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999
+      }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#ff007a] mx-auto mb-4"></div>
+          <p className="text-white/60">Cargando mensajes...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  console.log('🟢 [MENSAJES] Renderizando componente principal');
+  
+  // 🔥 TEST: Renderizar versión simplificada primero para debug
+  if (isMobile && !usuario.id) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#1a1c20',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 99999,
+        padding: '20px'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ fontSize: '24px', marginBottom: '20px' }}>🟡 Cargando usuario...</h1>
+          <p>Usuario ID: {usuario.id || 'null'}</p>
+          <p>Rol: {usuario.rol || 'null'}</p>
+          <p>Es móvil: {isMobile ? 'Sí' : 'No'}</p>
+        </div>
+      </div>
+    );
+  }
+  
   return (
-  <div className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white">
+  <div 
+    className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white" 
+    style={isMobile ? {
+      minHeight: '100vh',
+      minHeight: '-webkit-fill-available',
+      height: '100vh',
+      height: '-webkit-fill-available',
+      position: 'relative',
+      width: '100%',
+      overflow: 'hidden',
+      backgroundColor: '#1a1c20' // 🔥 Forzar color de fondo
+    } : {
+      position: 'relative',
+      width: '100%',
+      backgroundColor: '#1a1c20'
+    }}
+  >
+    {/* 🔥 DEBUG: Verificar que el contenido se renderiza */}
+    {console.log('🟢 [MENSAJES] Renderizando contenido principal')}
+    
     {/* 🔥 AGREGAR META VIEWPORT SI NO EXISTE */}
-    <div className="relative">
+    <div className="relative" style={{ zIndex: 1, position: 'relative' }}>
       <Header />
       
       {/* Botón chat móvil - ARREGLADO */}
@@ -2173,13 +2270,28 @@ const cargarMensajes = useCallback(async (roomName) => {
       )}
     </div>
 
-    {/* 🔥 CONTENEDOR PRINCIPAL CON ALTURA FIJA MÓVIL */}
-    <div className="px-2 pb-2">
+    {/* 🔥 CONTENEDOR PRINCIPAL CON ALTURA FIJA MÓVIL - ARREGLADO PARA iOS */}
+    <div className="px-2 pb-2" style={{ 
+      position: 'relative',
+      zIndex: 1,
+      width: '100%',
+      height: isMobile ? 'calc(100vh - 80px)' : 'auto',
+      minHeight: isMobile ? 'calc(100vh - 80px)' : 'auto'
+    }}>
       <div className={`flex rounded-xl overflow-hidden shadow-lg border border-[#ff007a]/10 relative ${
         isMobile 
-          ? 'h-[calc(100vh-80px)] min-h-[500px]' // Altura fija en móvil
+          ? 'min-h-[500px]' // Altura mínima en móvil
           : 'h-[83vh]'
-      }`}>
+      }`} style={isMobile ? {
+        height: 'calc(100vh - 80px)',
+        minHeight: 'calc(100vh - 80px)',
+        maxHeight: 'calc(100vh - 80px)',
+        WebkitOverflowScrolling: 'touch',
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: 1,
+        backgroundColor: '#2b2d31'
+      } : {}}>
         
         {/* Sidebar de conversaciones - ARREGLADO */}
         <aside className={`${

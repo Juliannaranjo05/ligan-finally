@@ -8,6 +8,39 @@
   "idioma": "Dil",
   "iniciarSesion": "Giriş Yap",
   "ayuda": "Yardım",
+  "helpModal": {
+    "title": "Yardım Merkezi",
+    "subtitle": "Bilmeniz gereken her şey",
+    "login": {
+      "title": "Nasıl giriş yapılır?",
+      "description": "Ligando'ya giriş yapmak için sayfanın üstündeki \"Giriş Yap\" butonuna tıklayın. E-posta ve şifrenizi kullanabilir veya Google ile giriş yapabilirsiniz.",
+      "step1": "Başlıktaki \"Giriş Yap\"a tıklayın",
+      "step2": "E-posta ve şifrenizi girin veya Google kullanın",
+      "step3": "Hazır! Sohbet etmeye başlayabilirsiniz"
+    },
+    "register": {
+      "title": "Hesabınız yok mu?",
+      "description": "Ligando'da hesap oluşturmak çok kolay. Sadece bir e-posta adresine ihtiyacınız var ve birkaç basit adımı takip etmeniz yeterli.",
+      "step1": "\"Giriş Yap\"a tıklayın",
+      "step2": "\"Buradan kaydol\" veya \"Hesap oluştur\"u seçin",
+      "step3": "Formu doldurun ve e-postanızı doğrulayın"
+    },
+    "about": {
+      "title": "Ligando nedir?",
+      "description": "Ligando, dünyanın dört bir yanından insanlarla bağlantı kurabileceğiniz bir video sohbet platformudur. Güvenli ve eğlenceli bir şekilde sohbet edebilir, video aramaları yapabilir ve yeni insanlarla tanışabilirsiniz."
+    },
+    "faq": {
+      "title": "Sık Sorulan Sorular",
+      "q1": "Ücretsiz mi?",
+      "a1": "Kayıt tamamen ücretsizdir. Bazı premium özellikler jeton gerektirebilir.",
+      "q2": "Video aramaları nasıl çalışır?",
+      "a2": "Herhangi bir çevrimiçi kullanıcıyla video araması başlatabilirsiniz. Aramalar gerçek zamanlı olarak yapılır ve tamamen özeldir.",
+      "q3": "Hesabımı doğrulamam gerekiyor mu?",
+      "a3": "Evet, kayıt olduktan sonra hesabınızı etkinleştirmek için e-postanıza bir doğrulama kodu gönderilecektir."
+    },
+    "footer": "Daha fazla yardıma mı ihtiyacınız var? Destek ekibimizle iletişime geçin.",
+    "startButton": "Şimdi başla"
+  },
   "comenzar": "Sohbete Başla",
   "subtitulo": "Anında rastgele kişilerle online video sohbet",
   "activa": "Aktif",
@@ -148,7 +181,7 @@
     "yourHistory": "Geçmişiniz",
     "yourBalance": "Bakiyeniz",
     "total": "Toplam:",
-    "minutes": "Dakika:",
+    "minutes": "Dakika",
     "status": "Durum:",
     "insufficientBalance": "❌ Yetersiz",
     "minimumBalance": "⚠️ Minimum",
@@ -177,7 +210,6 @@
     "coinsClaimedSuccess": "Jetonlar başarıyla talep edildi!",
     "claimed": "Talep Edildi",
     "coins": "Jetonlar",
-    "minutes": "Dakika",
     "paymentProblemTitle": "Ödeme sorunu mu var?",
     "paymentProblemMessage": "Ödeme yapılmadıysa veya jetonlar eklenmediyse, \"Jeton Satın Al\" bölümüne gidin ve işlemlerinizi kontrol edin. Bekleyen ödemeyi işleyin veya yardıma ihtiyacınız varsa destek ile iletişime geçin."
   },
@@ -273,7 +305,8 @@
     },
     "hints": {
       "passwordLength": "{{current}}/{{required}} karakter"
-    },  "google_button": "Google ile devam et"
+    },
+    "google_button": "Google ile devam et"
   },
   "verification": {
     "title": "E-posta doğrulama",
@@ -932,7 +965,9 @@
       "minimumCharacters": "En az 8 karakter",
       "canUseGoogle": "Giriş yapmak için Google'ı kullanmaya devam edebilirsiniz",
       "canUseEmail": "Veya e-posta ve şifrenizi kullanın"
-    }
+    },
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts."
   },
   "subirHistoria": {
     "titulo": "Hikavenizi yükleyin veya kaydedin",
@@ -1018,7 +1053,93 @@
     "gifts": "Hediyeler",
     "minutes": "Dakika",
     "connected": "Bağlı",
-    "connectionEstablished": "Video araması başarıyla kuruldu"
+    "connectionEstablished": "Video araması başarıyla kuruldu",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "Süre"
@@ -1195,7 +1316,13 @@
       "next": "Sonraki",
       "loadingEarnings": "Kazançlar yükleniyor...",
       "errorLoadingEarnings": "Haftalık kazançlar yüklenirken hata",
-      "connectionError": "Bağlantı hatası"
+      "connectionError": "Bağlantı hatası",
+      "records": "records",
+      "retry": "Retry",
+      "onlySessions": "Sessions Only",
+      "onlyGifts": "Gifts Only",
+      "noSessionEarnings": "You have no session earnings this week",
+      "noGiftEarnings": "You have no gift earnings this week"
     },
     "pending": {
       "title": "Toplam Beklemede",
@@ -1242,6 +1369,28 @@
       "friday": "cuma",
       "saturday": "cumartesi",
       "sunday": "pazar"
+    },
+    "sourceTypes": {
+      "video_session": "Videochat",
+      "direct_gift": "Direct Gift",
+      "chat_gift": "Chat Gift",
+      "session": "Session"
+    },
+    "pendingPayments": {
+      "loading": "Loading pending payments...",
+      "retry": "Retry",
+      "allClear": "All clear!",
+      "noPendingPayments": "You have no pending payments",
+      "totalPending": "Total Pending",
+      "paymentsWaiting": "payment(s) waiting",
+      "processing": "Processing...",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessingInfo": "💡 Payments are processed weekly. Your money will arrive soon."
     }
   },
   "preCallLobby": {
@@ -1431,7 +1580,8 @@
       "fileTooLarge": "Dosyalar çok büyük. Lütfen video boyutunu küçültün.",
       "genericError": "Doğrulama gönderilirken hata oluştu. Lütfen tekrar deneyin."
     }
-  },"paymentMethods": {
+  },
+  "paymentMethods": {
     "errorLoadingMethods": "Ödeme yöntemleri yüklenirken hata",
     "noMethodsAvailable": "Ödeme Yöntemleri Mevcut Değil",
     "noMethodsDescription": "Şu anda yapılandırılmış ödeme yöntemi bulunmamaktadır. Lütfen destek ile iletişime geçin.",
@@ -1473,21 +1623,16 @@
     }
   },
   "buttons": {
-    "buyCoins": "Jeton Satın Al",
-    "rechargeNow": "Şimdi Yükle",
-    "cancel": "İptal"
+    "buy": "Satın Al",
+    "send": "Gönder",
+    "back": "Geri"
   },
   "balance": {
-    "yourBalance": "Bakiyeniz",
-    "total": "Toplam",
-    "totalCoins": "Toplam jeton:",
-    "minutes": "Dakika:",
-    "status": "Durum",
-    "insufficient": "Yetersiz",
-    "minimum": "Minimum",
-    "stable": "Stabil",
-    "currentStatus": "Mevcut durum:",
-    "minimumRequired": "Minimum gerekli:"
+    "purchased": "Satın alınan",
+    "giftMinutes": "Hediye (dakika)",
+    "giftCoins": "hediye jetonları",
+    "received": "Alınan",
+    "sent": "Gönderilen"
   },
   "modals": {
     "insufficientBalanceTitle": "Yetersiz Bakiye",
@@ -1496,7 +1641,8 @@
   "tips": {
     "tipOfTheDay": "💡 Günün ipucu",
     "dailyTip": "Kesintisiz keyif almak için her zaman pozitif bakiye bulundurun."
-  },"wompi": {
+  },
+  "wompi": {
     "loading": "Wompi yükleniyor...",
     "poweredBy": "Powered by Wompi - Kolombiya'da güvenli ödemeler",
     "payWithWompi": "Wompi ile Öde",
@@ -1590,48 +1736,36 @@
     "perCoin": "jeton başına",
     "bonusCoins": "Bonus jetonlar"
   },
-  "balance": {
-    "purchased": "Satın alınan",
-    "giftMinutes": "Hediye (dakika)",
-    "giftCoins": "hediye jetonları",
-    "received": "Alınan",
-    "sent": "Gönderilen"
-  },
-  "buttons": {
-    "buy": "Satın Al",
-    "send": "Gönder",
-    "back": "Geri"
-  },
   "common": {
     "coins": "jeton",
     "minutes": "Dakika",
     "gifts": "Hediyeler"
   },
   "gifts": {
-      "sendGift": "Hediye Gönder",
-      "requestGift": "Hediye İste", 
-      "forRecipient": "{{name}} için",
-      "requestFrom": "{{name}}'den iste",
-      "clickToSend": "Göndermek için tıklayın",
-      "clickToRequest": "İstemek için tıklayın",
-      "yourBalance": "Bakiyeniz: {{balance}} jeton",
-      "optionalMessage": "Hediyeniz için isteğe bağlı mesaj:",
-      "optionalRequestMessage": "İsteğe bağlı mesaj (isteğinizle birlikte görünecek):",
-      "placeholderGift": "Örn: Harikasın! 💖",
-      "placeholderRequest": "Örn: Lütfen! 🥺",
-      "characters": "{{current}}/{{max}} karakter",
-      "giftsAvailable": "{{count}} hediye mevcut",
-      "insufficient": "{{amount}} eksik",
-      "confirmSend": "{{giftName}} hediyesini {{recipientName}}'e gönder?\nMaliyet: {{price}} jeton\nMevcut bakiyeniz: {{balance}} jeton",
-      "giftSent": "{{giftName}} {{recipientName}}'e gönderildi! 🎉",
-      "requestSent": "{{giftName}} isteği {{recipientName}}'e gönderildi! 🎁",
-      "sendingGift": "Hediye gönderiliyor...",
-      "sendingRequest": "İstek gönderiliyor...",
-      "invalidGiftId": "Hata: Geçersiz hediye ID'si",
-      "invalidRecipientId": "Hata: Geçersiz alıcı ID'si", 
-      "insufficientBalance": "Yetersiz jeton. {{required}} gerekli ama {{current}} var.",
-      "processingError": "Hediye işlenirken hata"
-    },
+    "sendGift": "Hediye Gönder",
+    "requestGift": "Hediye İste",
+    "forRecipient": "{{name}} için",
+    "requestFrom": "{{name}}'den iste",
+    "clickToSend": "Göndermek için tıklayın",
+    "clickToRequest": "İstemek için tıklayın",
+    "yourBalance": "Bakiyeniz: {{balance}} jeton",
+    "optionalMessage": "Hediyeniz için isteğe bağlı mesaj:",
+    "optionalRequestMessage": "İsteğe bağlı mesaj (isteğinizle birlikte görünecek):",
+    "placeholderGift": "Örn: Harikasın! 💖",
+    "placeholderRequest": "Örn: Lütfen! 🥺",
+    "characters": "{{current}}/{{max}} karakter",
+    "giftsAvailable": "{{count}} hediye mevcut",
+    "insufficient": "{{amount}} eksik",
+    "confirmSend": "{{giftName}} hediyesini {{recipientName}}'e gönder?\nMaliyet: {{price}} jeton\nMevcut bakiyeniz: {{balance}} jeton",
+    "giftSent": "{{giftName}} {{recipientName}}'e gönderildi! 🎉",
+    "requestSent": "{{giftName}} isteği {{recipientName}}'e gönderildi! 🎁",
+    "sendingGift": "Hediye gönderiliyor...",
+    "sendingRequest": "İstek gönderiliyor...",
+    "invalidGiftId": "Hata: Geçersiz hediye ID'si",
+    "invalidRecipientId": "Hata: Geçersiz alıcı ID'si",
+    "insufficientBalance": "Yetersiz jeton. {{required}} gerekli ama {{current}} var.",
+    "processingError": "Hediye işlenirken hata"
+  },
   "disconnect": {
     "modelSkippedYou": "Model bir sonrakine geçti",
     "searchedOtherClient": "Başka bir müşteri aradı",
@@ -1672,7 +1806,9 @@
     "start_button": "Aramayı Başlat",
     "random_user_notice": "Rastgele bir kullanıcıyla bağlanacaksınız",
     "default_camera": "Kamera {{number}}",
-    "default_microphone": "Mikrofon {{number}}"
+    "default_microphone": "Mikrofon {{number}}",
+    "cameraInUse": "Error: Camera is being used by another application. Please close other applications that may be using the camera (Zoom, Teams, etc.) and reload the page.",
+    "cameraAccessError": "Cannot access camera. Please make sure it is not being used by another application."
   },
   "mirror": {
     "label": "Ayna modu",
@@ -1680,5 +1816,49 @@
     "disable": "Aynayı devre dışı bırak",
     "active": "Ayna aktif",
     "description": "Görüntümü aynada olduğu gibi gör"
+  },
+  "storiesComingSoon": "Stories will be available soon",
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "accion": {
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    }
+  },
+  "permission_alert": "You need to allow camera and microphone access to continue.",
+  "userSearch": {
+    "waiting_users": "Waiting for users",
+    "waiting_guy": "Waiting for guy",
+    "waiting_girl": "Waiting for girl",
+    "rouletting": "Rouletting",
+    "connecting": "Connecting!",
+    "searching_new_guy": "Searching for new guy...",
+    "searching_new_girl": "Searching for new girl...",
+    "reconnecting": "Reconnecting...",
+    "starting_roulette": "Starting roulette...",
+    "user_found_connecting": "User found! Connecting...",
+    "preparing_connection": "Preparing secure connection...",
+    "time": "Time:",
+    "checks": "Checks:",
+    "automatic_verification": "⚡ Automatic verification every 7 seconds",
+    "cancel_search": "← Cancel search",
+    "cancel_wait": "← Cancel wait",
+    "back": "← Back",
+    "error_connecting": "Error connecting",
+    "try_again": "Try creating a new room",
+    "try_another_user": "Try searching for another user",
+    "timeout_message": "No user connected after 3 minutes. Try again later.",
+    "timeout_status": "Wait time expired"
+  },
+  "sessionSuspended": {
+    "title": "A new session was opened on another device",
+    "message": "Your current session has been suspended because a new session was opened on another device. You can continue with this session by clicking the button below.",
+    "continueSession": "Continue with this session",
+    "reactivating": "Reactivating session...",
+    "noToken": "No token available",
+    "reactivateError": "Error reactivating session",
+    "networkError": "Connection error. Please try again."
   }
 }

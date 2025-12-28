@@ -8,6 +8,39 @@
   "idioma": "Язык",
   "iniciarSesion": "Войти",
   "ayuda": "Помощь",
+  "helpModal": {
+    "title": "Центр помощи",
+    "subtitle": "Всё, что вам нужно знать",
+    "login": {
+      "title": "Как войти?",
+      "description": "Чтобы войти в Ligando, нажмите кнопку \"Войти\" в верхней части страницы. Вы можете использовать свой email и пароль, или войти через Google.",
+      "step1": "Нажмите \"Войти\" в заголовке",
+      "step2": "Введите свой email и пароль, или используйте Google",
+      "step3": "Готово! Вы можете начать общаться"
+    },
+    "register": {
+      "title": "Нет аккаунта?",
+      "description": "Создать аккаунт в Ligando очень просто. Вам нужен только email адрес и следовать нескольким простым шагам.",
+      "step1": "Нажмите \"Войти\"",
+      "step2": "Выберите \"Зарегистрироваться здесь\" или \"Создать аккаунт\"",
+      "step3": "Заполните форму и подтвердите свой email"
+    },
+    "about": {
+      "title": "Что такое Ligando?",
+      "description": "Ligando - это платформа для видеочата, где вы можете общаться с людьми со всего мира. Вы можете общаться, совершать видеозвонки и знакомиться с новыми людьми безопасно и весело."
+    },
+    "faq": {
+      "title": "Часто задаваемые вопросы",
+      "q1": "Это бесплатно?",
+      "a1": "Регистрация полностью бесплатна. Некоторые премиум функции могут требовать монеты.",
+      "q2": "Как работают видеозвонки?",
+      "a2": "Вы можете начать видеозвонок с любым пользователем онлайн. Звонки происходят в реальном времени и полностью приватны.",
+      "q3": "Нужно ли подтверждать аккаунт?",
+      "a3": "Да, после регистрации вы получите код подтверждения на ваш email для активации аккаунта."
+    },
+    "footer": "Нужна дополнительная помощь? Свяжитесь с нашей службой поддержки.",
+    "startButton": "Начать сейчас"
+  },
   "comenzar": "Начать чат",
   "subtitulo": "Видео чат с случайными людьми онлайн мгновенно",
   "activa": "Активна",
@@ -148,7 +181,7 @@
     "yourHistory": "Ваша История",
     "yourBalance": "Ваш Баланс",
     "total": "Всего:",
-    "minutes": "Минуты:",
+    "minutes": "Минуты",
     "status": "Статус:",
     "insufficientBalance": "❌ Недостаточно",
     "minimumBalance": "⚠️ Минимум",
@@ -177,7 +210,6 @@
     "coinsClaimedSuccess": "Монеты успешно получены!",
     "claimed": "Получено",
     "coins": "Монеты",
-    "minutes": "Минуты",
     "paymentProblemTitle": "Проблема с платежом?",
     "paymentProblemMessage": "Если платеж не был выполнен или монеты не были добавлены, перейдите в \"Купить монеты\" и проверьте свои транзакции. Обработайте ожидающий платеж или свяжитесь со службой поддержки, если вам нужна помощь."
   },
@@ -273,7 +305,8 @@
     },
     "hints": {
       "passwordLength": "{{current}}/{{required}} символов"
-    },  "google_button": "Продолжить с Google"
+    },
+    "google_button": "Продолжить с Google"
   },
   "verification": {
     "title": "Проверка email",
@@ -932,7 +965,9 @@
       "minimumCharacters": "Минимум 8 символов",
       "canUseGoogle": "Вы можете продолжать использовать Google для входа",
       "canUseEmail": "Или использовать свой email и пароль"
-    }
+    },
+    "payoutAccountTitle": "Configure account for payouts",
+    "payoutAccountDescription": "Configure the account where you will receive your work payments. This information will be used to make your earnings payouts."
   },
   "subirHistoria": {
     "titulo": "Загрузите или запишите вашу историю",
@@ -1018,7 +1053,93 @@
     "gifts": "Подарки",
     "minutes": "Минуты",
     "connected": "Подключено",
-    "connectionEstablished": "Видеозвонок успешно установлен"
+    "connectionEstablished": "Видеозвонок успешно установлен",
+    "waitingRoomParams": "Waiting for room parameters...",
+    "waitingRoomParamsSubtext": "This may take a few seconds",
+    "backToHome": "Back to Home",
+    "back": "Back",
+    "connectingToRoom": "Connecting to room...",
+    "waitingModel": "Waiting for model...",
+    "error": {
+      "title": "Error",
+      "missingRoomParams": "Error: Missing room parameters",
+      "couldNotGetParams": "Could not get the necessary parameters to start the video call.",
+      "couldNotSendMessage": "Could not send the message. Try again.",
+      "sendMessageError": "Error sending message",
+      "connectionError": "Connection error",
+      "connectionErrorTitle": "Connection Error",
+      "favoritesConnectionError": "Connection error with favorites",
+      "blockUserError": "Error blocking user",
+      "couldNotProcessGift": "Could not process the gift. Check your connection.",
+      "couldNotSendGift": "Could not send the gift",
+      "sendGiftError": "Error sending gift",
+      "couldNotLoadUserInfo": "Could not load user information",
+      "cameraErrorTitle": "Camera Error",
+      "couldNotConnectCamera": "Could not connect the camera. Check permissions.",
+      "cameraPermissionDenied": "Camera permissions denied",
+      "cameraNotFound": "Camera not found",
+      "deviceErrorTitle": "Device Error",
+      "devicePermissionDenied": "Camera/microphone permissions denied. Please allow access in browser settings.",
+      "deviceNotFound": "No camera/microphone devices found",
+      "couldNotGetDevices": "Could not get audio/video devices",
+      "generic": "Error",
+      "identityConflict": "An identity conflict was detected. Please try again.",
+      "livekitLimitReached": "LiveKit Limit Reached",
+      "livekitLimitReachedMessage": "The LiveKit minutes limit has been reached. Please contact the administrator to upgrade the plan.",
+      "livekitLimitReachedError": "LiveKit limit reached. Plan upgrade required."
+    },
+    "favorite": {
+      "removed": "Favorite removed",
+      "removedMessage": "{{name}} removed from favorites",
+      "added": "Favorite added",
+      "addedMessage": "{{name}} added to favorites ⭐"
+    },
+    "block": {
+      "userBlocked": "User blocked",
+      "userBlockedMessage": "You have blocked {{name}}"
+    },
+    "device": {
+      "cameraChanged": "Camera Changed",
+      "microphoneChanged": "Microphone Changed",
+      "deviceUpdated": "Device updated"
+    },
+    "balance": {
+      "balanceExhausted": "Balance Exhausted",
+      "sessionEnding": "Session ending",
+      "sessionEndingAuto": "⚠️ Session ending automatically - insufficient balance",
+      "insufficientBalance": "Insufficient Balance",
+      "insufficientBalanceMessage": "You need {{required}} coins. You have {{current}}",
+      "rechargeToContinue": "Recharge coins to continue",
+      "insufficientGiftCoins": "Insufficient Gift Coins",
+      "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
+      "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+    },
+    "gift": {
+      "sent": "🎁 Gift Sent",
+      "sentMessage": "{{giftName}} sent to {{userName}} (-{{cost}} gift coins)",
+      "gift": "Gift",
+      "requestExpired": "Request Expired",
+      "requestExpiredMessage": "This gift request has already expired",
+      "alreadyProcessed": "Already Processed",
+      "alreadyProcessedMessage": "This gift was already processed previously",
+      "youSent": "You sent",
+      "giftRejected": "You rejected a gift request",
+      "giftSentTitle": "🎁 Gift Sent",
+      "giftSentTo": "{{giftName}} sent to {{userName}}"
+    },
+    "disconnect": {
+      "client": "The client",
+      "model": "The model",
+      "clientWentNext": "The client went to the next model",
+      "modelSkipped": "The model skipped you and went to the next person",
+      "clientEnded": "The client ended the video call",
+      "modelEnded": "The model ended the video call",
+      "partnerLeftSession": "{{partner}} left the session",
+      "youWentNext": "You went to the next model",
+      "modelAcceptedAnotherCall": "The model accepted another call. You will be redirected to search for another person."
+    },
+    "model": "Model"
   },
   "time": {
     "callDuration": "Время"
@@ -1172,7 +1293,6 @@
     "error_confirmar_datos": "Не удалось подтвердить данные. Попробуйте снова.",
     "error_guardar": "Ошибка сохранения роли. Попробуйте снова."
   },
-
   "anteveri": {
     "title": "Ligando",
     "waiting": {
@@ -1278,7 +1398,8 @@
       "fileTooLarge": "Файлы слишком большие. Пожалуйста, уменьшите размер видео.",
       "genericError": "Ошибка при отправке верификации. Пожалуйста, попробуйте снова."
     }
-  },"paymentMethods": {
+  },
+  "paymentMethods": {
     "errorLoadingMethods": "Ошибка загрузки способов оплаты",
     "noMethodsAvailable": "Способы Оплаты Недоступны",
     "noMethodsDescription": "В настоящее время способы оплаты не настроены. Пожалуйста, обратитесь в службу поддержки.",
@@ -1320,21 +1441,16 @@
     }
   },
   "buttons": {
-    "buyCoins": "Купить Монеты",
-    "rechargeNow": "Пополнить Сейчас",
-    "cancel": "Отмена"
+    "buy": "Купить",
+    "send": "Отправить",
+    "back": "Назад"
   },
   "balance": {
-    "yourBalance": "Ваш баланс",
-    "total": "Всего",
-    "totalCoins": "Всего монет:",
-    "minutes": "Минуты:",
-    "status": "Статус",
-    "insufficient": "Недостаточно",
-    "minimum": "Минимум",
-    "stable": "Стабильно",
-    "currentStatus": "Текущий статус:",
-    "minimumRequired": "Минимум требуется:"
+    "purchased": "Купленные",
+    "giftMinutes": "Подарок (минуты)",
+    "giftCoins": "подарочные монеты",
+    "received": "Получено",
+    "sent": "Отправлено"
   },
   "modals": {
     "insufficientBalanceTitle": "Недостаточный Баланс",
@@ -1438,88 +1554,77 @@
     "perCoin": "за монету",
     "bonusCoins": "Бонусные монеты"
   },
-  "balance": {
-    "purchased": "Купленные",
-    "giftMinutes": "Подарок (минуты)",
-    "giftCoins": "подарочные монеты",
-    "received": "Получено",
-    "sent": "Отправлено"
-  },
-  "buttons": {
-    "buy": "Купить",
-    "send": "Отправить",
-    "back": "Назад"
-  },
   "common": {
     "coins": "монет",
     "minutes": "Минуты",
     "gifts": "Подарки"
-  }, 
-    "gifts": {
-      "sendGift": "Отправить Подарок",
-      "requestGift": "Запросить Подарок", 
-      "forRecipient": "Для {{name}}",
-      "requestFrom": "Запросить у {{name}}",
-      "clickToSend": "Нажмите, чтобы отправить",
-      "clickToRequest": "Нажмите, чтобы запросить",
-      "yourBalance": "Ваш баланс: {{balance}} монет",
-      "optionalMessage": "Дополнительное сообщение к подарку:",
-      "optionalRequestMessage": "Дополнительное сообщение (появится с вашим запросом):",
-      "placeholderGift": "Напр.: Ты потрясающая! 💖",
-      "placeholderRequest": "Напр.: Пожалуйста! 🥺",
-      "characters": "{{current}}/{{max}} символов",
-      "giftsAvailable": "{{count}} подарков доступно",
-      "insufficient": "Не хватает {{amount}}",
-      "confirmSend": "Отправить {{giftName}} для {{recipientName}}?\nСтоимость: {{price}} монет\nВаш текущий баланс: {{balance}} монет",
-      "giftSent": "{{giftName}} отправлен {{recipientName}}! 🎉",
-      "requestSent": "Запрос {{giftName}} отправлен {{recipientName}}! 🎁",
-      "sendingGift": "Отправка подарка...",
-      "sendingRequest": "Отправка запроса...",
-      "invalidGiftId": "Ошибка: Неверный ID подарка",
-      "invalidRecipientId": "Ошибка: Неверный ID получателя", 
-      "insufficientBalance": "Недостаточно монет. Нужно {{required}}, а у вас {{current}}.",
-      "processingError": "Ошибка обработки подарка"
-    },"disconnect": {
-      "modelSkippedYou": "Модель перешла к следующему",
-      "searchedOtherClient": "Искала другого клиента",
-      "modelDisconnected": "Модель отключилась",
-      "endedVideoCall": "Завершила видеозвонок",
-      "modelLeft": "Модель покинула комнату",
-      "leftSession": "Покинула сессию",
-      "balanceExhausted": "Баланс исчерпан",
-      "ranOutOfCoins": "У вас закончились монеты",
-      "sessionEnded": "Сессия завершена",
-      "connectionLost": "Соединение потеряно",
-      "details": "Детали",
-      "dontWorryClient": "Не волнуйся!",
-      "connectingWithOther": "Подключение к другой модели...",
-      "inSeconds": "Через {{seconds}}с",
-      "connecting": "Подключение...",
-      "keepSufficientCoins": "Держите достаточно монет",
-      "beRespectful": "Всегда будьте уважительны",
-      "eachConnectionUnique": "Каждое соединение уникально"
-    },
-    "sessionSuspended": {
-      "title": "На другом устройстве была открыта новая сессия",
-      "message": "Ваша текущая сессия была приостановлена, потому что на другом устройстве была открыта новая сессия. Вы можете продолжить с этой сессией, нажав кнопку ниже.",
-      "continueSession": "Продолжить с этой сессией",
-      "reactivating": "Реактивация сессии...",
-      "noToken": "Токен недоступен",
-      "reactivateError": "Ошибка при реактивации сессии",
-      "networkError": "Ошибка подключения. Пожалуйста, попробуйте снова."
-    },
-    "sessionClosed": {
-      "title": "Ваш аккаунт был открыт на другом устройстве",
-      "message": "Ваш аккаунт был открыт на другом устройстве. Вы можете продолжить с этой сессией, нажав на кнопку ниже.",
-      "continueSession": "Продолжить с этой сессией",
-      "reclaiming": "Восстановление...",
-      "successTitle": "Сессия восстановлена",
-      "successMessage": "Ваша сессия была успешно восстановлена. Перезагрузка...",
-      "noToken": "Токен недоступен",
-      "invalidResponse": "Неверный ответ сервера",
-      "reclaimError": "Ошибка при восстановлении сессии",
-      "networkError": "Ошибка подключения. Пожалуйста, попробуйте снова."
-    },
+  },
+  "gifts": {
+    "sendGift": "Отправить Подарок",
+    "requestGift": "Запросить Подарок",
+    "forRecipient": "Для {{name}}",
+    "requestFrom": "Запросить у {{name}}",
+    "clickToSend": "Нажмите, чтобы отправить",
+    "clickToRequest": "Нажмите, чтобы запросить",
+    "yourBalance": "Ваш баланс: {{balance}} монет",
+    "optionalMessage": "Дополнительное сообщение к подарку:",
+    "optionalRequestMessage": "Дополнительное сообщение (появится с вашим запросом):",
+    "placeholderGift": "Напр.: Ты потрясающая! 💖",
+    "placeholderRequest": "Напр.: Пожалуйста! 🥺",
+    "characters": "{{current}}/{{max}} символов",
+    "giftsAvailable": "{{count}} подарков доступно",
+    "insufficient": "Не хватает {{amount}}",
+    "confirmSend": "Отправить {{giftName}} для {{recipientName}}?\nСтоимость: {{price}} монет\nВаш текущий баланс: {{balance}} монет",
+    "giftSent": "{{giftName}} отправлен {{recipientName}}! 🎉",
+    "requestSent": "Запрос {{giftName}} отправлен {{recipientName}}! 🎁",
+    "sendingGift": "Отправка подарка...",
+    "sendingRequest": "Отправка запроса...",
+    "invalidGiftId": "Ошибка: Неверный ID подарка",
+    "invalidRecipientId": "Ошибка: Неверный ID получателя",
+    "insufficientBalance": "Недостаточно монет. Нужно {{required}}, а у вас {{current}}.",
+    "processingError": "Ошибка обработки подарка"
+  },
+  "disconnect": {
+    "modelSkippedYou": "Модель перешла к следующему",
+    "searchedOtherClient": "Искала другого клиента",
+    "modelDisconnected": "Модель отключилась",
+    "endedVideoCall": "Завершила видеозвонок",
+    "modelLeft": "Модель покинула комнату",
+    "leftSession": "Покинула сессию",
+    "balanceExhausted": "Баланс исчерпан",
+    "ranOutOfCoins": "У вас закончились монеты",
+    "sessionEnded": "Сессия завершена",
+    "connectionLost": "Соединение потеряно",
+    "details": "Детали",
+    "dontWorryClient": "Не волнуйся!",
+    "connectingWithOther": "Подключение к другой модели...",
+    "inSeconds": "Через {{seconds}}с",
+    "connecting": "Подключение...",
+    "keepSufficientCoins": "Держите достаточно монет",
+    "beRespectful": "Всегда будьте уважительны",
+    "eachConnectionUnique": "Каждое соединение уникально"
+  },
+  "sessionSuspended": {
+    "title": "На другом устройстве была открыта новая сессия",
+    "message": "Ваша текущая сессия была приостановлена, потому что на другом устройстве была открыта новая сессия. Вы можете продолжить с этой сессией, нажав кнопку ниже.",
+    "continueSession": "Продолжить с этой сессией",
+    "reactivating": "Реактивация сессии...",
+    "noToken": "Токен недоступен",
+    "reactivateError": "Ошибка при реактивации сессии",
+    "networkError": "Ошибка подключения. Пожалуйста, попробуйте снова."
+  },
+  "sessionClosed": {
+    "title": "Ваш аккаунт был открыт на другом устройстве",
+    "message": "Ваш аккаунт был открыт на другом устройстве. Вы можете продолжить с этой сессией, нажав на кнопку ниже.",
+    "continueSession": "Продолжить с этой сессией",
+    "reclaiming": "Восстановление...",
+    "successTitle": "Сессия восстановлена",
+    "successMessage": "Ваша сессия была успешно восстановлена. Перезагрузка...",
+    "noToken": "Токен недоступен",
+    "invalidResponse": "Неверный ответ сервера",
+    "reclaimError": "Ошибка при восстановлении сессии",
+    "networkError": "Ошибка подключения. Пожалуйста, попробуйте снова."
+  },
   "earnings": {
     "title": "Платежная система",
     "subtitle": "Заработок и еженедельные платежи",
@@ -1625,6 +1730,28 @@
       "friday": "пятница",
       "saturday": "суббота",
       "sunday": "воскресенье"
+    },
+    "sourceTypes": {
+      "video_session": "Videochat",
+      "direct_gift": "Direct Gift",
+      "chat_gift": "Chat Gift",
+      "session": "Session"
+    },
+    "pendingPayments": {
+      "loading": "Loading pending payments...",
+      "retry": "Retry",
+      "allClear": "All clear!",
+      "noPendingPayments": "You have no pending payments",
+      "totalPending": "Total Pending",
+      "paymentsWaiting": "payment(s) waiting",
+      "processing": "Processing...",
+      "week": "Week",
+      "pending": "Pending",
+      "sessions": "sessions",
+      "processed": "Processed:",
+      "daysWaiting": "day(s) waiting",
+      "inProcess": "In process",
+      "weeklyProcessingInfo": "💡 Payments are processed weekly. Your money will arrive soon."
     }
   },
   "roulette": {
@@ -1635,7 +1762,9 @@
     "start_button": "Начать поиск",
     "random_user_notice": "Вы будете подключены к случайному пользователю",
     "default_camera": "Камера {{number}}",
-    "default_microphone": "Микрофон {{number}}"
+    "default_microphone": "Микрофон {{number}}",
+    "cameraInUse": "Error: Camera is being used by another application. Please close other applications that may be using the camera (Zoom, Teams, etc.) and reload the page.",
+    "cameraAccessError": "Cannot access camera. Please make sure it is not being used by another application."
   },
   "mirror": {
     "label": "Режим зеркала",
@@ -1643,5 +1772,93 @@
     "disable": "Выключить зеркало",
     "active": "Зеркало активно",
     "description": "Видеть мое изображение как в зеркале"
+  },
+  "storiesComingSoon": "Stories will be available soon",
+  "history": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "accion": {
+      "callEnded": "Call ended",
+      "messageSent": "Message sent",
+      "addedToFavorites": "Added you to favorites"
+    }
+  },
+  "permission_alert": "You need to allow camera and microphone access to continue.",
+  "userSearch": {
+    "waiting_users": "Waiting for users",
+    "waiting_guy": "Waiting for guy",
+    "waiting_girl": "Waiting for girl",
+    "rouletting": "Rouletting",
+    "connecting": "Connecting!",
+    "searching_new_guy": "Searching for new guy...",
+    "searching_new_girl": "Searching for new girl...",
+    "reconnecting": "Reconnecting...",
+    "starting_roulette": "Starting roulette...",
+    "user_found_connecting": "User found! Connecting...",
+    "preparing_connection": "Preparing secure connection...",
+    "time": "Time:",
+    "checks": "Checks:",
+    "automatic_verification": "⚡ Automatic verification every 7 seconds",
+    "cancel_search": "← Cancel search",
+    "cancel_wait": "← Cancel wait",
+    "back": "← Back",
+    "error_connecting": "Error connecting",
+    "try_again": "Try creating a new room",
+    "try_another_user": "Try searching for another user",
+    "timeout_message": "No user connected after 3 minutes. Try again later.",
+    "timeout_status": "Wait time expired"
+  },
+  "preCallLobby": {
+    "title": "Ready to start",
+    "status": "Girl connected",
+    "devices": {
+      "camera": "Camera",
+      "microphone": "Microphone",
+      "defaultCamera": "Camera {{number}}",
+      "defaultMicrophone": "Microphone {{number}}"
+    },
+    "mirror": {
+      "label": "Mirror mode",
+      "enable": "Enable mirror",
+      "disable": "Disable mirror",
+      "active": "Mirror active",
+      "description": "See my image as in a mirror"
+    },
+    "actions": {
+      "start": "Start",
+      "searching": "Searching user...",
+      "preparing": "Preparing...",
+      "connecting": "Connecting..."
+    },
+    "notices": {
+      "randomUser": "You will connect with a random user",
+      "permissionsRequired": "Camera and microphone permissions required",
+      "checkDevices": "Make sure your camera and microphone work properly"
+    },
+    "errors": {
+      "permissionDenied": "You need to allow camera and microphone access to continue.",
+      "cameraInUse": "Error: Camera is being used by another application. Please close other applications that might be using the camera (Zoom, Teams, etc.) and reload the page.",
+      "deviceAccess": "Cannot access camera. Check that it's not being used by another application.",
+      "enumeratingDevices": "Error enumerating devices",
+      "gettingStream": "Error accessing camera/microphone",
+      "retryVideoOnly": "Retrying with video only...",
+      "videoOnlyFailed": "Error even with video only"
+    },
+    "permissions": {
+      "requesting": "Requesting media permissions...",
+      "videoObtained": "Video stream obtained",
+      "tryingMinimal": "Error with video, trying minimal configuration",
+      "combiningStreams": "Video and audio streams combined",
+      "audioError": "Error getting audio, continuing with video only",
+      "granted": "Permissions granted, getting devices...",
+      "streamAssigned": "Initial stream assigned to video"
+    },
+    "deviceSelection": {
+      "selectCamera": "Select your camera",
+      "selectMicrophone": "Select your microphone",
+      "noDevices": "No devices detected",
+      "testCamera": "Test your camera",
+      "testMicrophone": "Test your microphone"
+    }
   }
 }

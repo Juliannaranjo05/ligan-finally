@@ -158,3 +158,8 @@ El problema principal es que `checkParticipants()` es **demasiado agresivo** y n
 
 
 
+
+
+
+
+
