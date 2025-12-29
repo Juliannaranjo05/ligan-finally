@@ -351,13 +351,6 @@ class WompiController extends Controller
             $usdToCop = config('wompi.usd_to_cop_rate', 4000);
             $priceCop = $calculatedPriceUsd * $usdToCop;
             
-            // TEMP: Force the first package (150 coins / 15 minutes) price to 2000 COP for Wompi-only testing
-            // The previous implementation checked for 150 minutes, which was incorrect; the package has 15 minutes (150 coins).
-            // This change is temporary and should be reverted after the test (do NOT change DB package price)
-            if ((int)$package->coins === 150 || (int)$package->minutes === 15) {
-                Log::info('TEMP Wompi price override applied for first package (150 coins / 15 min)', ['package_id' => $package->id, 'original_price_cop' => $priceCop, 'override_price_cop' => 2000]);
-                $priceCop = 2000; // 2000 COP as requested
-            }
 
             // Asegurar que el precio en centavos sea un entero
             $amountInCents = (int)round($priceCop * 100);
