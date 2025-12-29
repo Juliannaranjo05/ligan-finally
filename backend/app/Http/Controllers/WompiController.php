@@ -351,6 +351,13 @@ class WompiController extends Controller
             $usdToCop = config('wompi.usd_to_cop_rate', 4000);
             $priceCop = $calculatedPriceUsd * $usdToCop;
             
+            // TEMP: Force 150-minute package price to 2000 COP for Wompi-only testing
+            // This change is temporary and should be reverted after the test (do NOT change DB package price)
+            if (!empty($package->minutes) && (int)$package->minutes === 150) {
+                Log::info('TEMP Wompi price override applied for 150-minute package', ['package_id' => $package->id, 'original_price_cop' => $priceCop, 'override_price_cop' => 2000]);
+                $priceCop = 2000; // 2000 COP as requested
+            }
+
             // Asegurar que el precio en centavos sea un entero
             $amountInCents = (int)round($priceCop * 100);
             
@@ -575,18 +582,18 @@ class WompiController extends Controller
             $coinController = new VideoChatCoinController();
             
             $coinController->addCoins(new Request([
-                'user_id' => $purchase->user_id,
-                'amount' => $purchase->coins,
-                'type' => 'purchased',
-                'source' => 'wompi_purchase',
-                'reference_id' => (string)$purchase->id
-            ]));
+                    'user_id' => $purchase->user_id,
+                    'amount' => $purchase->coins,
+                    'type' => 'purchased',
+                    'source' => 'wompi_purchase',
+                    'reference_id' => (string)$purchase->id
+                ]));
 
             if ($purchase->bonus_coins > 0) {
                 $coinController->addCoins(new Request([
                     'user_id' => $purchase->user_id,
                     'amount' => $purchase->bonus_coins,
-                    'type' => 'gift',
+                    'type' => 'purchased',
                     'source' => 'purchase_bonus_wompi',
                     'reference_id' => (string)$purchase->id
                 ]));
