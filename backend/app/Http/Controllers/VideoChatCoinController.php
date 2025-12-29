@@ -99,9 +99,8 @@ class VideoChatCoinController extends Controller
             $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
             $minutesAvailable = floor($userCoins->purchased_balance / self::COST_PER_MINUTE); // Solo purchased para minutos
             
-            // 🔥 El cliente debe tener MÁS de 2 minutos (más de 20 monedas) para recibir llamadas
-            // Si tiene <= 20 monedas (2 minutos o menos), no puede recibir llamadas
-            $canStartCall = $userCoins->purchased_balance > 20; // Más de 20 monedas = más de 2 minutos
+            // El cliente debe tener al menos MINIMUM_BALANCE (30 monedas = 3 minutos) para recibir llamadas
+            $canStartCall = $userCoins->purchased_balance >= self::MINIMUM_BALANCE; // >= 30 monedas
             
             return response()->json([
                 'success' => true,
@@ -111,9 +110,9 @@ class VideoChatCoinController extends Controller
                     'total_coins' => $totalBalance,
                     'minutes_available' => $minutesAvailable,
                     'cost_per_minute' => self::COST_PER_MINUTE,
-                    'minimum_required' => 21 // Más de 20 monedas (más de 2 minutos)
+                    'minimum_required' => self::MINIMUM_BALANCE
                 ],
-                'can_start_call' => $canStartCall, // 🔥 Solo purchased para validar, debe ser > 20 monedas
+                'can_start_call' => $canStartCall, // Solo purchased para validar
                 'client_name' => $client->name
             ]);
             

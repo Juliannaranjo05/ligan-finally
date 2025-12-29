@@ -121,13 +121,14 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
         const data = await response.json();
         if (data.success) {
           const giftsArray = data.gifts || [];
+          // Usar precios provenientes del backend (persistidos en la BD)
           setGifts(giftsArray);
-          
+
           // 🔥 PRECARGAR IMÁGENES DE REGALOS PARA QUE ESTÉN LISTAS CUANDO SE ABRA EL MODAL
           if (giftsArray.length > 0) {
             preloadGiftImages(giftsArray);
           }
-          
+
           return { success: true, gifts: giftsArray };
         } else {
                     return { success: false, error: data.error };

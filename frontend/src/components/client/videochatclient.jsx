@@ -512,6 +512,38 @@ export default function VideoChatClient() {
   
   // 🔥 ESTADO PARA ESPERAR PARÁMETROS (declarado antes de cualquier return)
   const [waitingForParams, setWaitingForParams] = useState(true);
+  const safeNavigateHomeTimerRef = useRef(null);
+
+  const safeNavigateHome = (options = {}) => {
+    // options: { replace: true, state: null, immediate: false }
+    const immediate = options.immediate || false;
+    const navState = options.state || null;
+    if (immediate) {
+      navigate('/homecliente', { replace: true, state: navState });
+      return;
+    }
+
+    // Si recientemente hubo participantes remotos, esperar unos segundos antes de navegar
+    if (safeNavigateHomeTimerRef.current) {
+      clearTimeout(safeNavigateHomeTimerRef.current);
+      safeNavigateHomeTimerRef.current = null;
+    }
+
+    safeNavigateHomeTimerRef.current = setTimeout(() => {
+      const currentRoom = room || window.livekitRoom;
+      const remoteCount = currentRoom?.remoteParticipants?.size || 0;
+      // Si aparece alguien, cancelar navegación
+      if (remoteCount > 0 || hadRemoteParticipantsRef.current === false) {
+        // Cancelar navegación
+        console.log('✅ [VideoChat] Safe navigate: participante reconectado o no había sesión previa, cancelando ir a home');
+        safeNavigateHomeTimerRef.current = null;
+        return;
+      }
+
+      navigate('/homecliente', { replace: true, state: navState });
+      safeNavigateHomeTimerRef.current = null;
+    }, 8000); // esperar 8s antes de navegar
+  };
   
   // 🔥 VERIFICACIÓN MUY TEMPRANA: Si no hay roomName o userName válido
   const paramsKey = `${roomName}_${userName}`;
@@ -638,6 +670,9 @@ export default function VideoChatClient() {
   const disconnectDetectionTimeoutRef = useRef(null); // 🔥 REF PARA PERÍODO DE GRACIA DE DETECCIÓN DE DESCONEXIÓN
   const isDetectingDisconnectionRef = useRef(false); // 🔥 REF PARA PREVENIR MÚLTIPLES DETECCIONES SIMULTÁNEAS
   const connectionTimeoutRef = useRef(null); // 🔥 REF PARA TIMEOUT DE CONEXIÓN (20 segundos)
+  const reconnectInProgressRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttemptsRef = useRef(3);
 
   // Estados de controles
   // 🔥 CÁMARA: Para modelo siempre encendida, para cliente apagada por defecto
@@ -2409,7 +2444,7 @@ export default function VideoChatClient() {
       return;
     }
     
-    // 🔥 PERÍODO DE GRACIA DE 30 SEGUNDOS ANTES DE DETECTAR DESCONEXIÓN
+    // 🔥 PERÍODO DE GRACIA DE 60 SEGUNDOS ANTES DE DETECTAR DESCONEXIÓN
     // Limpiar timeout anterior si existe
     if (disconnectDetectionTimeoutRef.current) {
       clearTimeout(disconnectDetectionTimeoutRef.current);
@@ -2450,7 +2485,8 @@ export default function VideoChatClient() {
               !(disconnectionReason && redirectCountdown > 0) && 
               !isProcessingLeave) {
             const partnerName = currentUserRole === 'cliente' ? 'La modelo' : 'El cliente';
-            handleModeloDisconnected('partner_left_session', `${partnerName} se desconectó de la videollamada`);
+            // Intentar reconectar antes de marcar desconexión definitiva
+            attemptReconnectThenHandle('partner_left_session', `${partnerName} se desconectó de la videollamada`);
           } else {
             // Se reconectó, cancelar detección
             isDetectingDisconnectionRef.current = false;
@@ -2462,7 +2498,7 @@ export default function VideoChatClient() {
       }
       
       disconnectDetectionTimeoutRef.current = null;
-    }, 30000); // 🔥 30 segundos de período de gracia (aumentado de 15)
+    }, 60000); // 🔥 60 segundos de período de gracia (aumentado para reducir falsos positivos)
   }, [room, userData?.role, otherUser, tiempo, connected, modeloDisconnected, disconnectionReason, redirectCountdown, isProcessingLeave, handleModeloDisconnected]);
   
   // 🔥 EFECTO PARA VERIFICAR CUANDO CAMBIAN LOS ESTADOS DE DESCONEXIÓN
@@ -2480,7 +2516,7 @@ export default function VideoChatClient() {
       clearInterval(window.redirectCountdownInterval);
     }
     
-    let timeLeft = 3;
+    let timeLeft = 8;
     setRedirectCountdown(timeLeft);
 
     window.redirectCountdownInterval = setInterval(() => {
@@ -4962,7 +4998,7 @@ useEffect(() => {
                                      window.livekitRoom.state !== 'connected' ||
                                      !connected;
             
-            if (isStillConnecting) {
+              if (isStillConnecting) {
               console.warn('⏰ [VideoChat] Timeout de conexión (20s) - redirigiendo a home', {
                 roomState: window.livekitRoom?.state,
                 connected: connected
@@ -4981,14 +5017,28 @@ useEffect(() => {
               }
               
               // Redirigir según el rol
-              const userRole = userData?.role || '';
-              if (userRole === 'modelo') {
-                navigate('/homellamadas', { replace: true });
+              // Si el otro usuario es la modelo, intentar reconectar antes de manejar desconexión
+              if (otherUser && otherUser.role === 'modelo') {
+                try {
+                  attemptReconnectThenHandle('partner_left_session', 'La conexión se perdió');
+                } catch (e) {
+                  const userRole = userData?.role || '';
+                  if (userRole === 'modelo') {
+                    navigate('/homellamadas', { replace: true });
+                  } else {
+                    safeNavigateHome();
+                  }
+                }
               } else {
-                navigate('/homecliente', { replace: true });
+                const userRole = userData?.role || '';
+                if (userRole === 'modelo') {
+                  navigate('/homellamadas', { replace: true });
+                } else {
+                  safeNavigateHome();
+                }
               }
             }
-          }, 20000); // 20 segundos
+          }, 40000); // 40 segundos (aumentado para reducir falsos positivos)
           
           // #region agent log
           // #endregion
@@ -5014,6 +5064,81 @@ useEffect(() => {
     isMounted = false;
   };
   }, [memoizedRoomName, memoizedUserName, handleRateLimit, selectedCamera, selectedMic]);
+
+  // ===== Reconexión: intentar obtener token y forzar reconexión antes de marcar desconexión =====
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const tryReconnect = async () => {
+    if (reconnectInProgressRef.current) return false;
+    reconnectInProgressRef.current = true;
+    reconnectAttemptsRef.current = 0;
+
+    const maxAttempts = maxReconnectAttemptsRef.current || 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      reconnectAttemptsRef.current = attempt;
+      try {
+        console.log(`🔄 [VideoChat] Intento de reconexión ${attempt}/${maxAttempts}`);
+        const authToken = localStorage.getItem('token');
+        if (!authToken || !memoizedRoomName || !memoizedUserName) {
+          console.warn('⚠️ [VideoChat] No hay token o parámetros, no se puede reconectar');
+          break;
+        }
+
+        const resp = await fetch(`${API_BASE_URL}/api/livekit/token-secure`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ room: memoizedRoomName, preferredCamera: selectedCamera, preferredMic: selectedMic })
+        });
+
+        if (!resp.ok) {
+          console.warn('⚠️ [VideoChat] Reconnect token request failed', resp.status);
+        } else {
+          const data = await resp.json();
+          if (data && data.token) {
+            console.log('✅ [VideoChat] Token reconexión obtenido, actualizando token y serverUrl');
+            setToken(data.token);
+            setServerUrl(data.serverUrl || serverUrl);
+
+            // esperar un par de segundos a que LiveKit conecte usando el nuevo token
+            await delay(3000);
+            const roomState = window.livekitRoom?.state || room?.state;
+            const remoteCount = window.livekitRoom?.remoteParticipants?.size || room?.remoteParticipants?.size || 0;
+            console.log('🔍 [VideoChat] Estado tras reintento:', { roomState, remoteCount });
+            if (roomState === 'connected' || remoteCount > 0) {
+              reconnectInProgressRef.current = false;
+              return true;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('❌ [VideoChat] Error en intento de reconexión:', e);
+      }
+
+      // backoff exponencial (1s, 2s, 4s...)
+      await delay(1000 * Math.pow(2, attempt - 1));
+    }
+
+    reconnectInProgressRef.current = false;
+    return false;
+  };
+
+  const attemptReconnectThenHandle = async (reason, message) => {
+    try {
+      const reconnected = await tryReconnect();
+      if (reconnected) {
+        console.log('✅ [VideoChat] Reconexión exitosa - cancelando manejo de desconexión');
+        return;
+      }
+    } catch (e) {
+      console.warn('❌ [VideoChat] Error intentando reconexión', e);
+    }
+
+    // Si fallo la reconexión, proceder con el handler original
+    handleModeloDisconnected(reason, message);
+  };
   // Efecto para espejo
   useEffect(() => {
     const savedMirrorMode = localStorage.getItem("mirrorMode");
@@ -5802,7 +5927,7 @@ useEffect(() => {
           }).catch(() => {});
         }
         
-        navigate('/homecliente', { replace: true, state: null });
+        safeNavigateHome({ state: null });
         
         // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY
         setTimeout(() => {
