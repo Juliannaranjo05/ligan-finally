@@ -141,8 +141,9 @@ const MediaControlsImproved = ({
 
   // 🔊 CONTROL DE VOLUMEN - VERSIÓN MEJORADA CON REINTENTOS
   useEffect(() => {
-    // 🚫 SI ES MODELO, NO CONTROLAR VOLUMEN
-    if (userData?.role === 'modelo') return;
+    // APLICAR CONTROL DE VOLUMEN TAMBIÉN PARA MODELOS
+    // Antes se omitía para modelos; ahora queremos que el control de "audio de sala" afecte
+    // tanto el audio remoto como, junto con DesktopControls, el micrófono local cuando corresponda.
 
     // ✅ APLICAR CONTROL INICIAL Y EN CAMBIOS
     const targetVolumeState = volumeEnabled !== false; // true por defecto si undefined

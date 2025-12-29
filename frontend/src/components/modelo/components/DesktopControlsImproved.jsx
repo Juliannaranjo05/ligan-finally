@@ -44,7 +44,11 @@ const DesktopControlsImproved = ({
 
   // 🔊 NUEVA FUNCIÓN PARA CONTROL DE VOLUMEN (IGUAL QUE EN CLIENT)
   const handleVolumeToggle = () => {
-        setVolumeEnabled(!volumeEnabled);
+        const newValue = !volumeEnabled;
+        setVolumeEnabled(newValue);
+        // Sincronizar micrófono con el estado de volumen: si silenciamos la sala, silenciamos también el micrófono
+        // Esto aplica también a modelos, que antes no tenían control de volumen.
+        setMicEnabled(newValue);
   };
 
   const handleCameraChangeInternal = (deviceId) => {
