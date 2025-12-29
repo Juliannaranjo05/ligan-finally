@@ -346,15 +346,15 @@ export default function ModalDocumentacion({ isOpen, onClose }) {
                 --
                 ## **13. Contacto**
                 Si tiene preguntas, contáctenos:
-                📧 **[support@ligando.online](mailto:support@ligando.online)**
+                📧 **[support@ligandome.com](mailto:support@ligandome.com)**
                 🌐 **[www.ligando.online](http://www.ligando.online)**
                 Contactanos :
                 help@ligando.online
-                report@ligando.online
+                support@ligandome.com
                 biling@ligando.online
                 noreply@ligando.online
                 corporative@ligando.online
-                support@ligando.onlin
+                support@ligandome.com
             </p>
           </section>
         </div>

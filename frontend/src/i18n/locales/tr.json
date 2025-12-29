@@ -825,7 +825,7 @@
       },
       "support": {
         "title": "Destek veya yardım",
-        "description": "Sorular, teknik sorunlar veya hesabınızla ilgili yardım için support@ligando.online adresine yazın ve ekibimiz en kısa sürede size yanıt verecektir.",
+        "description": "Sorular, teknik sorunlar veya hesabınızla ilgili yardım için support@ligandome.com adresine yazın ve ekibimiz en kısa sürede size yanıt verecektir.",
         "contactButton": "E-posta ile destekle iletişime geç"
       },
       "report": {
@@ -1113,7 +1113,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1206,6 +1209,7 @@
       "notAvailableBlocked": "Kullanılamaz - kullanıcı engellendi"
     },
     "gifts": {
+      "giftRequest": "Hediye İsteği",
       "requestGift": "Hediye İsteği",
       "giftReceived": "Hediye Alındı!",
       "giftSent": "Hediye Gönderildi",
@@ -1860,5 +1864,27 @@
     "noToken": "No token available",
     "reactivateError": "Error reactivating session",
     "networkError": "Connection error. Please try again."
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Arama başlatılıyor...",
+      "initiatingSubtitle": "Bağlantı hazırlanıyor",
+      "callingTitle": "Arıyor",
+      "waitingResponse": "Yanıt bekleniyor",
+      "connectingTitle": "Bağlanıyor...",
+      "pleaseWait": "Lütfen bekleyin",
+      "cancelCall": "Aramayı İptal Et",
+      "autoCancelMessage": "Arama 30 saniye içinde otomatik olarak iptal edilecek",
+      "establishingConnection": "Kullanıcıyla bağlantı kuruluyor"
+    },
+    "incoming": {
+      "incomingCall": "GELEN ARAMA",
+      "videoCall": "Görüntülü arama",
+      "voiceCall": "Sesli arama",
+      "calling": "Arıyor...",
+      "processingResponse": "Yanıt işleniyor...",
+      "callExpiringSoon": "Arama yakında sona erecek",
+      "tapToRespond": "Yanıtlamak için düğmelere dokunun"
+    }
   }
 }

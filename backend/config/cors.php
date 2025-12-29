@@ -5,7 +5,12 @@ return [
     'paths' => ['*'], // Aplica CORS a todas las rutas
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'], // Permitir acceso desde cualquier origen para VPS
+    'allowed_origins' => [
+        'https://ligandome.com',
+        'http://ligandome.com',
+        'https://www.ligandome.com',
+        'http://www.ligandome.com',
+    ], // Permitir acceso desde ligandome.com
 
     'allowed_origins_patterns' => [],
 

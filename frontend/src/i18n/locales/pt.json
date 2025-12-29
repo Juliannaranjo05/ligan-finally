@@ -809,7 +809,7 @@
       },
       "support": {
         "title": "Suporte ou Ajuda",
-        "description": "Para dúvidas, problemas técnicos ou ajuda com sua conta, escreva para support@ligando.online e nossa equipe responderá o mais rápido possível.",
+        "description": "Para dúvidas, problemas técnicos ou ajuda com sua conta, escreva para support@ligandome.com e nossa equipe responderá o mais rápido possível.",
         "contactButton": "Contatar suporte por e-mail"
       },
       "report": {
@@ -1103,7 +1103,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1222,6 +1225,7 @@
       "notAvailableBlocked": "Não disponível - usuário bloqueado"
     },
     "gifts": {
+      "giftRequest": "Solicitação de Presente",
       "requestGift": "Solicitação de Presente",
       "giftReceived": "Presente Recebido!",
       "giftSent": "Presente Enviado",
@@ -1833,5 +1837,27 @@
     "disable": "Desativar espelho",
     "active": "Espelho ativo",
     "description": "Ver minha imagem como em um espelho"
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Iniciando chamada...",
+      "initiatingSubtitle": "Preparando conexão",
+      "callingTitle": "Ligando",
+      "waitingResponse": "Aguardando resposta",
+      "connectingTitle": "Conectando...",
+      "pleaseWait": "Por favor aguarde",
+      "cancelCall": "Cancelar Chamada",
+      "autoCancelMessage": "A chamada será cancelada automaticamente em 30 segundos",
+      "establishingConnection": "Estabelecendo conexão com o usuário"
+    },
+    "incoming": {
+      "incomingCall": "CHAMADA ENTRANTE",
+      "videoCall": "Vide chamada",
+      "voiceCall": "Chamada de voz",
+      "calling": "Ligando...",
+      "processingResponse": "Processando resposta...",
+      "callExpiringSoon": "A chamada expirará em breve",
+      "tapToRespond": "Toque nos botões para responder"
+    }
   }
 }

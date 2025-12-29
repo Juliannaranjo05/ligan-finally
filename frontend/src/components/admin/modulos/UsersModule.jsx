@@ -417,8 +417,8 @@ const UsersModule = () => {
 
   // Filtrar usuarios según búsqueda y rol
   const filteredUsers = registeredUsers.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (user.email || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
@@ -453,7 +453,7 @@ const UsersModule = () => {
               <p className="text-red-400">❌ No se encontró token en ninguna ubicación</p>
             )}
             <p className="text-gray-300">
-              <span className="text-yellow-300 font-medium">🌐 API URL:</span> {import.meta.env.VITE_API_URL || 'https://ligando.duckdns.org/api'}
+              <span className="text-yellow-300 font-medium">🌐 API URL:</span> {import.meta.env.VITE_API_URL || 'https://ligandome.com/api'}
             </p>
           </div>
           <div className="space-y-2">
@@ -654,14 +654,14 @@ const UsersModule = () => {
                             <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center">
                                 <span className="text-white font-medium text-sm">
-                                {verificacion.user.name.charAt(0)}
+                                {verificacion.user?.name?.charAt(0) || '?'}
                                 </span>
                             </div>
-                            <span className="text-gray-300 font-medium">{verificacion.user.name}</span>
+                            <span className="text-gray-300 font-medium">{verificacion.user?.name || 'Sin nombre'}</span>
                             </div>
                         </td>
-                        <td className="py-4 px-4 text-gray-400">{verificacion.user.email}</td>
-                        <td className="py-4 px-4 text-gray-300">{verificacion.user.country}</td>
+                        <td className="py-4 px-4 text-gray-400">{verificacion.user?.email || 'Sin email'}</td>
+                        <td className="py-4 px-4 text-gray-300">{verificacion.user?.country || '🌐 No especificado'}</td>
                         <td className="py-4 px-4">
                             <div className="flex gap-1 flex-wrap">
                                 <button 
@@ -698,7 +698,7 @@ const UsersModule = () => {
                         <td className="py-4 px-4">
                             <div className="flex gap-1 flex-wrap">
                                 <button 
-                                    onClick={() => handleApprove(verificacion.id, verificacion.user.name)}
+                                    onClick={() => handleApprove(verificacion.id, verificacion.user?.name || 'Usuario')}
                                     disabled={procesando === verificacion.id}
                                     className="bg-green-500/20 text-green-400 px-3 py-1 rounded-lg text-sm hover:bg-green-500/30 transition-colors disabled:opacity-50 flex items-center gap-1"
                                 >
@@ -712,14 +712,14 @@ const UsersModule = () => {
                                 
                                 {/* ✅ NUEVO BOTÓN */}
                                 <button 
-                                    onClick={() => handleAbrirObservaciones(verificacion.id, verificacion.user.name)}
+                                    onClick={() => handleAbrirObservaciones(verificacion.id, verificacion.user?.name || 'Usuario')}
                                     className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-lg text-sm hover:bg-blue-500/30 transition-colors flex items-center gap-1"
                                 >
                                     📝 Observaciones
                                 </button>
                                 
                                 <button 
-                                    onClick={() => handleReject(verificacion.id, verificacion.user.name)}
+                                    onClick={() => handleReject(verificacion.id, verificacion.user?.name || 'Usuario')}
                                     disabled={procesando === verificacion.id}
                                     className="bg-red-500/20 text-red-400 px-3 py-1 rounded-lg text-sm hover:bg-red-500/30 transition-colors disabled:opacity-50 flex items-center gap-1"
                                 >
@@ -810,11 +810,11 @@ const UsersModule = () => {
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                             user.role === 'modelo' ? 'bg-gradient-to-r from-pink-500 to-purple-600' : 'bg-gradient-to-r from-blue-500 to-cyan-600'
                             }`}>
-                            <span className="text-white font-medium text-sm">{user.name.charAt(0)}</span>
+                            <span className="text-white font-medium text-sm">{user.name?.charAt(0) || '?'}</span>
                             </div>
                             <div>
                             <div className="flex items-center gap-2">
-                                <span className="text-gray-300 font-medium">{user.name}</span>
+                                <span className="text-gray-300 font-medium">{user.name || 'Sin nombre'}</span>
                                 {user.verified && (
                                 <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center" title="Cuenta verificada">
                                     <span className="text-white text-xs">✓</span>
@@ -822,7 +822,7 @@ const UsersModule = () => {
                                 )}
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="text-gray-500 text-sm">{user.email}</span>
+                                <span className="text-gray-500 text-sm">{user.email || 'Sin email'}</span>
                                 {user.email_verified ? (
                                 <span className="text-green-400 text-xs bg-green-500/20 px-2 py-0.5 rounded" title="Email verificado">
                                     📧 ✓
@@ -875,7 +875,7 @@ const UsersModule = () => {
                             
                             {/* Botón eliminar para todos */}
                             <button 
-                            onClick={() => handleEliminarUsuario(user.id, user.name)}
+                            onClick={() => handleEliminarUsuario(user.id, user.name || 'Usuario')}
                             className="text-red-400 hover:text-red-300 text-sm hover:underline flex items-center gap-1"
                             title="Eliminar usuario permanentemente"
                             >

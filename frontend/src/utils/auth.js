@@ -3,7 +3,7 @@ import axiosDirect from "axios"; // Axios directo sin interceptores para registr
 import userCache from "./userCache"; // 🔥 IMPORTAR CACHE GLOBAL
 import { useRateLimitHandler } from '../components/RateLimitLigand';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
 
 // ========================
 // SISTEMA DE HEARTBEAT

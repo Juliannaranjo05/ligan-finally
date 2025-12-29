@@ -34,6 +34,7 @@ use App\Http\Controllers\CoinbaseCommerceController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminChatController;
+use App\Http\Controllers\AdminSettingsController;
 
 
 Route::get('/stories', [StoryController::class, 'getActiveStories']);
@@ -94,6 +95,14 @@ Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin')->group(funct
     Route::post('/earnings/fix', [SessionEarningsController::class, 'fixExistingEarnings']);
     Route::post('/earnings/recalculate', [SessionEarningsController::class, 'recalculateAllEarnings']);
     Route::post('/weekly-payment', [SessionEarningsController::class, 'processWeeklyPayment']);
+
+    // Settings
+    Route::get('/settings', [AdminSettingsController::class, 'getSettings']);
+    Route::post('/settings', [AdminSettingsController::class, 'updateSettings']);
+    Route::post('/settings/change-password', [AdminSettingsController::class, 'changePassword']);
+    Route::post('/settings/cleanup-expired-stories', [AdminSettingsController::class, 'cleanupExpiredStories']);
+    Route::post('/settings/clear-cache', [AdminSettingsController::class, 'clearCache']);
+    Route::get('/settings/{key}', [AdminSettingsController::class, 'getSetting']);
 });
 
 Route::middleware(['auth:sanctum', 'single.session'])->group(function () {
@@ -236,15 +245,8 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         Route::get('/earnings/weekly', [SessionEarningsController::class, 'getWeeklyEarnings']);
         Route::get('/earnings/stats', [SessionEarningsController::class, 'getDetailedStats']);
         
-        // Rutas para admin (las que ya tienes)
-        Route::get('/admin/pending-payments', [SessionEarningsController::class, 'getAllPendingPayments']);
-        Route::post('/admin/payments/{id}/mark-paid', [SessionEarningsController::class, 'markPaymentAsPaid']);
-        
-        // 🔥 NUEVAS rutas para admin
-        Route::get('/admin/earnings/stats', [SessionEarningsController::class, 'getAdminStats']);
-        Route::post('/admin/earnings/fix', [SessionEarningsController::class, 'fixExistingEarnings']);
-        Route::post('/admin/earnings/recalculate', [SessionEarningsController::class, 'recalculateAllEarnings']);
-        Route::post('/admin/weekly-payment', [SessionEarningsController::class, 'processWeeklyPayment']);
+        // ❌ ELIMINADO: Rutas de admin movidas al grupo admin.auth arriba (línea 50)
+        // Las rutas de admin deben usar admin.auth middleware, no auth:sanctum
     });
     Route::prefix('client-balance')->name('client-balance.')->group(function () {
         Route::get('/my-balance', [ClientBalanceController::class, 'getMyBalance']);
@@ -547,11 +549,11 @@ Route::post('/livekit/token', [LiveKitController::class, 'generateTokenOriginal'
 Route::post('/livekit/webhook', [LiveKitController::class, 'handleWebhook']);
 
 Route::get('/stories/public', [StoryController::class, 'indexPublicas']);
-Route::get('/stories/my-story', [StoryController::class, 'myStory']); // ✅ ESPECÍFICA PRIMERO
 
 // Rutas autenticadas - ajusta el middleware según tu configuración
 Route::middleware('auth:sanctum')->group(function () {
     // Historias del usuario
+    Route::get('/stories/my-story', [StoryController::class, 'myStory']); // ✅ ESPECÍFICA PRIMERO - Requiere autenticación
     Route::post('/stories', [StoryController::class, 'store']); // Subir historia
     Route::get('/stories/{id}', [StoryController::class, 'show'])->where('id', '[0-9]+'); // ✅ GENÉRICA DESPUÉS + RESTRICCIÓN
     Route::delete('/stories/{id}', [StoryController::class, 'destroy']);
@@ -614,7 +616,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 */
 
 // 🔐 RUTAS DE ADMIN - PÚBLICAS (sin autenticación inicial)
-Route::middleware(['throttle:10,1'])->prefix('admin')->group(function () {
+// Rate limit más alto para admin (30 requests/minuto)
+Route::middleware(['throttle:30,1'])->prefix('admin')->group(function () {
     Route::post('/login', [AdminAuthController::class, 'login']);
     Route::post('/verify-code', [AdminAuthController::class, 'verifyCode']);
 });

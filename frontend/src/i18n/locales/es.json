@@ -395,7 +395,9 @@
       "callRejected": "La llamada fue rechazada",
       "callExpired": "La llamada expiró sin respuesta",
       "timeoutExpired": "Tiempo de espera agotado",
-      "callError": "Error al iniciar llamada"
+      "callError": "Error al iniciar llamada",
+      "clientNoBalance": "Este cliente tiene saldo insuficiente",
+      "clientNoBalanceMessage": "{{name}} no tiene saldo suficiente para realizar videollamadas. Necesita más de 2 minutos de saldo."
     }
   },
   "interfazMensajes": {
@@ -932,7 +934,7 @@
       },
       "support": {
         "title": "Soporte o ayuda",
-        "description": "Para dudas, problemas técnicos o ayuda con tu cuenta, escríbenos a support@ligando.online y nuestro equipo te responderá lo antes posible.",
+        "description": "Para dudas, problemas técnicos o ayuda con tu cuenta, escríbenos a support@ligandome.com y nuestro equipo te responderá lo antes posible.",
         "contactButton": "Contactar soporte por correo"
       },
       "report": {
@@ -1121,7 +1123,10 @@
       "insufficientGiftCoins": "Gift Coins Insuficientes",
       "insufficientGiftCoinsMessage": "Necesitas {{required}} gift coins para aceptar este regalo. Tienes {{current}}",
       "insufficientBalanceToAcceptGift": "Saldo insuficiente para aceptar regalo",
-      "notEnoughGiftCoins": "No tienes suficientes gift coins para aceptar este regalo"
+      "notEnoughGiftCoins": "No tienes suficientes gift coins para aceptar este regalo",
+      "lowBalanceTitle": "Saldo Bajo",
+      "lowBalanceMessage": "Tu saldo ya es muy poco para seguir en la llamada",
+      "rechargeNow": "Recargar Ahora"
     },
     "gift": {
       "sent": "🎁 Regalo Enviado",
@@ -1214,6 +1219,7 @@
       "notAvailableBlocked": "No disponible - usuario bloqueado"
     },
     "gifts": {
+      "giftRequest": "Solicitud de Regalo",
       "requestGift": "Solicitud de Regalo",
       "giftReceived": "¡Regalo Recibido!",
       "giftSent": "Regalo Enviado",
@@ -1895,5 +1901,27 @@
     "disable": "Disable mirror",
     "active": "Mirror active",
     "description": "See my image as in a mirror"
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Iniciando llamada...",
+      "initiatingSubtitle": "Preparando conexión",
+      "callingTitle": "Llamando",
+      "waitingResponse": "Esperando respuesta",
+      "connectingTitle": "Conectando...",
+      "pleaseWait": "Por favor espera",
+      "cancelCall": "Cancelar Llamada",
+      "autoCancelMessage": "La llamada se cancelará automáticamente en 30 segundos",
+      "establishingConnection": "Estableciendo conexión con el usuario"
+    },
+    "incoming": {
+      "incomingCall": "LLAMADA ENTRANTE",
+      "videoCall": "Videollamada",
+      "voiceCall": "Llamada de voz",
+      "calling": "Llamando...",
+      "processingResponse": "Procesando respuesta...",
+      "callExpiringSoon": "La llamada expirará pronto",
+      "tapToRespond": "Toca los botones para responder"
+    }
   }
 }

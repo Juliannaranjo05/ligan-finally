@@ -180,7 +180,7 @@ function ModalContent({ modalActivo, t }) {
       {/* Acciones específicas para soporte y reportes */}
       {modalActivo === "support" && (
         <a
-          href="mailto:support@ligando.online?subject=Soporte%20Ligando&body=Cu%C3%A9ntanos%20en%20detalle%20tu%20duda%20o%20problema.%0A%0A-%20Correo%20con%20el%20que%20ingresas%3A%0A-%20Dispositivo%20(navegador%2C%20m%C3%B3vil%2C%20PC)%3A%0A-%20Captura%20de%20pantalla%20(si%20es%20posible)%3A%0A"
+          href="mailto:support@ligandome.com?subject=Soporte%20Ligando&body=Cu%C3%A9ntanos%20en%20detalle%20tu%20duda%20o%20problema.%0A%0A-%20Correo%20con%20el%20que%20ingresas%3A%0A-%20Dispositivo%20(navegador%2C%20m%C3%B3vil%2C%20PC)%3A%0A-%20Captura%20de%20pantalla%20(si%20es%20posible)%3A%0A"
           className="mt-4 w-full inline-flex items-center justify-center bg-[#ff007a] hover:bg-[#e6006e] text-white py-2 px-4 rounded-lg transition-colors text-sm"
         >
           {t("settings.modals.support.contactButton")}
@@ -195,7 +195,7 @@ function ModalContent({ modalActivo, t }) {
             const form = e.currentTarget;
             const tipo = form.tipo.value;
             const descripcion = form.descripcion.value;
-            const mailto = `mailto:report@ligando.online?subject=Reporte%20${encodeURIComponent(
+            const mailto = `mailto:support@ligandome.com?subject=Reporte%20${encodeURIComponent(
               tipo
             )}&body=${encodeURIComponent(descripcion)}`;
             window.location.href = mailto;

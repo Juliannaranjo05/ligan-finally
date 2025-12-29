@@ -1424,6 +1424,11 @@ const VideoDisplayImproved = ({
                 );
               }
               
+              // 🔥 VERIFICAR SI HAY TRADUCCIÓN PARA APLICAR ESTILOS DIFERENTES
+              const hasTranslationForThisMsg = translations.get(msg.id) && 
+                                               translations.get(msg.id) !== (msg.text || msg.message) && 
+                                               translations.get(msg.id).trim() !== '';
+              
               return (
                 <div 
                   key={msg.id || idx} 
@@ -1437,7 +1442,8 @@ const VideoDisplayImproved = ({
                         : 'text-left'
                     }`}
                     style={{ 
-                      backgroundColor: '#4a4a4a',
+                      // 🔥 SI HAY TRADUCCIÓN, NO APLICAR FONDO (el overlay ya lo tiene)
+                      backgroundColor: hasTranslationForThisMsg ? 'transparent' : '#4a4a4a',
                       maxWidth: '250px',
                       minWidth: '0',
                       width: 'fit-content',
@@ -1445,10 +1451,11 @@ const VideoDisplayImproved = ({
                       overflowWrap: 'break-word',
                       wordBreak: 'break-word',
                       boxSizing: 'border-box',
-                      overflow: 'hidden'
+                      overflow: 'hidden',
+                      padding: hasTranslationForThisMsg ? '0' : undefined // 🔥 QUITAR PADDING SI HAY TRADUCCIÓN
                     }}
                   >
-                    {!isLocal && (
+                    {!isLocal && !hasTranslationForThisMsg && (
                       <div className="text-xs font-semibold mb-1 text-gray-300" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                         {senderName}
                       </div>

@@ -34,6 +34,58 @@ export default function Header() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const [showEarnings, setShowEarnings] = useState(false);
 
+  // 🚫 ESTADO PARA CONTROLAR EL BLOQUEO (igual que cliente)
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [showHoverBanner, setShowHoverBanner] = useState(false);
+
+  // 🔍 FUNCIÓN PARA VERIFICAR SI HAY roomName EN LOCALSTORAGE
+  const checkRoomNameInStorage = () => {
+    try {
+      const roomName = localStorage.getItem('roomName');
+      const hasRoomName = roomName && roomName.trim() !== '';
+      return hasRoomName;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // 🚫 FUNCIÓN PARA MANEJAR NAVEGACIÓN BLOQUEADA
+  const handleBlockedNavigation = (actionName) => {
+    // Puedes usar notificaciones si están disponibles
+    console.warn('🚫 Navegación bloqueada:', actionName);
+  };
+
+  // VERIFICAR BLOQUEO AL INICIALIZAR
+  useEffect(() => {
+    const blocked = checkRoomNameInStorage();
+    setIsBlocked(blocked);
+  }, []);
+
+  // 👁️ LISTENER PARA CAMBIOS EN LOCALSTORAGE
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const blocked = checkRoomNameInStorage();
+      setIsBlocked(blocked);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    const interval = setInterval(handleStorageChange, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // 🚫 FUNCIÓN PARA MANEJAR NAVEGACIÓN CON BLOQUEO
+  const handleNavigateWithBlock = (path, actionName) => {
+    if (isBlocked) {
+      handleBlockedNavigation(actionName);
+      return;
+    }
+    navigate(path);
+  };
+
   // 🔥 ESTADOS PARA EL CHAT EN VIDEOLLAMADA
   const { isInCall } = useVideocallChat();
   const [showChatModal, setShowChatModal] = useState(false);
@@ -450,10 +502,10 @@ export default function Header() {
   return (
     <>
       <header className="flex justify-between items-center mb-2 px-4 pt-4 relative">
-        {/* Logo + Nombre */}
+        {/* Logo + Nombre - BLOQUEADO SI HAY SALA ACTIVA */}
         <div
-          className="flex items-center cursor-pointer"
-          onClick={() => navigate("/homellamadas")}
+          className={`flex items-center cursor-pointer ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+          onClick={() => handleNavigateWithBlock("/homellamadas", "Home")}
         >
           <img src={logoproncipal} alt="Logo" className="w-12 h-12 sm:w-14 sm:h-14" />
           <span className="text-xl sm:text-2xl text-[#ff007a] font-pacifico ml-[-5px]">
@@ -465,15 +517,25 @@ export default function Header() {
         <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-lg">
           <LanguageSelector />
           
-          {/* 👈 ICONO DE HISTORIAS */}
+          {/* 👈 ICONO DE HISTORIAS - BLOQUEADO SI HAY SALA ACTIVA */}
           <button
-            onClick={handleOpenStories}
-            className="hover:scale-110 transition p-2"
+            onClick={() => {
+              if (isBlocked) {
+                handleBlockedNavigation('Historias');
+                return;
+              }
+              handleOpenStories();
+            }}
+            className={`hover:scale-110 transition p-2 ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             title={t('viewStories') || 'Ver Historias'}
+            disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Play size={24} className="text-[#ff007a]" />
           </button>
           
+          {/* 🔥 SALDO - NO BLOQUEADO (siempre disponible) */}
           <button
             className="hover:scale-110 transition p-2"
             onClick={() => setShowEarnings(true)}
@@ -482,20 +544,33 @@ export default function Header() {
             <Wallet className="text-[#ff007a]" size={24} />
           </button>
           
+          {/* Home - BLOQUEADO SI HAY SALA ACTIVA */}
           <button
-            className="hover:scale-110 transition p-2"
-            onClick={() => navigate("/homellamadas")}
+            className={`hover:scale-110 transition p-2 ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onClick={() => handleNavigateWithBlock("/homellamadas", "Home")}
             title={t('header.home', 'Inicio')}
+            disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Home className="text-[#ff007a]" size={24} />
           </button>
           
-          {/* 🔔 BOTÓN DE MENSAJES CON LÓGICA DUAL */}
+          {/* 🔔 BOTÓN DE MENSAJES CON LÓGICA DUAL - BLOQUEADO SI HAY SALA ACTIVA */}
           <div className="relative">
             <button
-              className="hover:scale-110 transition p-2"
-              onClick={handleMessagesClick}
+              className={`hover:scale-110 transition p-2 ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => {
+                if (isBlocked) {
+                  handleBlockedNavigation('Mensajes');
+                  return;
+                }
+                handleMessagesClick();
+              }}
               title={isInCall ? t('header.videocall_chat', 'Chat en videollamada') : t('header.messages', 'Mensajes')}
+              disabled={isBlocked}
+              onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+              onMouseLeave={() => setShowHoverBanner(false)}
             >
               <MessageSquare className="text-[#ff007a]" size={24} />
               {globalUnreadCount > 0 && (
@@ -510,20 +585,32 @@ export default function Header() {
             </button>
           </div>
           
+          {/* Favoritos - BLOQUEADO SI HAY SALA ACTIVA */}
           <button
-            className="hover:scale-110 transition p-2"
-            onClick={() => navigate("/favorites")}
+            className={`hover:scale-110 transition p-2 ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onClick={() => handleNavigateWithBlock("/favorites", "Favoritos")}
             title={t('header.favorites', 'Favoritos')}
+            disabled={isBlocked}
+            onMouseEnter={() => isBlocked && setShowHoverBanner(true)}
+            onMouseLeave={() => setShowHoverBanner(false)}
           >
             <Star className="text-[#ff007a]" size={24} />
           </button>
 
-          {/* Botón de perfil desktop */}
+          {/* Botón de perfil desktop - BLOQUEADO SI HAY SALA ACTIVA */}
           <div className="relative" ref={menuRef}>
             <button
-              onClick={toggleMenu}
-              className="w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a]"
+              onClick={() => {
+                if (isBlocked && !menuAbierto) {
+                  handleBlockedNavigation('Menú de cuenta');
+                  return;
+                }
+                toggleMenu();
+              }}
+              className={`w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a] ${isBlocked ? 'opacity-50' : ''}`}
               title={t('header.account_menu', 'Menú de cuenta')}
+              onMouseEnter={() => isBlocked && !menuAbierto && setShowHoverBanner(true)}
+              onMouseLeave={() => setShowHoverBanner(false)}
             >
               {currentUser?.avatar_url ? (
                 <img 
@@ -539,25 +626,35 @@ export default function Header() {
               )}
             </button>
 
-            {/* Menú desplegable desktop */}
+            {/* Menú desplegable desktop - BLOQUEADO SI HAY SALA ACTIVA */}
             {menuAbierto && (
               <div className="absolute right-0 mt-2 w-48 bg-[#1f2125] rounded-xl shadow-lg border border-[#ff007a]/30 z-50 overflow-hidden">
                 <button
                   onClick={() => {
+                    if (isBlocked) {
+                      handleBlockedNavigation('Configuración');
+                      setMenuAbierto(false);
+                      return;
+                    }
                     navigate("/configuracion");
                     setMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <Settings size={16} className="mr-3 text-[#ff007a]"/>
                   {t('header.settings', 'Configuración')}
                 </button>
                 <button
                   onClick={() => {
+                    if (isBlocked) {
+                      handleBlockedNavigation('Logout');
+                      setMenuAbierto(false);
+                      return;
+                    }
                     navigate("/logout");
                     setMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <LogOut size={16} className="mr-3 text-[#ff007a]" />
                   {t('header.logout', 'Cerrar sesión')}
@@ -621,14 +718,30 @@ export default function Header() {
                 <LanguageSelector />
               </div>
 
-              {/* 👈 OPCIONES MÓVILES PARA HISTORIAS */}
+              {/* 🚫 INDICADOR DE ESTADO BLOQUEADO EN MÓVIL */}
+              {isBlocked && (
+                <div className="px-4 py-3 border-b border-red-500/20 bg-red-500/10">
+                  <div className="flex items-center gap-2 text-red-400">
+                    <span className="text-sm">🔒</span>
+                    <span className="text-xs">Videollamada activa - Navegación limitada</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 👈 OPCIONES MÓVILES PARA HISTORIAS - BLOQUEADO SI HAY SALA ACTIVA */}
               <div className="py-2 border-b border-[#ff007a]/20">
                 <button
                   onClick={() => {
+                    if (isBlocked) {
+                      handleBlockedNavigation('Historias');
+                      setMobileMenuAbierto(false);
+                      return;
+                    }
                     handleOpenStories();
                     setMobileMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <Play size={18} className="mr-3 text-[#ff007a]"/>
                   {t('viewStories') || 'Ver Historias'}
@@ -637,6 +750,7 @@ export default function Header() {
 
               {/* Navegación móvil */}
               <div className="py-2">
+                {/* 🔥 SALDO - NO BLOQUEADO (siempre disponible) */}
                 <button
                   onClick={() => {
                     setShowEarnings(true);
@@ -648,21 +762,31 @@ export default function Header() {
                   {t('header.payments_and_coins', 'Pagos y monedas')}
                 </button>
                 
+                {/* Home - BLOQUEADO SI HAY SALA ACTIVA */}
                 <button
                   onClick={() => {
-                    navigate("/homellamadas");
+                    handleNavigateWithBlock("/homellamadas", "Home");
                     setMobileMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <Home size={18} className="mr-3 text-[#ff007a]"/>
                   {t('header.home', 'Inicio')}
                 </button>
                 
-                {/* 🔔 MENSAJES CON LÓGICA DUAL EN MÓVIL - VERSIÓN CORREGIDA */}
+                {/* 🔔 MENSAJES CON LÓGICA DUAL EN MÓVIL - BLOQUEADO SI HAY SALA ACTIVA */}
                 <button
-                  onClick={handleMobileMessagesClick}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  onClick={() => {
+                    if (isBlocked) {
+                      handleBlockedNavigation('Mensajes');
+                      setMobileMenuAbierto(false);
+                      return;
+                    }
+                    handleMobileMessagesClick();
+                  }}
+                  className={`flex items-center justify-between w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <div className="flex items-center">
                     <MessageSquare size={18} className="mr-3 text-[#ff007a]"/>
@@ -680,12 +804,14 @@ export default function Header() {
                   </div>
                 </button>
                 
+                {/* Favoritos - BLOQUEADO SI HAY SALA ACTIVA */}
                 <button
                   onClick={() => {
-                    navigate("/favorites");
+                    handleNavigateWithBlock("/favorites", "Favoritos");
                     setMobileMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <Star size={18} className="mr-3 text-[#ff007a]"/>
                   {t('header.favorites', 'Favoritos')}
@@ -695,14 +821,15 @@ export default function Header() {
               {/* Separador */}
               <div className="border-t border-[#ff007a]/20"></div>
 
-              {/* Opciones de cuenta móvil */}
+              {/* Opciones de cuenta móvil - BLOQUEADO SI HAY SALA ACTIVA */}
               <div className="py-2">
                 <button
                   onClick={() => {
-                    navigate("/configuracion");
+                    handleNavigateWithBlock("/configuracion", "Configuración");
                     setMobileMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <Settings size={18} className="mr-3 text-[#ff007a]"/>
                   {t('header.settings', 'Configuración')}
@@ -710,10 +837,11 @@ export default function Header() {
                 
                 <button
                   onClick={() => {
-                    navigate("/logout");
+                    handleNavigateWithBlock("/logout", "Logout");
                     setMobileMenuAbierto(false);
                   }}
-                  className="flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition"
+                  className={`flex items-center w-full px-4 py-3 text-sm text-white hover:bg-[#2b2d31] transition ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={isBlocked}
                 >
                   <LogOut size={18} className="mr-3 text-[#ff007a]"/>
                   {t('header.logout', 'Cerrar sesión')}
@@ -780,6 +908,16 @@ export default function Header() {
                 {t('common.close') || 'Cerrar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚨 NOTIFICACIÓN FLOTANTE DE VIDEOLLAMADA ACTIVA - SOLO EN HOVER */}
+      {isBlocked && showHoverBanner && (
+        <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium z-40 shadow-lg border border-red-400 transition-opacity">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+            <span>📹 Videollamada activa - Navegación limitada</span>
           </div>
         </div>
       )}

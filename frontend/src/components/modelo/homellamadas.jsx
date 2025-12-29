@@ -645,38 +645,69 @@ const iniciarLlamadaReal = async (usuario) => {
     }
 
     // 💰 VERIFICAR SALDO DEL CLIENTE ANTES DE INICIAR LLAMADA
-    const clientBalanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/check-client-balance`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        client_id: otherUserId
-      })
-    });
-    
-    if (clientBalanceResponse.ok) {
-      const clientBalanceData = await clientBalanceResponse.json();
+    try {
+      const clientBalanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/check-client-balance`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          client_id: otherUserId
+        })
+      });
       
-      // 🔥 VERIFICAR SI EL CLIENTE PUEDE INICIAR LLAMADA
-      const canStartCall = clientBalanceData.success?.can_start_call ?? clientBalanceData.can_start_call ?? true;
-      
-      if (!canStartCall) {
-        // ❌ EL CLIENTE NO TIENE SALDO SUFICIENTE
+      if (clientBalanceResponse.ok) {
+        const clientBalanceData = await clientBalanceResponse.json();
+        
+        // 🔥 VERIFICAR SI EL CLIENTE PUEDE INICIAR LLAMADA
+        // Si success es false o can_start_call es false, NO permitir la llamada
+        const canStartCall = clientBalanceData.success !== false && 
+                            (clientBalanceData.success?.can_start_call ?? clientBalanceData.can_start_call ?? false);
+        
+        if (!canStartCall) {
+          // ❌ EL CLIENTE NO TIENE SALDO SUFICIENTE
+          setIsCallActive(false);
+          setCurrentCall(null);
+          
+          const clientMinutes = clientBalanceData.balance?.minutes_available ?? clientBalanceData.success?.balance?.minutes_available ?? 0;
+          setConfirmAction({
+            type: 'error',
+            title: t("client.errors.clientNoBalance") || 'Este cliente tiene saldo insuficiente',
+            message: t("client.errors.clientNoBalanceMessage", { name: otherUserName }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita más de 2 minutos de saldo.`,
+            confirmText: t("client.errors.understood") || 'Entendido',
+            action: () => setShowConfirmModal(false)
+          });
+          setShowConfirmModal(true);
+          return;
+        }
+      } else {
+        // ❌ NO SE PUDO VERIFICAR EL SALDO - NO PERMITIR LA LLAMADA POR SEGURIDAD
         setIsCallActive(false);
         setCurrentCall(null);
         
-        const minimumRequired = clientBalanceData.balance?.minimum_required || 30;
         setConfirmAction({
           type: 'error',
-          title: t("client.errors.clientNoBalance") || 'Cliente sin saldo',
-          message: t("client.errors.clientNoBalanceMessage", { name: otherUserName, minimum: minimumRequired }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita al menos ${minimumRequired} monedas.`,
+          title: t("client.errors.clientNoBalance") || 'Error al verificar saldo',
+          message: 'No se pudo verificar el saldo del cliente. Por favor intenta nuevamente.',
           confirmText: t("client.errors.understood") || 'Entendido',
           action: () => setShowConfirmModal(false)
         });
         setShowConfirmModal(true);
         return;
       }
-    } else {
-      // Si no se puede verificar el saldo, continuar pero registrar advertencia
+    } catch (error) {
+      // ❌ ERROR AL VERIFICAR SALDO - NO PERMITIR LA LLAMADA POR SEGURIDAD
+      console.error('Error verificando saldo del cliente:', error);
+      setIsCallActive(false);
+      setCurrentCall(null);
+      
+      setConfirmAction({
+        type: 'error',
+        title: t("client.errors.clientNoBalance") || 'Error al verificar saldo',
+        message: 'Error al verificar el saldo del cliente. Por favor intenta nuevamente.',
+        confirmText: t("client.errors.understood") || 'Entendido',
+        action: () => setShowConfirmModal(false)
+      });
+      setShowConfirmModal(true);
+      return;
     }
 
     // ✅ SIN BLOQUEOS Y CLIENTE CON SALDO - PROCEDER CON LA LLAMADA
@@ -713,8 +744,27 @@ const iniciarLlamadaReal = async (usuario) => {
             setIsCallActive(false);
       setCurrentCall(null);
       
-      // Usar sistema de notificaciones
-      notifications.error(data.error || 'No se pudo completar la llamada');
+      // 🔥 DETECTAR ERROR DE SALDO INSUFICIENTE DEL CLIENTE
+      const errorMessage = data.error || data.message || '';
+      const isBalanceError = errorMessage.toLowerCase().includes('saldo') || 
+                             errorMessage.toLowerCase().includes('balance') ||
+                             errorMessage.toLowerCase().includes('insufficient') ||
+                             response.status === 402; // Payment Required
+      
+      if (isBalanceError) {
+        // Mostrar modal de error con mensaje específico
+        setConfirmAction({
+          type: 'error',
+          title: t("client.errors.clientNoBalance") || 'Este cliente tiene saldo insuficiente',
+          message: t("client.errors.clientNoBalanceMessage", { name: otherUserName }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita más de 2 minutos de saldo.`,
+          confirmText: t("client.errors.understood") || 'Entendido',
+          action: () => setShowConfirmModal(false)
+        });
+        setShowConfirmModal(true);
+      } else {
+        // Otros errores - usar sistema de notificaciones
+        notifications.error(data.error || 'No se pudo completar la llamada');
+      }
     }
   } catch (error) {
         setIsCallActive(false);

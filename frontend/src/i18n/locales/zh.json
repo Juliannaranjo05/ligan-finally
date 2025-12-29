@@ -716,7 +716,7 @@
       },
       "support": {
         "title": "支持或帮助",
-        "description": "如有问题、技术问题或账户帮助，请发送邮件至 support@ligando.online，我们的团队将尽快回复。",
+        "description": "如有问题、技术问题或账户帮助，请发送邮件至 support@ligandome.com，我们的团队将尽快回复。",
         "contactButton": "通过电子邮件联系支持"
       },
       "report": {
@@ -1123,7 +1123,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",

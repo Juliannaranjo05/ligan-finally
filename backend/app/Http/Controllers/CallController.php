@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ChatSession;
 use App\Models\User;
 use App\Models\UserNickname;
+use App\Models\UserCoins;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -77,6 +78,69 @@ class CallController extends Controller
                     'success' => false,
                     'error' => 'Usuario no encontrado'
                 ], 404);
+            }
+
+            // 💰 VALIDAR SALDO MÍNIMO PARA CLIENTES (30 monedas = 3 minutos)
+            // Si el caller es cliente, validar su saldo
+            if ($caller->rol === 'cliente') {
+                $minimumBalance = 30; // 30 monedas = 3 minutos (más de 2 minutos requeridos)
+                $userCoins = UserCoins::firstOrCreate(
+                    ['user_id' => $caller->id],
+                    ['purchased_balance' => 0, 'gift_balance' => 0]
+                );
+                
+                if ($userCoins->purchased_balance < $minimumBalance) {
+                    $deficit = $minimumBalance - $userCoins->purchased_balance;
+                    Log::warning('💰 [CALL] Cliente sin saldo suficiente para iniciar llamada', [
+                        'caller_id' => $caller->id,
+                        'purchased_balance' => $userCoins->purchased_balance,
+                        'minimum_required' => $minimumBalance,
+                        'deficit' => $deficit
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Saldo insuficiente para iniciar videollamada',
+                        'current_balance' => $userCoins->purchased_balance,
+                        'minimum_required' => $minimumBalance,
+                        'deficit' => $deficit,
+                        'deficit_minutes' => ceil($deficit / 10), // 10 monedas por minuto
+                        'action_required' => 'recharge'
+                    ], 402);
+                }
+            }
+
+            // 💰 VALIDAR SALDO DEL CLIENTE SI LA MODELO LO ESTÁ LLAMANDO
+            // Si el caller es modelo y el receiver es cliente, validar saldo del cliente
+            // El cliente debe tener MÁS de 2 minutos (más de 20 monedas) para recibir llamadas
+            if ($caller->rol === 'modelo' && $receiver->rol === 'cliente') {
+                $minimumBalanceForCall = 21; // Más de 20 monedas (más de 2 minutos) = al menos 21 monedas
+                $clientCoins = UserCoins::firstOrCreate(
+                    ['user_id' => $receiverId],
+                    ['purchased_balance' => 0, 'gift_balance' => 0]
+                );
+                
+                // Verificar si el cliente tiene <= 20 monedas (2 minutos o menos) - NO permitir llamada
+                if ($clientCoins->purchased_balance <= 20) {
+                    $minutesAvailable = floor($clientCoins->purchased_balance / 10);
+                    Log::warning('💰 [CALL] Modelo intentó llamar a cliente sin saldo suficiente (<= 2 minutos)', [
+                        'modelo_id' => $caller->id,
+                        'cliente_id' => $receiverId,
+                        'cliente_purchased_balance' => $clientCoins->purchased_balance,
+                        'minutes_available' => $minutesAvailable,
+                        'minimum_required' => $minimumBalanceForCall
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Este cliente tiene saldo insuficiente',
+                        'message' => 'Este cliente tiene saldo insuficiente para realizar videollamadas',
+                        'client_balance' => $clientCoins->purchased_balance,
+                        'client_minutes' => $minutesAvailable,
+                        'minimum_required' => $minimumBalanceForCall,
+                        'deficit' => $minimumBalanceForCall - $clientCoins->purchased_balance
+                    ], 402);
+                }
             }
 
             // Verificar y cancelar automáticamente llamadas activas previas del caller

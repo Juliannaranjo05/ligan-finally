@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import i18n from "../i18n";
 import { useGlobalTranslation } from "../contexts/GlobalTranslationContext";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
 
 const languages = [
   { code: "es", label: "Español", flag: "/flags/es.png" },

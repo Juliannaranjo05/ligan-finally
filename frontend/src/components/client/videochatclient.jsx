@@ -720,6 +720,7 @@ export default function VideoChatClient() {
   const [showMainSettings, setShowMainSettings] = useState(false);
   const [showCameraAudioModal, setShowCameraAudioModal] = useState(false);
   const [showGiftsModal, setShowGiftsModal] = useState(false);
+  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false); // 🔥 NUEVO: Modal de saldo bajo durante llamada
   const [isFavorite, setIsFavorite] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
   const [isAddingFavorite, setIsAddingFavorite] = useState(false);
@@ -2242,28 +2243,14 @@ export default function VideoChatClient() {
       );
     }
 
-    // 🔥 FINALIZACIÓN AUTOMÁTICA CUANDO QUEDAN 2 MINUTOS O MENOS - CIERRE INMEDIATO
-    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat) {
-      console.warn('🚨 [BALANCE] Tiempo restante <= 2 minutos - Finalizando llamada inmediatamente', { remainingMinutes });
+    // 🔥 MOSTRAR MODAL CUANDO QUEDAN 2 MINUTOS O MENOS
+    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat && !showLowBalanceModal) {
+      console.warn('🚨 [BALANCE] Tiempo restante <= 2 minutos - Mostrando modal de saldo bajo', { remainingMinutes });
+      setShowLowBalanceModal(true);
       hasAutoEndedRef.current = true;
       
       // Cerrar modal de regalos si está abierto
       setShowGiftsModal(false);
-      
-      // Mostrar notificación final
-      addNotification(
-        'error',
-        '⏰ Tiempo agotado',
-        remainingMinutes > 0 
-          ? `Te quedan ${remainingMinutes} minuto${remainingMinutes !== 1 ? 's' : ''}. La llamada se está finalizando...`
-          : 'Tu tiempo se ha agotado. La llamada se está finalizando...',
-        3000
-      );
-
-      // Finalizar la llamada automáticamente INMEDIATAMENTE (sin delay)
-      if (finalizarChat && connected) {
-        finalizarChat(true); // forceEnd = true para indicar que es por balance agotado
-      }
     }
 
     // 🔥 RESETEAR ADVERTENCIA SI EL TIEMPO AUMENTA (por ejemplo, si recarga monedas)
@@ -2363,10 +2350,20 @@ export default function VideoChatClient() {
     startRedirectCountdown();
   };
   
-  // 🔥 FUNCIÓN CENTRALIZADA PARA DETECTAR DESCONEXIÓN CON PERÍODO DE GRACIA DE 15 SEGUNDOS
+  // 🔥 FUNCIÓN CENTRALIZADA PARA DETECTAR DESCONEXIÓN CON PERÍODO DE GRACIA DE 30 SEGUNDOS
   const detectPartnerDisconnection = useCallback((participant = null, immediate = false) => {
-    // Prevenir múltiples detecciones simultáneas
+    // 🔥 PREVENIR MÚLTIPLES DETECCIONES SIMULTÁNEAS (más estricto)
     if (isDetectingDisconnectionRef.current && !immediate) {
+      console.log('⏸️ [VideoChat] Detección de desconexión ya en progreso - ignorando');
+      return;
+    }
+    
+    // 🔥 VERIFICAR QUE NO HAY PARTICIPANTES REMOTOS ANTES DE INICIAR DETECCIÓN
+    const currentRoom = room || window.livekitRoom;
+    const currentRemoteCount = currentRoom?.remoteParticipants?.size || 0;
+    if (currentRemoteCount > 0 && !immediate) {
+      console.log('✅ [VideoChat] Hay participantes remotos - cancelando detección de desconexión');
+      hadRemoteParticipantsRef.current = true;
       return;
     }
     
@@ -2412,7 +2409,7 @@ export default function VideoChatClient() {
       return;
     }
     
-    // 🔥 PERÍODO DE GRACIA DE 15 SEGUNDOS ANTES DE DETECTAR DESCONEXIÓN
+    // 🔥 PERÍODO DE GRACIA DE 30 SEGUNDOS ANTES DE DETECTAR DESCONEXIÓN
     // Limpiar timeout anterior si existe
     if (disconnectDetectionTimeoutRef.current) {
       clearTimeout(disconnectDetectionTimeoutRef.current);
@@ -2421,22 +2418,51 @@ export default function VideoChatClient() {
     isDetectingDisconnectionRef.current = true;
     
     disconnectDetectionTimeoutRef.current = setTimeout(() => {
-      // Verificar nuevamente después del período de gracia
-      const currentRemoteCount = room?.remoteParticipants?.size || window.livekitRoom?.remoteParticipants?.size || 0;
-      const stillConnected = room?.state === 'connected' || window.livekitRoom?.state === 'connected';
+      // Verificar nuevamente después del período de gracia con múltiples validaciones
+      const currentRoom = room || window.livekitRoom;
+      const currentRemoteCount = currentRoom?.remoteParticipants?.size || 0;
+      const stillConnected = currentRoom?.state === 'connected';
+      const currentHadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
       
-      // Solo procesar si realmente sigue desconectado
-      if (currentRemoteCount === 0 && stillConnected && hadActiveSession && 
-          !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave) {
-        const partnerName = currentUserRole === 'cliente' ? 'La modelo' : 'El cliente';
-        handleModeloDisconnected('partner_left_session', `${partnerName} se desconectó de la videollamada`);
+      // 🔥 VALIDACIONES MÚLTIPLES PARA EVITAR FALSOS POSITIVOS
+      // 1. No debe haber participantes remotos
+      // 2. La room debe estar conectada
+      // 3. Debe haber tenido una sesión activa
+      // 4. No debe haber una desconexión ya procesada
+      // 5. No debe estar procesando una salida
+      // 6. Verificar que realmente no hay participantes (doble verificación)
+      if (currentRemoteCount === 0 && 
+          stillConnected && 
+          currentHadActiveSession && 
+          !modeloDisconnected && 
+          !(disconnectionReason && redirectCountdown > 0) && 
+          !isProcessingLeave) {
+        
+        // 🔥 VERIFICACIÓN FINAL: Esperar 2 segundos más y verificar una vez más
+        setTimeout(() => {
+          const finalRemoteCount = currentRoom?.remoteParticipants?.size || 0;
+          const finalStillConnected = currentRoom?.state === 'connected';
+          
+          // Solo procesar si después de 2 segundos adicionales sigue desconectado
+          if (finalRemoteCount === 0 && 
+              finalStillConnected && 
+              !modeloDisconnected && 
+              !(disconnectionReason && redirectCountdown > 0) && 
+              !isProcessingLeave) {
+            const partnerName = currentUserRole === 'cliente' ? 'La modelo' : 'El cliente';
+            handleModeloDisconnected('partner_left_session', `${partnerName} se desconectó de la videollamada`);
+          } else {
+            // Se reconectó, cancelar detección
+            isDetectingDisconnectionRef.current = false;
+          }
+        }, 2000);
       } else {
         // Se reconectó o ya se procesó, cancelar detección
         isDetectingDisconnectionRef.current = false;
       }
       
       disconnectDetectionTimeoutRef.current = null;
-    }, 15000); // 15 segundos de período de gracia
+    }, 30000); // 🔥 30 segundos de período de gracia (aumentado de 15)
   }, [room, userData?.role, otherUser, tiempo, connected, modeloDisconnected, disconnectionReason, redirectCountdown, isProcessingLeave, handleModeloDisconnected]);
   
   // 🔥 EFECTO PARA VERIFICAR CUANDO CAMBIAN LOS ESTADOS DE DESCONEXIÓN
@@ -5500,8 +5526,8 @@ useEffect(() => {
       }
     };
 
-    // Verificar cada segundo (no inmediatamente para dar tiempo a que se conecte)
-    const checkInterval = setInterval(checkModeloConnection, 1000);
+    // 🔥 REDUCIR FRECUENCIA A 5 SEGUNDOS (menos agresivo, evita falsos positivos)
+    const checkInterval = setInterval(checkModeloConnection, 5000);
 
     return () => {
       clearInterval(checkInterval);
@@ -5589,25 +5615,34 @@ useEffect(() => {
       const remoteCount = room.remoteParticipants?.size || 0;
       const hasLocal = !!room.localParticipant;
       
-            
-      // 🔥 NO EJECUTAR AUTO-NEXT AQUÍ - se maneja en detectPartnerDisconnection con período de gracia
-      // Este checkEmptyRoom solo se usa para limpiar timers si hay participantes
+      // 🔥 SI HAY PARTICIPANTES REMOTOS, CANCELAR TODAS LAS DETECCIONES
       if (remoteCount > 0) {
         // Hay usuarios - cancelar timers y cancelar detección de desconexión
         if (autoNextTimer || warningTimer) {
           cleanupTimers();
         }
-        // Cancelar detección de desconexión si hay participantes
+        // 🔥 CANCELAR DETECCIÓN DE DESCONEXIÓN SI HAY PARTICIPANTES
         if (disconnectDetectionTimeoutRef.current) {
           clearTimeout(disconnectDetectionTimeoutRef.current);
           disconnectDetectionTimeoutRef.current = null;
           isDetectingDisconnectionRef.current = false;
+          console.log('✅ [VideoChat] Participantes detectados - cancelando detección de desconexión');
         }
-      } else if (remoteCount === 0 && hasLocal) {
-        // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA
-        // Solo iniciar detección si hay sesión activa
+        // 🔥 ACTUALIZAR REF PARA INDICAR QUE HAY PARTICIPANTES
+        hadRemoteParticipantsRef.current = true;
+        return; // 🔥 SALIR INMEDIATAMENTE SI HAY PARTICIPANTES
+      }
+      
+      // 🔥 SOLO VERIFICAR DESCONEXIÓN SI NO HAY PARTICIPANTES Y HAY SESIÓN ACTIVA
+      // PERO SOLO SI NO HAY UNA DETECCIÓN YA EN PROGRESO
+      if (remoteCount === 0 && hasLocal && !isDetectingDisconnectionRef.current) {
         const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
-        if (hadActiveSession && !isDetectingDisconnectionRef.current) {
+        // 🔥 SOLO INICIAR DETECCIÓN SI REALMENTE HABÍA UNA SESIÓN ACTIVA
+        // Y NO HAY UNA DETECCIÓN YA EN PROGRESO
+        if (hadActiveSession && 
+            !modeloDisconnected && 
+            !(disconnectionReason && redirectCountdown > 0) && 
+            !isProcessingLeave) {
           detectPartnerDisconnection(null, false);
         }
       }
@@ -5616,31 +5651,63 @@ useEffect(() => {
     // ✅ VERIFICACIÓN INICIAL
     checkEmptyRoom();
     
-    // ✅ INTERVALO DE VERIFICACIÓN CADA 10 SEGUNDOS (menos frecuente)
+    // ✅ INTERVALO DE VERIFICACIÓN CADA 15 SEGUNDOS (menos frecuente, más conservador)
     checkInterval = setInterval(() => {
       if (isActive) {
         checkEmptyRoom();
       }
-    }, 10000);
+    }, 15000);
 
     // ✅ LISTENERS DE PARTICIPANTES
-    const handleParticipantConnected = () => {
+    const handleParticipantConnected = (participant) => {
       // 🔥 CANCELAR DETECCIÓN DE DESCONEXIÓN SI ALGUIEN SE RECONECTA
       if (disconnectDetectionTimeoutRef.current) {
         clearTimeout(disconnectDetectionTimeoutRef.current);
         disconnectDetectionTimeoutRef.current = null;
         isDetectingDisconnectionRef.current = false;
-        console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión');
+        console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión:', participant?.identity);
       }
-      setTimeout(checkEmptyRoom, 2000);
+      
+      // 🔥 ACTUALIZAR REF INMEDIATAMENTE
+      hadRemoteParticipantsRef.current = true;
+      
+      // 🔥 NO LLAMAR checkEmptyRoom INMEDIATAMENTE - esperar un poco para que se estabilice
+      // El checkEmptyRoom se ejecutará en el siguiente intervalo
     };
 
     const handleParticipantDisconnected = (participant) => {
-      // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA DE 15 SEGUNDOS
-      detectPartnerDisconnection(participant, false);
+      // 🔥 VERIFICAR PRIMERO SI REALMENTE ES EL COMPAÑERO ANTES DE INICIAR DETECCIÓN
+      const currentUserRole = userData?.role;
+      const partnerRole = otherUser?.role;
+      let isPartner = false;
       
-      // Si no es el compañero, verificar sala vacía después de un delay
-      setTimeout(checkEmptyRoom, 2000);
+      if (participant && participant.identity) {
+        const participantIdentity = participant.identity.toLowerCase();
+        isPartner = 
+          (currentUserRole === 'cliente' && (
+            participantIdentity.includes('modelo') || 
+            participantIdentity.includes('model') ||
+            (partnerRole === 'modelo' && participantIdentity.includes(otherUser?.name?.toLowerCase()))
+          )) ||
+          (currentUserRole === 'modelo' && (
+            participantIdentity.includes('cliente') || 
+            participantIdentity.includes('client') ||
+            (partnerRole === 'cliente' && participantIdentity.includes(otherUser?.name?.toLowerCase()))
+          ));
+      }
+      
+      // 🔥 SOLO INICIAR DETECCIÓN SI ES EL COMPAÑERO Y NO HAY UNA DETECCIÓN YA EN PROGRESO
+      if (isPartner && !isDetectingDisconnectionRef.current) {
+        // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA DE 30 SEGUNDOS
+        detectPartnerDisconnection(participant, false);
+      } else if (!isPartner) {
+        // Si no es el compañero, solo verificar sala vacía después de un delay
+        setTimeout(() => {
+          if (isActive) {
+            checkEmptyRoom();
+          }
+        }, 3000);
+      }
     };
 
     if (room) {
@@ -6456,6 +6523,22 @@ const checkBalanceRealTime = useCallback(async () => {
                   isDetectingDisconnectionRef.current = false;
                   console.log('✅ [VideoChat] Reconexión detectada - cancelando detección de desconexión');
                 }
+                
+                // 🔥 VERIFICAR SI HAY PARTICIPANTES REMOTOS Y ACTUALIZAR REF
+                const currentRoom = window.livekitRoom || room;
+                const remoteCount = currentRoom?.remoteParticipants?.size || 0;
+                if (remoteCount > 0) {
+                  hadRemoteParticipantsRef.current = true;
+                  // 🔥 RESETEAR ESTADOS DE DESCONEXIÓN SI HAY PARTICIPANTES
+                  if (modeloDisconnected) {
+                    console.log('✅ [VideoChat] Hay participantes remotos - reseteando estados de desconexión');
+                    setModeloDisconnected(false);
+                    setDisconnectionReason('');
+                    setDisconnectionType('');
+                    setRedirectCountdown(0);
+                    setPendingRedirectAction(null);
+                  }
+                }
               }
             }}
             onParticipantConnected={(participant) => {
@@ -6464,7 +6547,24 @@ const checkBalanceRealTime = useCallback(async () => {
                 clearTimeout(disconnectDetectionTimeoutRef.current);
                 disconnectDetectionTimeoutRef.current = null;
                 isDetectingDisconnectionRef.current = false;
-                console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión');
+                console.log('✅ [VideoChat] Participante reconectado - cancelando detección de desconexión:', participant?.identity);
+              }
+              
+              // 🔥 ACTUALIZAR REF INMEDIATAMENTE PARA INDICAR QUE HAY PARTICIPANTES
+              hadRemoteParticipantsRef.current = true;
+              
+              // 🔥 RESETEAR ESTADOS DE DESCONEXIÓN SI SE RECONECTA
+              if (modeloDisconnected && participant) {
+                const participantIdentity = participant.identity?.toLowerCase() || '';
+                const isModelo = participantIdentity.includes('modelo') || participantIdentity.includes('model');
+                if (isModelo) {
+                  console.log('✅ [VideoChat] Modelo reconectada - reseteando estados de desconexión');
+                  setModeloDisconnected(false);
+                  setDisconnectionReason('');
+                  setDisconnectionType('');
+                  setRedirectCountdown(0);
+                  setPendingRedirectAction(null);
+                }
               }
               
               console.log('👤 [VideoChat-CLIENTE] Participante conectado:', {
@@ -6503,10 +6603,10 @@ const checkBalanceRealTime = useCallback(async () => {
               }
             }}
             onParticipantDisconnected={(participant) => {
-              // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA
-              // Solo detectar si hay una sesión activa
+              // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA DE 30 SEGUNDOS
+              // Solo detectar si hay una sesión activa y no hay una desconexión ya procesada
               const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
-              if (hadActiveSession) {
+              if (hadActiveSession && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave) {
                 detectPartnerDisconnection(participant, false);
               }
             }}
@@ -6657,14 +6757,35 @@ const checkBalanceRealTime = useCallback(async () => {
                     redirectCountdown: redirectCountdown
                   });
 
-                  // 🔥 DETECCIÓN INMEDIATA: Si había participantes y ahora hay 0, la modelo se fue
-                  // Pero solo si realmente había una sesión activa
-                  const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
-                  
-                  if (previousCount > 0 && currentCount === 0 && connected && hadActiveSession && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave) {
-                    // 🔥 CAMBIO: Cuando la modelo se desconecta, ir a ruletear
-                    handleModeloDisconnected('partner_left_session', 'La modelo se desconectó de la videollamada');
-                  } else if (previousCount > 0 && currentCount === 0 && !hadActiveSession) {
+                  // 🔥 SI HAY PARTICIPANTES, ACTUALIZAR REF Y CANCELAR DETECCIONES
+                  if (currentCount > 0) {
+                    hadRemoteParticipantsRef.current = true;
+                    // Cancelar detección de desconexión si hay participantes
+                    if (disconnectDetectionTimeoutRef.current) {
+                      clearTimeout(disconnectDetectionTimeoutRef.current);
+                      disconnectDetectionTimeoutRef.current = null;
+                      isDetectingDisconnectionRef.current = false;
+                      console.log('✅ [VideoChat] Participantes detectados en onParticipantsChange - cancelando detección');
+                    }
+                    // Reseteo estados de desconexión si hay participantes
+                    if (modeloDisconnected) {
+                      setModeloDisconnected(false);
+                      setDisconnectionReason('');
+                      setDisconnectionType('');
+                      setRedirectCountdown(0);
+                      setPendingRedirectAction(null);
+                    }
+                  } else {
+                    // 🔥 SOLO INICIAR DETECCIÓN SI:
+                    // 1. Había participantes antes
+                    // 2. Ahora no hay participantes
+                    // 3. Hay sesión activa
+                    // 4. No hay una detección ya en progreso
+                    const hadActiveSession = hadRemoteParticipantsRef.current || tiempo > 0 || !!otherUser;
+                    if (previousCount > 0 && currentCount === 0 && connected && hadActiveSession && !modeloDisconnected && !(disconnectionReason && redirectCountdown > 0) && !isProcessingLeave && !isDetectingDisconnectionRef.current) {
+                      // 🔥 USAR FUNCIÓN CENTRALIZADA CON PERÍODO DE GRACIA
+                      detectPartnerDisconnection(null, false);
+                    }
                   }
                   
                   // Actualizar el contador anterior
@@ -7049,6 +7170,80 @@ const checkBalanceRealTime = useCallback(async () => {
             </div>
           </LiveKitRoom>
           </>
+        )}
+
+        {/* 🔥 MODAL DE SALDO BAJO DURANTE LLAMADA */}
+        {showLowBalanceModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999]">
+            <div className="bg-[#2b2d31] rounded-xl p-6 max-w-md mx-4 shadow-xl border border-[#ff007a]/20">
+              <div className="text-center">
+                {/* Icono */}
+                <div className="w-16 h-16 bg-[#ff007a]/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                  <svg className="w-8 h-8 text-[#ff007a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                </div>
+                
+                {/* Título */}
+                <h3 className="text-xl font-bold text-white mb-3">
+                  {t('videochat.balance.lowBalanceTitle') || 'Saldo Bajo'}
+                </h3>
+                
+                {/* Mensaje */}
+                <div className="text-white/70 mb-6 leading-relaxed">
+                  <p className="mb-3">
+                    {t('videochat.balance.lowBalanceMessage') || 'Tu saldo ya es muy poco para seguir en la llamada'}
+                  </p>
+                  
+                  {/* Estado actual */}
+                  <div className="bg-[#1f2125] rounded-lg p-3 text-sm">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-white/70">Minutos restantes:</span>
+                      <span className="text-[#ff007a] font-semibold">{remainingMinutes}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
+                      <span className="text-white/70">Mínimo requerido:</span>
+                      <span className="text-yellow-400">3 minutos</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Botones */}
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => {
+                      setShowLowBalanceModal(false);
+                      // Terminar la llamada después de mostrar el modal
+                      if (finalizarChat && connected) {
+                        finalizarChat(true);
+                      }
+                      // Abrir modal de recarga
+                      window.location.href = '/homecliente?recharge=true';
+                    }}
+                    className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    {t('videochat.balance.rechargeNow') || 'Recargar Ahora'}
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setShowLowBalanceModal(false);
+                      // Terminar la llamada
+                      if (finalizarChat && connected) {
+                        finalizarChat(true);
+                      }
+                    }}
+                    className="w-full bg-transparent border border-white/20 hover:border-white/40 text-white/70 hover:text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    {t('common.close') || 'Cerrar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </ProtectedPage>

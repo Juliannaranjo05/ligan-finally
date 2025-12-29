@@ -3041,8 +3041,19 @@ const renderMensaje = useCallback((mensaje) => {
 
         if (response.ok) {
           const data = await response.json();
+          // 🔥 FILTRAR SOLO CONTACTOS QUE ESTÁN REALMENTE ONLINE
+          // Usar is_online del contacto si está disponible, sino asumir que está online si está en la lista
           const usuariosOnlineIds = new Set(
-            (data.contacts || []).map(contact => contact.id)
+            (data.contacts || [])
+              .filter(contact => {
+                // Si tiene is_online explícito, usarlo
+                if (contact.is_online !== undefined) {
+                  return contact.is_online === true;
+                }
+                // Si no tiene is_online, pero está en la lista de contactos, asumir que está online
+                return true;
+              })
+              .map(contact => contact.id)
           );
           setOnlineUsers(usuariosOnlineIds);
         } else {

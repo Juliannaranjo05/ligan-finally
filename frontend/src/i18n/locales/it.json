@@ -825,7 +825,7 @@
       },
       "support": {
         "title": "Supporto o aiuto",
-        "description": "Per domande, problemi tecnici o aiuto con il tuo account, scrivici a support@ligando.online e il nostro team ti risponderà il prima possibile.",
+        "description": "Per domande, problemi tecnici o aiuto con il tuo account, scrivici a support@ligandome.com e il nostro team ti risponderà il prima possibile.",
         "contactButton": "Contatta il supporto via email"
       },
       "report": {
@@ -1113,7 +1113,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1206,6 +1209,7 @@
       "notAvailableBlocked": "Non disponibile - utente bloccato"
     },
     "gifts": {
+      "giftRequest": "Richiesta Regalo",
       "requestGift": "Richiesta Regalo",
       "giftReceived": "Regalo Ricevuto!",
       "giftSent": "Regalo Inviato",
@@ -1852,5 +1856,27 @@
     "try_another_user": "Try searching for another user",
     "timeout_message": "No user connected after 3 minutes. Try again later.",
     "timeout_status": "Wait time expired"
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Iniziando chiamata...",
+      "initiatingSubtitle": "Preparazione connessione",
+      "callingTitle": "Chiamando",
+      "waitingResponse": "In attesa di risposta",
+      "connectingTitle": "Connessione...",
+      "pleaseWait": "Attendere prego",
+      "cancelCall": "Annulla Chiamata",
+      "autoCancelMessage": "La chiamata verrà annullata automaticamente tra 30 secondi",
+      "establishingConnection": "Stabilimento connessione con l'utente"
+    },
+    "incoming": {
+      "incomingCall": "CHIAMATA IN ARRIVO",
+      "videoCall": "Videochiamata",
+      "voiceCall": "Chiamata vocale",
+      "calling": "Chiamando...",
+      "processingResponse": "Elaborazione risposta...",
+      "callExpiringSoon": "La chiamata scadrà presto",
+      "tapToRespond": "Tocca i pulsanti per rispondere"
+    }
   }
 }

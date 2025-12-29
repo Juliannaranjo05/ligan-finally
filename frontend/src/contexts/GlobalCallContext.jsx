@@ -313,12 +313,13 @@ export const GlobalCallProvider = ({ children }) => {
           setIncomingCall(null);
           stopIncomingCallSound();
         } else {
-          // 🔥 LOGGEAR CUANDO NO HAY LLAMADA ENTRANTE (SIEMPRE PARA DEBUGGING)
-          console.log('📞 [CALL] No hay llamada entrante:', {
-            hasIncoming: data.has_incoming,
-            isReceivingCall,
-            data: data
-          });
+          // 🔥 LOGGEAR CUANDO NO HAY LLAMADA ENTRANTE (solo en modo debug)
+          // Comentado para reducir ruido en consola - descomentar si necesitas debugging
+          // console.log('📞 [CALL] No hay llamada entrante:', {
+          //   hasIncoming: data.has_incoming,
+          //   isReceivingCall,
+          //   data: data
+          // });
         }
       } else if (response.status === 401 || response.status === 403) {
         // 🔥 VERIFICAR SI ES SESIÓN SUSPENDIDA

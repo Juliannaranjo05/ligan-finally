@@ -4,7 +4,7 @@ import { createLogger } from "../utils/logger";
 const logger = createLogger("Axios");
 
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com',
   withCredentials: false,
   headers: {
     Accept: "application/json",

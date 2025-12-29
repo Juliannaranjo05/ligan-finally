@@ -1,40 +1,103 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getUser } from '../utils/auth';
 
 const RouteGuard = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const roomName = localStorage.getItem('roomName');
-    const inCall = localStorage.getItem('inCall');
-    const videochatActive = localStorage.getItem('videochatActive');
+    const checkAndRedirect = async () => {
+      const token = localStorage.getItem('token');
+      const roomName = localStorage.getItem('roomName');
+      const inCall = localStorage.getItem('inCall');
+      const videochatActive = localStorage.getItem('videochatActive');
 
-    // Solo redirigir automáticamente si realmente estamos en una sesión de video
-    if (token && roomName && (inCall === 'true' || videochatActive === 'true')) {
-      const currentPath = location.pathname;
-      
-      // Rutas bloqueadas
-      const rutasBloqueadas = [
-        '/homellamadas',
-        '/esperando', 
-        '/mensajes',
-        '/favorites',
-        '/historysu',
-        '/esperandocall',
-        '/configuracion',
-        '/home',
-        '/'
-      ];
-      
-      if (rutasBloqueadas.includes(currentPath)) {
-        console.log('🚫 RUTA BLOQUEADA POR GUARD (session active):', currentPath);
+      // Solo redirigir automáticamente si realmente estamos en una sesión de video
+      if (token && roomName && (inCall === 'true' || videochatActive === 'true')) {
+        const currentPath = location.pathname;
         
-        // Redirigir inmediatamente a videochat
-        navigate('/videochat', { replace: true });
+        // 🔥 OBTENER ROL DEL USUARIO PARA REDIRIGIR A LA RUTA CORRECTA
+        let userRole = 'modelo'; // Default a modelo
+        
+        try {
+          // Intentar obtener del localStorage primero (más rápido)
+          const userDataStr = localStorage.getItem('userData');
+          if (userDataStr) {
+            try {
+              const userData = JSON.parse(userDataStr);
+              userRole = userData.role || userData.rol || 'modelo';
+            } catch (e) {
+              // Si no se puede parsear, intentar obtener del token
+              try {
+                const tokenParts = token.split('.');
+                if (tokenParts.length === 3) {
+                  const payload = JSON.parse(atob(tokenParts[1]));
+                  userRole = payload.role || payload.user_role || payload.rol || 'modelo';
+                }
+              } catch (e2) {
+                // Si falla, intentar getUser (último recurso)
+                try {
+                  const userData = await getUser(false); // No forzar refresh
+                  const user = userData.user || userData;
+                  userRole = user.role || user.rol || 'modelo';
+                } catch (e3) {
+                  // Si todo falla, usar 'modelo' por defecto
+                  userRole = 'modelo';
+                }
+              }
+            }
+          } else {
+            // Si no hay userData en localStorage, intentar obtener del token
+            try {
+              const tokenParts = token.split('.');
+              if (tokenParts.length === 3) {
+                const payload = JSON.parse(atob(tokenParts[1]));
+                userRole = payload.role || payload.user_role || payload.rol || 'modelo';
+              }
+            } catch (e) {
+              // Si falla, intentar getUser
+              try {
+                const userData = await getUser(false);
+                const user = userData.user || userData;
+                userRole = user.role || user.rol || 'modelo';
+              } catch (e2) {
+                userRole = 'modelo';
+              }
+            }
+          }
+        } catch (error) {
+          // Si hay algún error, usar 'modelo' por defecto
+          userRole = 'modelo';
+        }
+        
+        // Rutas bloqueadas (aplican para ambos roles)
+        const rutasBloqueadas = [
+          '/homellamadas',
+          '/esperando', 
+          '/mensajes',
+          '/favorites',
+          '/historysu',
+          '/esperandocall',
+          '/esperarcall',
+          '/configuracion',
+          '/confiperfil',
+          '/home',
+          '/homecliente',
+          '/'
+        ];
+        
+        if (rutasBloqueadas.includes(currentPath)) {
+          console.log('🚫 RUTA BLOQUEADA POR GUARD (session active):', currentPath, 'role:', userRole);
+          
+          // 🔥 REDIRIGIR A LA RUTA CORRECTA SEGÚN EL ROL
+          const videochatRoute = userRole === 'cliente' ? '/videochatclient' : '/videochat';
+          navigate(videochatRoute, { replace: true });
+        }
       }
-    }
+    };
+
+    checkAndRedirect();
   }, [location.pathname, navigate]);
 
   return children;

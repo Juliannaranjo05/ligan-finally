@@ -17,7 +17,7 @@ export const AdminCodeVerification = ({ onSuccess }) => {
 
     try {
       const res = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org'}/api/admin/verify-code`,
+        `${import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com'}/api/admin/verify-code`,
         { code },
         {
           headers: {

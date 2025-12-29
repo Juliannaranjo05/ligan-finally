@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('SessionSuspendedModal');
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
 const SESSION_SUSPENDED_FLAG = 'session_suspended';
 
 const SessionSuspendedModal = () => {

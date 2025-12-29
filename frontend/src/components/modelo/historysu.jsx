@@ -33,6 +33,9 @@ export default function SubirHistoria() {
   
   const notifications = useAppNotifications();
   
+  // 🆕 Guardar la duración del video cuando se valida la primera vez
+  const [videoDuration, setVideoDuration] = useState(null);
+  
   // Estados para historia existente
   const [existingStory, setExistingStory] = useState(null);
   const [loadingStory, setLoadingStory] = useState(true);
@@ -537,6 +540,9 @@ export default function SubirHistoria() {
       setRecording(false);
       setShowCamera(false);
       
+      // 🆕 Guardar la duración de la grabación (ya validada por el contador)
+      setVideoDuration(recordingTime);
+      
       mediaRecorderRef.current = null;
       notifications.recordingStopped();
       
@@ -610,47 +616,71 @@ export default function SubirHistoria() {
       return;
     }
 
-    // Crear archivo perfecto para el backend
-    const perfectFile = createPerfectFile(selectedFile);
-
-    // Determinar si es video para validar duración
-    const isVideo = perfectFile.type.startsWith('video/') || 
-                    perfectFile.name.toLowerCase().endsWith('.mp4') || 
-                    perfectFile.name.toLowerCase().endsWith('.webm');
+    // Determinar si es video ANTES de crear el archivo perfecto
+    const isVideo = selectedFile.type.startsWith('video/') || 
+                    selectedFile.name.toLowerCase().endsWith('.mp4') || 
+                    selectedFile.name.toLowerCase().endsWith('.webm');
 
     if (isVideo) {
-      // Validar duración del video - máximo 15 segundos
+      // Validar duración del video usando el archivo ORIGINAL antes de procesarlo
+      // máximo 15 segundos
       const video = document.createElement("video");
       video.preload = "metadata";
+      video.muted = true; // Necesario para algunos navegadores
+      
+      let timeoutId;
+      const objectUrl = URL.createObjectURL(selectedFile);
+      
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        URL.revokeObjectURL(objectUrl);
+      };
+      
+      // Timeout de 10 segundos para cargar metadatos
+      timeoutId = setTimeout(() => {
+        cleanup();
+        notifications.error('El video tardó demasiado en cargar. Intenta con otro archivo.');
+      }, 10000);
       
       video.onloadedmetadata = () => {
+        cleanup();
         const duration = video.duration;
-        URL.revokeObjectURL(video.src);
-                
+        
+        // Primero verificar si la duración es válida y finita
+        if (!isFinite(duration) || isNaN(duration) || duration <= 0) {
+          notifications.error('No se pudo determinar la duración del video. Intenta con otro archivo.');
+          setVideoDuration(null); // Limpiar duración inválida
+          return;
+        }
+        
+        // Luego verificar si excede el límite de 15 segundos
         if (duration > 15) {
           notifications.error(`El video no puede durar más de 15 segundos. Duración actual: ${duration.toFixed(1)}s`);
+          setVideoDuration(null); // Limpiar duración inválida
           return;
         }
         
-        if (duration <= 0 || !isFinite(duration)) {
-          notifications.error('No se pudo determinar la duración del video. Intenta con otro archivo.');
-          return;
-        }
+        // 🆕 Guardar la duración del video para usarla después
+        setVideoDuration(duration);
         
+        // Si todo está bien, crear el archivo perfecto y proceder
+        const perfectFile = createPerfectFile(selectedFile);
         setFile(perfectFile);
         setPreviewUrl(URL.createObjectURL(perfectFile));
         setShowCamera(false);
         notifications.fileLoaded('video');
       };
       
-      video.onerror = () => {
-        notifications.error('Error al procesar el video. Intenta con otro archivo.');
-        URL.revokeObjectURL(video.src);
+      video.onerror = (error) => {
+        cleanup();
+        console.error('Error al cargar video:', error);
+        notifications.error('Error al procesar el video. Asegúrate de que el archivo sea un video válido.');
       };
       
-      video.src = URL.createObjectURL(perfectFile);
+      video.src = objectUrl;
     } else {
-      // Es una imagen
+      // Es una imagen - crear archivo perfecto directamente
+      const perfectFile = createPerfectFile(selectedFile);
       setFile(perfectFile);
       setPreviewUrl(URL.createObjectURL(perfectFile));
       setShowCamera(false);
@@ -702,6 +732,7 @@ export default function SubirHistoria() {
     setShowCamera(true);
     setFile(null);
     setPreviewUrl(null);
+    setVideoDuration(null); // 🆕 Limpiar duración del video
   };
 
   const deleteRecording = () => {
@@ -764,42 +795,72 @@ export default function SubirHistoria() {
 
     // Validar duración del video si es un video (máximo 15 segundos)
     if (typeValidation.mediaType === 'video') {
-      const video = document.createElement("video");
-      video.preload = "metadata";
-      
-      const checkDuration = () => {
-        return new Promise((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            const duration = video.duration;
-            URL.revokeObjectURL(video.src);
+      // 🆕 Si ya tenemos la duración guardada (de la validación inicial), usarla
+      if (videoDuration !== null && isFinite(videoDuration) && videoDuration > 0) {
+        if (videoDuration > 15) {
+          notifications.error(`El video no puede durar más de 15 segundos. Duración actual: ${videoDuration.toFixed(1)}s`);
+          return;
+        }
+        // La duración es válida, continuar
+      } else {
+        // Si no tenemos la duración guardada, intentar leerla del archivo
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.muted = true; // Necesario para algunos navegadores
+        
+        const checkDuration = () => {
+          return new Promise((resolve, reject) => {
+            const objectUrl = URL.createObjectURL(file);
+            let timeoutId;
             
-            if (duration > 15) {
-              reject(new Error(`El video no puede durar más de 15 segundos. Duración actual: ${duration.toFixed(1)}s`));
-              return;
-            }
+            const cleanup = () => {
+              if (timeoutId) clearTimeout(timeoutId);
+              URL.revokeObjectURL(objectUrl);
+            };
             
-            if (duration <= 0 || !isFinite(duration)) {
-              reject(new Error('No se pudo determinar la duración del video. Intenta con otro archivo.'));
-              return;
-            }
+            // Timeout de 10 segundos para cargar metadatos
+            timeoutId = setTimeout(() => {
+              cleanup();
+              reject(new Error('El video tardó demasiado en cargar. Intenta con otro archivo.'));
+            }, 10000);
             
-            resolve();
-          };
-          
-          video.onerror = () => {
-            URL.revokeObjectURL(video.src);
-            reject(new Error('Error al procesar el video. Intenta con otro archivo.'));
-          };
-          
-          video.src = URL.createObjectURL(file);
-        });
-      };
+            video.onloadedmetadata = () => {
+              cleanup();
+              const duration = video.duration;
+              
+              // Primero verificar si la duración es válida y finita
+              if (!isFinite(duration) || isNaN(duration) || duration <= 0) {
+                reject(new Error('No se pudo determinar la duración del video. Intenta con otro archivo.'));
+                return;
+              }
+              
+              // Luego verificar si excede el límite de 15 segundos
+              if (duration > 15) {
+                reject(new Error(`El video no puede durar más de 15 segundos. Duración actual: ${duration.toFixed(1)}s`));
+                return;
+              }
+              
+              // 🆕 Guardar la duración para futuras validaciones
+              setVideoDuration(duration);
+              resolve();
+            };
+            
+            video.onerror = (error) => {
+              cleanup();
+              console.error('Error al cargar video:', error);
+              reject(new Error('Error al procesar el video. Asegúrate de que el archivo sea un video válido.'));
+            };
+            
+            video.src = objectUrl;
+          });
+        };
 
-      try {
-        await checkDuration();
-      } catch (error) {
-        notifications.error(error.message);
-        return;
+        try {
+          await checkDuration();
+        } catch (error) {
+          notifications.error(error.message);
+          return;
+        }
       }
     }
 
@@ -1048,7 +1109,7 @@ export default function SubirHistoria() {
                   
                   // Si tenemos file_path pero no URL, construirla
                   if (!mediaUrl && existingStory.file_path) {
-                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
                     // Remover /api si está presente para obtener la base URL
                     const baseUrl = apiBase.replace('/api', '').replace(/\/$/, '');
                     // Construir la ruta completa
@@ -1069,7 +1130,7 @@ export default function SubirHistoria() {
                   
                   // Asegurar que la URL sea absoluta
                   if (!mediaUrl.startsWith('http')) {
-                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+                    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
                     const baseUrl = apiBase.replace('/api', '').replace(/\/$/, '');
                     mediaUrl = mediaUrl.startsWith('/') 
                       ? `${baseUrl}${mediaUrl}` 

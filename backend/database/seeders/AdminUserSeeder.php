@@ -15,7 +15,7 @@ class AdminUserSeeder extends Seeder
     {
         // Crea o actualiza un usuario admin por defecto de forma idempotente
         AdminUser::updateOrCreate(
-            ['email' => 'admin@ligand.com'],
+            ['email' => 'ligandome@gmail.com'],
             [
                 'password' => Hash::make('CambiaEstaClave123!'),
                 'last_code' => null,

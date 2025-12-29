@@ -825,7 +825,7 @@
       },
       "support": {
         "title": "Поддержка или помощь",
-        "description": "По вопросам, техническим проблемам или помощи с вашим аккаунтом напишите нам на support@ligando.online, и наша команда ответит как можно скорее.",
+        "description": "По вопросам, техническим проблемам или помощи с вашим аккаунтом напишите нам на support@ligandome.com, и наша команда ответит как можно скорее.",
         "contactButton": "Связаться с поддержкой по email"
       },
       "report": {
@@ -1113,7 +1113,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1206,6 +1209,7 @@
       "notAvailableBlocked": "Недоступно - пользователь заблокирован"
     },
     "gifts": {
+      "giftRequest": "Запрос Подарка",
       "requestGift": "Запрос Подарка",
       "giftReceived": "Подарок Получен!",
       "giftSent": "Подарок Отправлен",
@@ -1859,6 +1863,28 @@
       "noDevices": "No devices detected",
       "testCamera": "Test your camera",
       "testMicrophone": "Test your microphone"
+    }
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Инициирование звонка...",
+      "initiatingSubtitle": "Подготовка соединения",
+      "callingTitle": "Звонок",
+      "waitingResponse": "Ожидание ответа",
+      "connectingTitle": "Подключение...",
+      "pleaseWait": "Пожалуйста, подождите",
+      "cancelCall": "Отменить звонок",
+      "autoCancelMessage": "Звонок будет автоматически отменен через 30 секунд",
+      "establishingConnection": "Установление соединения с пользователем"
+    },
+    "incoming": {
+      "incomingCall": "ВХОДЯЩИЙ ЗВОНОК",
+      "videoCall": "Видеозвонок",
+      "voiceCall": "Голосовой звонок",
+      "calling": "Звонок...",
+      "processingResponse": "Обработка ответа...",
+      "callExpiringSoon": "Звонок скоро истечет",
+      "tapToRespond": "Нажмите кнопки, чтобы ответить"
     }
   }
 }

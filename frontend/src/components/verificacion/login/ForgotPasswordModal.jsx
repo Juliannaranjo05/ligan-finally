@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Eye, EyeOff, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
 
 const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const [step, setStep] = useState('email'); // 'email' | 'code' | 'password'

@@ -22,7 +22,7 @@ class VideoChatCoinController extends Controller
 {
     // 🔥 CONFIGURACIÓN
     const COST_PER_MINUTE = 10; // 10 monedas por minuto
-    const MINIMUM_BALANCE = 30; // Mínimo 3 minutos para iniciar
+    const MINIMUM_BALANCE = 30; // Mínimo 30 monedas (3 minutos) para iniciar - más de 2 minutos requerido
     
     /**
      * 📊 Obtener balance del usuario
@@ -99,6 +99,10 @@ class VideoChatCoinController extends Controller
             $totalBalance = $userCoins->purchased_balance + $userCoins->gift_balance; // Total para mostrar
             $minutesAvailable = floor($userCoins->purchased_balance / self::COST_PER_MINUTE); // Solo purchased para minutos
             
+            // 🔥 El cliente debe tener MÁS de 2 minutos (más de 20 monedas) para recibir llamadas
+            // Si tiene <= 20 monedas (2 minutos o menos), no puede recibir llamadas
+            $canStartCall = $userCoins->purchased_balance > 20; // Más de 20 monedas = más de 2 minutos
+            
             return response()->json([
                 'success' => true,
                 'balance' => [
@@ -107,9 +111,9 @@ class VideoChatCoinController extends Controller
                     'total_coins' => $totalBalance,
                     'minutes_available' => $minutesAvailable,
                     'cost_per_minute' => self::COST_PER_MINUTE,
-                    'minimum_required' => self::MINIMUM_BALANCE
+                    'minimum_required' => 21 // Más de 20 monedas (más de 2 minutos)
                 ],
-                'can_start_call' => $userCoins->purchased_balance >= self::MINIMUM_BALANCE, // 🔥 Solo purchased para validar
+                'can_start_call' => $canStartCall, // 🔥 Solo purchased para validar, debe ser > 20 monedas
                 'client_name' => $client->name
             ]);
             
@@ -536,6 +540,10 @@ class VideoChatCoinController extends Controller
 
             DB::commit();
 
+            // 🔥 VERIFICAR SI EL SALDO DESPUÉS DEL CONSUMO ES <= 20 MONEDAS (2 MINUTOS)
+            $remainingMinutes = floor($userCoins->purchased_balance / self::COST_PER_MINUTE);
+            $shouldEndCall = $userCoins->purchased_balance <= 20; // 20 monedas = 2 minutos o menos
+
             Log::info('✅ [DEBUG] processConsumption EXITOSO', [
                 'user_id' => $userId,
                 'room_name' => $roomName,
@@ -546,6 +554,8 @@ class VideoChatCoinController extends Controller
                 'purchased_balance_after' => $userCoins->purchased_balance,
                 'gift_balance' => $userCoins->gift_balance,
                 'total_balance_after' => $userCoins->purchased_balance + $userCoins->gift_balance,
+                'remaining_minutes' => $remainingMinutes,
+                'should_end_call' => $shouldEndCall,
                 'session_id' => $sessionId
             ]);
 
@@ -553,7 +563,10 @@ class VideoChatCoinController extends Controller
                 'success' => true,
                 'remaining_balance' => $userCoins->purchased_balance + $userCoins->gift_balance, // Total para mostrar
                 'purchased_balance' => $userCoins->purchased_balance, // Solo purchased para calcular minutos
-                'gift_balance' => $userCoins->gift_balance
+                'gift_balance' => $userCoins->gift_balance,
+                'remaining_minutes' => $remainingMinutes,
+                'should_end_call' => $shouldEndCall, // 🔥 NUEVO: Indica si debe terminar la llamada (saldo <= 2 minutos)
+                'balance_low_message' => $shouldEndCall ? 'Tu saldo ya es muy poco para seguir en la llamada' : null
             ];
 
         } catch (\Exception $e) {

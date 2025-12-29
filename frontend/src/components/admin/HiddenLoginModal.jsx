@@ -28,7 +28,7 @@ export const HiddenLoginModal = () => {
     }
 
     try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org'}/api/admin/login`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com'}/api/admin/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

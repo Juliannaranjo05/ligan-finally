@@ -5,7 +5,7 @@ import { useCurrentUser } from './hooks/useCurrentUser.js';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com';
 
 const ProfileSettings = () => {
   const { t } = useTranslation();

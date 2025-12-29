@@ -2451,8 +2451,16 @@ export default function VideoChat() {
         // Silenciar errores para evitar spam
       }
 
-      // ✅ CONTINUAR POLLING SOLO SI TODAS LAS CONDICIONES SE MANTIENEN
-      if (isPolling && !modeloStoppedWorking && !clientDisconnected && connected) {
+      // ✅ CONTINUAR POLLING SIEMPRE (a menos que se esté redirigiendo)
+      // No detener el polling por modeloStoppedWorking o clientDisconnected
+      // Solo detener si hay una redirección activa
+      const isCurrentlyRedirecting = (
+        disconnectionReason && 
+        redirectCountdown === 0 && 
+        (disconnectionType === 'next' || disconnectionType === 'stop' || disconnectionType === 'partner_left_session')
+      );
+      
+      if (isPolling && !isCurrentlyRedirecting) {
         setTimeout(checkNotifications, pollInterval);
       }
     };
@@ -2466,14 +2474,31 @@ export default function VideoChat() {
     };
   }, [roomName, userName, connected, modeloStoppedWorking, clientDisconnected]); // ✅ DEPENDENCIAS REDUCIDAS
 
+  // 🔥 REF PARA TRACKING DE CAMBIO DE SALA
+  const previousRoomNameRef = useRef(roomName);
+
   // 🔥 EFECTO PARA RESET FLAGS (solo cuando cambia la sala, no cuando hay desconexión activa)
   useEffect(() => {
     // 🔥 IMPORTANTE: NO resetear si hay una desconexión activa (para que se muestre el modal)
     const hasActiveDisconnection = clientDisconnected || (disconnectionReason && disconnectionReason.trim() !== '');
+    const isCurrentlyRedirecting = (
+      disconnectionReason && 
+      redirectCountdown === 0 && 
+      (disconnectionType === 'next' || disconnectionType === 'stop' || disconnectionType === 'partner_left_session')
+    );
     
-    if (hasActiveDisconnection) {
+    // 🔥 NO RESETEAR SI HAY DESCONEXIÓN ACTIVA O REDIRECCIÓN EN PROGRESO
+    if (hasActiveDisconnection || isCurrentlyRedirecting) {
       return;
     }
+    
+    // 🔥 SOLO RESETEAR SI REALMENTE CAMBIÓ LA SALA (no solo si cambió el estado)
+    // Verificar que roomName realmente cambió comparando con el valor anterior
+    if (previousRoomNameRef.current === roomName && roomName) {
+      // Misma sala, no resetear
+      return;
+    }
+    previousRoomNameRef.current = roomName;
     
     setModeloStoppedWorking(false);
     setReceivedNotification(false);
@@ -2482,9 +2507,9 @@ export default function VideoChat() {
     setDisconnectionReason('');
     setDisconnectionType('');
     setRedirectCountdown(0);
-  }, [roomName, clientDisconnected, disconnectionReason]);
+  }, [roomName, clientDisconnected, disconnectionReason, disconnectionType, redirectCountdown]);
 
-  // 🔥 EFECTO PARA DETECTAR DESCONEXIÓN DEL CLIENTE (similar al cliente detectando modelo)
+  // 🔥 EFECTO PARA DETECTAR DESCONEXIÓN DEL CLIENTE CON PERÍODO DE GRACIA (igual que cliente)
   useEffect(() => {
     if (!connected || !window.livekitRoom || clientDisconnected || (disconnectionReason && redirectCountdown > 0)) {
       return;
@@ -2492,33 +2517,71 @@ export default function VideoChat() {
 
     const room = window.livekitRoom;
     let isActive = true;
+    const disconnectDetectionTimeoutRef = { current: null };
+    const isDetectingDisconnectionRef = { current: false };
 
     const handleParticipantDisconnected = (participant) => {
-      if (!isActive) return;
+      if (!isActive || isDetectingDisconnectionRef.current) return;
       
       const remoteCount = room?.remoteParticipants?.size || 0;
       
       // 🔥 SOLO DETECTAR DESCONEXIÓN SI YA HABÍA UNA SESIÓN ACTIVA
       const hadActiveSession = tiempo > 0 || !!otherUser;
       
-      // 🔥 DETECTAR SI ES EL CLIENTE Y MANEJAR INMEDIATAMENTE
+      // 🔥 VERIFICAR SI ES EL CLIENTE
+      let isClient = false;
       if (participant && participant.identity) {
         const participantIdentity = participant.identity.toLowerCase();
-        const isClient = participantIdentity.includes('cliente') || 
-                        participantIdentity.includes('client') ||
-                        (otherUser && otherUser.role === 'cliente' && participantIdentity.includes(otherUser.name?.toLowerCase()));
-        
-        if (isClient && remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
-          // 🔥 CAMBIO: Cuando el cliente se desconecta, mostrar pantalla de desconexión
-          handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
-          return;
-        }
+        isClient = participantIdentity.includes('cliente') || 
+                   participantIdentity.includes('client') ||
+                   (otherUser && otherUser.role === 'cliente' && participantIdentity.includes(otherUser.name?.toLowerCase()));
       }
       
-      // Si no hay participantes remotos y había sesión activa, también detectar desconexión
-      if (remoteCount === 0 && connected && hadActiveSession && !clientDisconnected && !(disconnectionReason && redirectCountdown > 0)) {
-        handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+      // 🔥 SOLO PROCESAR SI ES EL CLIENTE Y HAY SESIÓN ACTIVA
+      if (!isClient || !hadActiveSession || remoteCount > 0) {
+        return;
       }
+      
+      // 🔥 PERÍODO DE GRACIA DE 30 SEGUNDOS (igual que cliente)
+      if (disconnectDetectionTimeoutRef.current) {
+        clearTimeout(disconnectDetectionTimeoutRef.current);
+      }
+      
+      isDetectingDisconnectionRef.current = true;
+      
+      disconnectDetectionTimeoutRef.current = setTimeout(() => {
+        // Verificar nuevamente después del período de gracia
+        const currentRemoteCount = room?.remoteParticipants?.size || 0;
+        const stillConnected = room?.state === 'connected';
+        const currentHadActiveSession = tiempo > 0 || !!otherUser;
+        
+        // 🔥 VALIDACIONES MÚLTIPLES PARA EVITAR FALSOS POSITIVOS
+        if (currentRemoteCount === 0 && 
+            stillConnected && 
+            currentHadActiveSession && 
+            !clientDisconnected && 
+            !(disconnectionReason && redirectCountdown > 0)) {
+          
+          // 🔥 VERIFICACIÓN FINAL: Esperar 2 segundos más
+          setTimeout(() => {
+            const finalRemoteCount = room?.remoteParticipants?.size || 0;
+            const finalStillConnected = room?.state === 'connected';
+            
+            if (finalRemoteCount === 0 && 
+                finalStillConnected && 
+                !clientDisconnected && 
+                !(disconnectionReason && redirectCountdown > 0)) {
+              handleClientDisconnected('partner_left_session', 'El cliente se desconectó de la videollamada');
+            } else {
+              isDetectingDisconnectionRef.current = false;
+            }
+          }, 2000);
+        } else {
+          isDetectingDisconnectionRef.current = false;
+        }
+        
+        disconnectDetectionTimeoutRef.current = null;
+      }, 30000); // 30 segundos de período de gracia
     };
 
     if (room) {
@@ -2527,6 +2590,9 @@ export default function VideoChat() {
 
     return () => {
       isActive = false;
+      if (disconnectDetectionTimeoutRef.current) {
+        clearTimeout(disconnectDetectionTimeoutRef.current);
+      }
       if (room) {
         room.off('participantDisconnected', handleParticipantDisconnected);
       }

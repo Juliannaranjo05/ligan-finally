@@ -1,7 +1,7 @@
 // services/adminApiService.js
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ligando.duckdns.org/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ligandome.com/api';
 
 // Crear instancia de axios con configuración base
 const adminApi = axios.create({
@@ -54,7 +54,14 @@ adminApi.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('❌ Error en petición:', error.response?.status, error.response?.data);
+    // Mejorar el logging de errores
+    if (error.response) {
+      console.error('❌ Error en petición:', error.response.status, error.response.data);
+    } else if (error.request) {
+      console.error('❌ Error de red - sin respuesta del servidor:', error.message);
+    } else {
+      console.error('❌ Error al configurar la petición:', error.message);
+    }
     
     // Solo loggear el error, NO redirigir automáticamente
     if (error.response?.status === 401) {
@@ -862,7 +869,13 @@ export const dashboardAdminApi = {
       const response = await adminApi.get('/admin/dashboard/stats');
       return response.data;
     } catch (error) {
-      console.error('❌ Error al obtener estadísticas del dashboard:', error);
+      if (error.response) {
+        console.error('❌ Error al obtener estadísticas del dashboard:', error.response.status, error.response.data);
+      } else if (error.request) {
+        console.error('❌ Error de red al obtener estadísticas del dashboard:', error.message);
+      } else {
+        console.error('❌ Error al obtener estadísticas del dashboard:', error.message);
+      }
       
       if (error.response?.status === 401 || error.response?.status === 500) {
         console.log('🔧 Usando estadísticas mock del dashboard');

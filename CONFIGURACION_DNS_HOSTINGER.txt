@@ -1,0 +1,60 @@
+═══════════════════════════════════════════════════════════════
+  CONFIGURACIÓN DNS PARA ligandome.com EN HOSTINGER
+═══════════════════════════════════════════════════════════════
+
+IP DEL SERVIDOR: 66.94.111.180
+
+───────────────────────────────────────────────────────────────
+PASOS EN EL PANEL DE HOSTINGER:
+───────────────────────────────────────────────────────────────
+
+1. Inicia sesión en tu cuenta de Hostinger
+2. Ve a "Dominios" → "Gestionar"
+3. Selecciona "ligandome.com"
+4. Ve a "Zona DNS" o "DNS"
+5. Agrega/Edita estos registros:
+
+┌─────────────────────────────────────────────────────────────┐
+│ REGISTRO 1:                                                 │
+├─────────────────────────────────────────────────────────────┤
+│ Tipo:     A                                                 │
+│ Nombre:   @ (o deja vacío)                                 │
+│ Valor:    66.94.111.180                                    │
+│ TTL:      3600                                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ REGISTRO 2:                                                 │
+├─────────────────────────────────────────────────────────────┤
+│ Tipo:     A                                                 │
+│ Nombre:   www                                               │
+│ Valor:    66.94.111.180                                    │
+│ TTL:      3600                                              │
+└─────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────
+VERIFICACIÓN:
+───────────────────────────────────────────────────────────────
+
+Después de configurar, espera 5-10 minutos y verifica:
+
+1. Desde tu servidor:
+   nslookup ligandome.com
+
+2. Desde cualquier lugar:
+   dig ligandome.com
+
+3. Deberías ver: 66.94.111.180
+
+───────────────────────────────────────────────────────────────
+NOTAS:
+───────────────────────────────────────────────────────────────
+
+• La propagación DNS puede tardar hasta 48 horas
+• Normalmente funciona en 15-30 minutos
+• Verifica que no haya otros registros A conflictivos
+• Si hay registros CNAME, elimínalos primero
+
+═══════════════════════════════════════════════════════════════
+
+

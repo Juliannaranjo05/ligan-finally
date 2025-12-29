@@ -716,7 +716,7 @@
       },
       "support": {
         "title": "지원 또는 도움말",
-        "description": "질문, 기술적 문제 또는 계정 도움말의 경우 support@ligando.online으로 문의하시면 팀이 최대한 빨리 응답하겠습니다.",
+        "description": "질문, 기술적 문제 또는 계정 도움말의 경우 support@ligandome.com으로 문의하시면 팀이 최대한 빨리 응답하겠습니다.",
         "contactButton": "이메일로 지원팀에 문의"
       },
       "report": {
@@ -1123,7 +1123,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",

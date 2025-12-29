@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const IncomingCallOverlay = ({ 
   isVisible = false, 
@@ -7,6 +8,7 @@ const IncomingCallOverlay = ({
   onAnswer = () => {},
   onDecline = () => {}
 }) => {
+  const { t } = useTranslation();
   const [isResponding, setIsResponding] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
@@ -125,10 +127,10 @@ const IncomingCallOverlay = ({
         {/* Indicador de llamada entrante */}
         <div className="text-center mb-6">
           <div className="text-[#ff007a] text-sm font-semibold mb-2 animate-pulse">
-            📞 LLAMADA ENTRANTE
+            📞 {t('callModals.incoming.incomingCall')}
           </div>
           <div className="text-white/60 text-xs">
-            {callData.call_type === 'video' ? '📹 Videollamada' : '📞 Llamada de voz'}
+            {callData.call_type === 'video' ? `📹 ${t('callModals.incoming.videoCall')}` : `📞 ${t('callModals.incoming.voiceCall')}`}
           </div>
         </div>
 
@@ -163,7 +165,7 @@ const IncomingCallOverlay = ({
           {/* Duración de la llamada */}
           <div className="bg-[#2b2d31] border border-[#ff007a]/20 rounded-xl p-3">
             <p className="text-[#ff007a] font-semibold">
-              Llamando... ({formatTime(callDuration)})
+              {t('callModals.incoming.calling')} ({formatTime(callDuration)})
             </p>
             <div className="w-full bg-gray-700 rounded-full h-1 mt-2">
               <div 
@@ -202,7 +204,7 @@ const IncomingCallOverlay = ({
         {isResponding && (
           <div className="mt-4 text-center">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#ff007a] border-t-transparent mx-auto mb-2"></div>
-            <p className="text-white/60 text-sm">Procesando respuesta...</p>
+            <p className="text-white/60 text-sm">{t('callModals.incoming.processingResponse')}</p>
           </div>
         )}
 
@@ -210,8 +212,8 @@ const IncomingCallOverlay = ({
         <div className="mt-6 bg-[#2b2d31] border border-[#ff007a]/10 rounded-xl p-3 text-center">
           <p className="text-white/50 text-xs">
             💡 {callDuration > 25 ? 
-              'La llamada expirará pronto' : 
-              'Toca los botones para responder'
+              t('callModals.incoming.callExpiringSoon') : 
+              t('callModals.incoming.tapToRespond')
             }
           </p>
         </div>

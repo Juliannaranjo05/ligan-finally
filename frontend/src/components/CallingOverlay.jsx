@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PhoneOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const CallingOverlay = ({ 
   isVisible = false, 
@@ -8,6 +9,7 @@ const CallingOverlay = ({
   callerAvatar = null,
   callStatus = 'initiating'
 }) => {
+  const { t } = useTranslation();
   const [dots, setDots] = useState('');
   const [callDuration, setCallDuration] = useState(0);
 
@@ -54,22 +56,22 @@ const CallingOverlay = ({
     switch (callStatus) {
       case 'initiating':
         return {
-          title: 'Iniciando llamada...',
-          subtitle: 'Preparando conexión',
+          title: t('callModals.outgoing.initiatingTitle'),
+          subtitle: t('callModals.outgoing.initiatingSubtitle'),
           icon: '📞',
           showProgress: false
         };
       case 'calling':
         return {
-          title: `Llamando${dots}`,
-          subtitle: `Esperando respuesta (${formatTime(callDuration)})`,
+          title: `${t('callModals.outgoing.callingTitle')}${dots}`,
+          subtitle: `${t('callModals.outgoing.waitingResponse')} (${formatTime(callDuration)})`,
           icon: '📞',
           showProgress: true
         };
       default:
         return {
-          title: 'Conectando...',
-          subtitle: 'Por favor espera',
+          title: t('callModals.outgoing.connectingTitle'),
+          subtitle: t('callModals.outgoing.pleaseWait'),
           icon: '📞',
           showProgress: false
         };
@@ -142,7 +144,7 @@ const CallingOverlay = ({
           <div className="flex justify-center mb-6">
             <div className="flex items-center space-x-2">
               <span className="text-white/60 text-sm mr-2">
-                {callStatus === 'initiating' ? 'Iniciando' : 'Llamando'}
+                {callStatus === 'initiating' ? t('callModals.outgoing.initiatingTitle') : t('callModals.outgoing.callingTitle')}
               </span>
               {[0, 1, 2].map((i) => (
                 <div 
@@ -165,7 +167,7 @@ const CallingOverlay = ({
             className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105 flex items-center gap-3"
           >
             <PhoneOff size={20} />
-            Cancelar Llamada
+            {t('callModals.outgoing.cancelCall')}
           </button>
         </div>
 
@@ -173,8 +175,8 @@ const CallingOverlay = ({
         <div className="mt-6 bg-[#2b2d31] border border-[#ff007a]/20 rounded-xl p-3 text-center">
           <p className="text-white/60 text-sm">
             💡 {callStatus === 'calling' ? 
-              'La llamada se cancelará automáticamente en 30 segundos' : 
-              'Estableciendo conexión con el usuario'
+              t('callModals.outgoing.autoCancelMessage') : 
+              t('callModals.outgoing.establishingConnection')
             }
           </p>
         </div>

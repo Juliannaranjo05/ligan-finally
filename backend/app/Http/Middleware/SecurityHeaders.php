@@ -67,7 +67,7 @@ class SecurityHeaders
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com data:",
             "img-src 'self' data: https: blob:",
-            "connect-src 'self' https://ligando.duckdns.org https://api.stripe.com https://www.google-analytics.com https://www.googletagmanager.com wss://ligando.duckdns.org",
+            "connect-src 'self' https://ligandome.com https://api.stripe.com https://www.google-analytics.com https://www.googletagmanager.com wss://ligandome.com",
             "media-src 'self' blob: https:",
             "object-src 'none'",
             "base-uri 'self'",

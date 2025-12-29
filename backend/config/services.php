@@ -32,7 +32,7 @@ return [
         'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
-        'redirect' => env('GOOGLE_REDIRECT_URI', 'http://ligando.duckdns.org/auth/google/callback'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', 'https://ligandome.com/auth/google/callback'),
     ],
     'livekit' => [
         'webhook_secret' => env('LIVEKIT_WEBHOOK_SECRET'),

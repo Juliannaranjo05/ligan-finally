@@ -825,7 +825,7 @@
       },
       "support": {
         "title": "Support ou aide",
-        "description": "Pour les questions, problèmes techniques ou aide avec votre compte, écrivez-nous à support@ligando.online et notre équipe vous répondra dans les plus brefs délais.",
+        "description": "Pour les questions, problèmes techniques ou aide avec votre compte, écrivez-nous à support@ligandome.com et notre équipe vous répondra dans les plus brefs délais.",
         "contactButton": "Contacter le support par e-mail"
       },
       "report": {
@@ -1113,7 +1113,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1206,6 +1209,7 @@
       "notAvailableBlocked": "Non disponible - utilisateur bloqué"
     },
     "gifts": {
+      "giftRequest": "Demande de Cadeau",
       "requestGift": "Demande de Cadeau",
       "giftReceived": "Cadeau Reçu !",
       "giftSent": "Cadeau Envoyé",
@@ -1851,6 +1855,28 @@
       "noDevices": "No devices detected",
       "testCamera": "Test your camera",
       "testMicrophone": "Test your microphone"
+    }
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Initiation de l'appel...",
+      "initiatingSubtitle": "Préparation de la connexion",
+      "callingTitle": "Appel en cours",
+      "waitingResponse": "En attente de réponse",
+      "connectingTitle": "Connexion...",
+      "pleaseWait": "Veuillez patienter",
+      "cancelCall": "Annuler l'appel",
+      "autoCancelMessage": "L'appel sera annulé automatiquement dans 30 secondes",
+      "establishingConnection": "Établissement de la connexion avec l'utilisateur"
+    },
+    "incoming": {
+      "incomingCall": "APPEL ENTRANT",
+      "videoCall": "Appel vidéo",
+      "voiceCall": "Appel vocal",
+      "calling": "Appel en cours...",
+      "processingResponse": "Traitement de la réponse...",
+      "callExpiringSoon": "L'appel expirera bientôt",
+      "tapToRespond": "Appuyez sur les boutons pour répondre"
     }
   }
 }

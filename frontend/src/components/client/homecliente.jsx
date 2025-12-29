@@ -478,6 +478,7 @@ export default function InterfazCliente() {
   // 🔥 CARGAR CHICAS ACTIVAS/ONLINE
   const cargarChicasActivas = async (isBackgroundUpdate = false) => {
     try {
+      console.log('🔍 [HOME] cargarChicasActivas iniciado', { isBackgroundUpdate });
       if (!isBackgroundUpdate) {
         setLoadingUsers(true);
       }
@@ -487,28 +488,71 @@ export default function InterfazCliente() {
         headers: getAuthHeaders()
       });
       
+      console.log('📡 [HOME] Respuesta de my-contacts:', {
+        status: response.status,
+        ok: response.ok
+      });
+      
       // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
       const isSessionClosed = await handleSessionClosedError(response, `${API_BASE_URL}/api/chat/users/my-contacts`);
       if (isSessionClosed) {
+        console.warn('⚠️ [HOME] Sesión cerrada, no continuar');
         return; // No continuar si la sesión fue cerrada
       }
       
       if (response.ok) {
         const data = await response.json();
+        console.log('📥 [HOME] Datos recibidos de my-contacts:', {
+          contactsCount: data.contacts?.length || 0,
+          contacts: data.contacts,
+          success: data.success
+        });
         
-        // Filtrar solo modelos (chicas) que están online
-        const chicasOnline = (data.contacts || []).filter(contact => 
-          contact.role === 'modelo' && contact.is_online
-        );
+        // 🔥 FILTRAR SOLO MODELOS (CHICAS) QUE ESTÁN ONLINE
+        // Si is_online no está disponible, asumir que está online si está en la lista
+        const chicasOnline = (data.contacts || []).filter(contact => {
+          if (contact.role !== 'modelo') {
+            console.log('❌ [HOME] Contacto no es modelo:', contact.role, contact.id);
+            return false;
+          }
+          // Si tiene is_online explícito, usarlo
+          if (contact.is_online !== undefined) {
+            const isOnline = contact.is_online === true;
+            console.log('✅ [HOME] Contacto modelo con is_online:', {
+              id: contact.id,
+              name: contact.name,
+              is_online: contact.is_online,
+              willInclude: isOnline
+            });
+            return isOnline;
+          }
+          // Si no tiene is_online pero está en la lista, asumir que está online
+          console.log('✅ [HOME] Contacto modelo sin is_online, asumiendo online:', {
+            id: contact.id,
+            name: contact.name
+          });
+          return true;
+        });
+        
+        console.log('👥 [HOME] Chicas online filtradas:', {
+          count: chicasOnline.length,
+          chicas: chicasOnline.map(c => ({ id: c.id, name: c.name, is_online: c.is_online }))
+        });
         
         setChicasActivas(prevChicas => {
           const newChicaIds = chicasOnline.map(u => u.id).sort();
           const prevChicaIds = prevChicas.map(u => u.id).sort();
           
           if (JSON.stringify(newChicaIds) !== JSON.stringify(prevChicaIds)) {
+            console.log('🔄 [HOME] Actualizando chicas activas:', {
+              prevCount: prevChicas.length,
+              newCount: chicasOnline.length,
+              newIds: newChicaIds
+            });
             return chicasOnline;
           }
           
+          console.log('⏸️ [HOME] No hay cambios en chicas activas');
           return prevChicas.map(prevChica => {
             const updatedChica = chicasOnline.find(u => u.id === prevChica.id);
             return updatedChica || prevChica;
@@ -516,11 +560,16 @@ export default function InterfazCliente() {
         });
         
       } else {
+        console.error('❌ [HOME] Error en respuesta de my-contacts:', {
+          status: response.status,
+          statusText: response.statusText
+        });
         if (initialLoad) {
           await handleFallbackData();
         }
       }
     } catch (error) {
+      console.error('❌ [HOME] Error en cargarChicasActivas:', error);
       if (initialLoad) {
         await handleFallbackData();
       }
@@ -1799,14 +1848,14 @@ export default function InterfazCliente() {
                   {expandedSections.activeGirls && (
                   <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
                     
-                    {loadingStories ? (
+                    {loadingUsers ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
                         <span className="ml-3 text-sm text-white/60">
                           {t('clientInterface.loadingGirls')}
                         </span>
                       </div>
-                    ) : stories.length === 0 ? (
+                    ) : chicasActivas.length === 0 ? (
                       <div className="flex flex-col items-center justify-center text-center py-8">
                         <Users size={32} className="text-white/20 mb-3" />
                         <p className="text-sm text-white/60 font-medium">
@@ -1820,35 +1869,32 @@ export default function InterfazCliente() {
                       <div className="space-y-3 pt-3">
                         {(() => {
                           const renderData = {
-                            total: stories.length,
+                            total: chicasActivas.length,
                             timestamp: new Date().toISOString()
                           };
-                          console.log('🎨 [HOME] Renderizando historias:', renderData);
-                          sendLogToBackend('info', '🎨 [HOME] Renderizando historias', renderData);
-                          return stories.map((story, index) => {
-                            const modelo = story.user || {};
-                            // 🔄 SIEMPRE MOSTRAR COMO ACTIVA (aunque no lo esté realmente)
-                            const isOnline = true; // Siempre true para mostrar todas como activas
-                            const avatarUrl = modelo.avatar || story.file_url;
-                            const displayName = modelo.name || modelo.display_name || 'Usuario';
+                          console.log('🎨 [HOME] Renderizando chicas activas:', renderData);
+                          sendLogToBackend('info', '🎨 [HOME] Renderizando chicas activas', renderData);
+                          return chicasActivas.map((chica, index) => {
+                            // 🔥 USAR DATOS DE chicasActivas EN LUGAR DE stories
+                            const isOnline = chica.is_online !== undefined ? chica.is_online : true;
+                            const avatarUrl = chica.avatar_url || chica.avatar;
+                            const displayName = chica.display_name || chica.name || chica.alias || 'Usuario';
                             
-                            // Log individual de cada historia renderizada (solo la primera para no saturar)
+                            // Log individual de cada chica renderizada (solo la primera para no saturar)
                             if (index === 0) {
-                              const storyData = {
-                                story_id: story.id,
-                                user_id: story.user_id,
-                                user_name: displayName,
+                              const chicaData = {
+                                chica_id: chica.id,
+                                name: displayName,
                                 is_online: isOnline,
-                                expires_at: story.expires_at,
-                                status: story.status
+                                avatar_url: avatarUrl
                               };
-                              console.log('📝 [HOME] Ejemplo de historia renderizada:', storyData);
-                              sendLogToBackend('info', '📝 [HOME] Ejemplo de historia renderizada', storyData);
+                              console.log('📝 [HOME] Ejemplo de chica activa renderizada:', chicaData);
+                              sendLogToBackend('info', '📝 [HOME] Ejemplo de chica activa renderizada', chicaData);
                             }
                             
                             return (
                             <div
-                              key={story.id}
+                              key={chica.id}
                               className="relative flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
                               style={{
                                 animationDelay: `${index * 50}ms`
@@ -1874,16 +1920,18 @@ export default function InterfazCliente() {
                                   >
                                     {getInitial(displayName)}
                                   </div>
-                                  {/* Siempre mostrar indicador verde */}
-                                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
+                                  {/* Mostrar indicador verde solo si está online */}
+                                  {isOnline && (
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
+                                  )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="font-semibold text-sm truncate">
                                     {displayName}
                                   </div>
-                                  {/* Siempre mostrar como Online */}
-                                  <div className="text-xs text-green-400">
-                                    {t('clientInterface.online') || 'Online'}
+                                  {/* Mostrar estado online/offline según is_online */}
+                                  <div className={`text-xs ${isOnline ? 'text-green-400' : 'text-gray-400'}`}>
+                                    {isOnline ? (t('clientInterface.online') || 'Online') : (t('clientInterface.offline') || 'Offline')}
                                   </div>
                                 </div>
                               </div>
@@ -1891,12 +1939,12 @@ export default function InterfazCliente() {
                                 <button
                                   onClick={() => {
                                     const chicaData = {
-                                      id: modelo.id || story.user_id,
+                                      id: chica.id,
                                       name: displayName,
                                       display_name: displayName,
                                       alias: displayName,
                                       role: 'modelo',
-                                      is_online: true, // Siempre true
+                                      is_online: isOnline,
                                       avatar_url: avatarUrl
                                     };
                                     iniciarLlamadaAChica(chicaData);
@@ -1925,12 +1973,12 @@ export default function InterfazCliente() {
                                 <button
                                   onClick={() => {
                                     const chicaData = {
-                                      id: modelo.id || story.user_id,
+                                      id: chica.id,
                                       name: displayName,
                                       display_name: displayName,
                                       alias: displayName,
                                       role: 'modelo',
-                                      is_online: true, // Siempre true
+                                      is_online: isOnline,
                                       avatar_url: avatarUrl
                                     };
                                     abrirChatConChica(chicaData);

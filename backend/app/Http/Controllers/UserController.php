@@ -115,9 +115,10 @@ class UserController extends Controller
                 \Log::info('⚠️ [getMyContacts] No hay modelos con historial');
                 $contacts = collect([]);
             } else {
-                // 🔥 LÓGICA SIMPLE: Modelos online en últimos 15 minutos (más permisivo)
+                // 🔥 LÓGICA MEJORADA: Modelos online con ventana más amplia (30 minutos)
+                // Primero intentar con last_seen reciente (últimos 30 minutos)
                 $modelosDisponibles = UserOnlineStatus::where('is_online', true)
-                    ->where('last_seen', '>=', now()->subMinutes(15))
+                    ->where('last_seen', '>=', now()->subMinutes(30))
                     ->whereIn('user_id', $modelosConHistorial)
                     ->whereHas('user', function($q) {
                         $q->where('rol', 'modelo');
@@ -125,11 +126,12 @@ class UserController extends Controller
                     ->with('user:id,name,rol,avatar')
                     ->get();
                 
-                \Log::info('🔍 [getMyContacts] Modelos disponibles (con last_seen):', ['count' => $modelosDisponibles->count()]);
+                \Log::info('🔍 [getMyContacts] Modelos disponibles (con last_seen 30min):', ['count' => $modelosDisponibles->count()]);
                 
                 // 🔥 SI NO HAY DISPONIBLES, INTENTAR SIN FILTRO DE LAST_SEEN (solo is_online)
+                // Esto asegura que las modelos aparezcan como online incluso si el heartbeat tiene un delay
                 if ($modelosDisponibles->isEmpty()) {
-                    \Log::info('⚠️ [getMyContacts] No hay modelos con last_seen, intentando sin filtro');
+                    \Log::info('⚠️ [getMyContacts] No hay modelos con last_seen reciente, intentando sin filtro de last_seen');
                     $modelosDisponibles = UserOnlineStatus::where('is_online', true)
                         ->whereIn('user_id', $modelosConHistorial)
                         ->whereHas('user', function($q) {
@@ -137,7 +139,7 @@ class UserController extends Controller
                         })
                         ->with('user:id,name,rol,avatar')
                         ->get();
-                    \Log::info('🔍 [getMyContacts] Modelos disponibles (sin last_seen):', ['count' => $modelosDisponibles->count()]);
+                    \Log::info('🔍 [getMyContacts] Modelos disponibles (sin filtro last_seen):', ['count' => $modelosDisponibles->count()]);
                 }
                 
                 $profileController = new ProfileSettingsController();
@@ -160,6 +162,19 @@ class UserController extends Controller
                 $avatar = $status->user->avatar;
                 $avatarUrl = $profileController->generateAvatarUrl($avatar);
                 
+                // 🔥 DETERMINAR SI ESTÁ REALMENTE ONLINE
+                // Si is_online es true en la BD, considerar online (incluso si last_seen no es reciente)
+                // El heartbeat puede tener delay, así que ser permisivo
+                $isReallyOnline = $status->is_online === true;
+                
+                \Log::info('👤 [getMyContacts] Modelo procesada:', [
+                    'user_id' => $status->user->id,
+                    'name' => $status->user->name,
+                    'is_online_db' => $status->is_online,
+                    'last_seen' => $status->last_seen,
+                    'is_really_online' => $isReallyOnline
+                ]);
+                
                 return [
                     'id' => $status->user->id,
                     'name' => $status->user->name,
@@ -168,7 +183,7 @@ class UserController extends Controller
                     'avatar' => $avatar,
                     'avatar_url' => $avatarUrl,
                     'role' => $status->user->rol,
-                    'is_online' => true,
+                    'is_online' => $isReallyOnline, // 🔥 USAR is_online DE LA BD DIRECTAMENTE
                     'activity_type' => $status->activity_type,
                     'last_seen' => $status->last_seen
                 ];

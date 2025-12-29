@@ -165,7 +165,7 @@ const StoriesModule = () => {
       if (story.file_url.startsWith('http')) {
         return story.file_url;
       }
-      return `${import.meta.env.VITE_API_BASE_URL || 'https://ligando.duckdns.org'}${story.file_url}`;
+      return `${import.meta.env.VITE_API_BASE_URL || 'https://ligandome.com'}${story.file_url}`;
     }
     return null;
   };

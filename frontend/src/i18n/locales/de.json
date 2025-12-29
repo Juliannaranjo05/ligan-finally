@@ -825,7 +825,7 @@
       },
       "support": {
         "title": "Support oder Hilfe",
-        "description": "Bei Fragen, technischen Problemen oder Hilfe mit deinem Konto schreibe uns an support@ligando.online und unser Team wird sich so schnell wie möglich bei dir melden.",
+        "description": "Bei Fragen, technischen Problemen oder Hilfe mit deinem Konto schreibe uns an support@ligandome.com und unser Team wird sich so schnell wie möglich bei dir melden.",
         "contactButton": "Support per E-Mail kontaktieren"
       },
       "report": {
@@ -1113,7 +1113,10 @@
       "insufficientGiftCoins": "Insufficient Gift Coins",
       "insufficientGiftCoinsMessage": "You need {{required}} gift coins to accept this gift. You have {{current}}",
       "insufficientBalanceToAcceptGift": "Insufficient balance to accept gift",
-      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift"
+      "notEnoughGiftCoins": "You don't have enough gift coins to accept this gift",
+      "lowBalanceTitle": "Low Balance",
+      "lowBalanceMessage": "Your balance is too low to continue the call",
+      "rechargeNow": "Recharge Now"
     },
     "gift": {
       "sent": "🎁 Gift Sent",
@@ -1206,6 +1209,7 @@
       "notAvailableBlocked": "Nicht verfügbar - Benutzer blockiert"
     },
     "gifts": {
+      "giftRequest": "Geschenkanfrage",
       "requestGift": "Geschenkanfrage",
       "giftReceived": "Geschenk Erhalten!",
       "giftSent": "Geschenk Gesendet",
@@ -1911,6 +1915,28 @@
       "validationError": "Validation errors found:",
       "fileTooLarge": "Files are too large. Please reduce the video size.",
       "genericError": "Error sending verification. Please try again."
+    }
+  },
+  "callModals": {
+    "outgoing": {
+      "initiatingTitle": "Anruf wird initiiert...",
+      "initiatingSubtitle": "Verbindung wird vorbereitet",
+      "callingTitle": "Anruf läuft",
+      "waitingResponse": "Warte auf Antwort",
+      "connectingTitle": "Verbinde...",
+      "pleaseWait": "Bitte warten",
+      "cancelCall": "Anruf abbrechen",
+      "autoCancelMessage": "Der Anruf wird automatisch in 30 Sekunden abgebrochen",
+      "establishingConnection": "Verbindung zum Benutzer wird hergestellt"
+    },
+    "incoming": {
+      "incomingCall": "EINGEHENDER ANRUF",
+      "videoCall": "Videoanruf",
+      "voiceCall": "Sprachanruf",
+      "calling": "Anruf läuft...",
+      "processingResponse": "Antwort wird verarbeitet...",
+      "callExpiringSoon": "Der Anruf läuft bald ab",
+      "tapToRespond": "Tippen Sie auf die Schaltflächen, um zu antworten"
     }
   }
 }
