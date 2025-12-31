@@ -991,16 +991,14 @@ class GiftSystemController extends Controller
                 ]);
             }
 
-            // 🔥 VERIFICAR SALDO TOTAL (purchased_balance + gift_balance) como en VideoChatGiftController
-            $totalBalance = $clientCoins->purchased_balance + $clientCoins->gift_balance;
-            
-            if ($totalBalance < $gift->price) {
+            // 🔥 VERIFICAR SALDO DE REGALOS (solo `gift_balance`) — no consumir `purchased_balance` para regalos
+            $giftOnlyBalance = $clientCoins->gift_balance;
+
+            if ($giftOnlyBalance < $gift->price) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
-                Log::warning("❌ [CHAT] Saldo insuficiente para regalo directo", [
+                Log::warning("❌ [CHAT] Saldo de regalos insuficiente para regalo directo", [
                     'client_id' => $user->id,
-                    'total_balance' => $totalBalance,
-                    'purchased_balance' => $clientCoins->purchased_balance,
                     'gift_balance' => $clientCoins->gift_balance,
                     'required' => $gift->price
                 ]);
@@ -1008,16 +1006,17 @@ class GiftSystemController extends Controller
                 return response()->json([
                     'success' => false,
                     'error' => 'insufficient_balance',
-                    'message' => 'Saldo insuficiente para este regalo',
+                    'message' => 'Saldo de regalos insuficiente para este regalo',
                     'data' => [
-                        'current_balance' => $totalBalance,
+                        'current_gift_balance' => $giftOnlyBalance,
                         'required_amount' => $gift->price,
-                        'missing_amount' => $gift->price - $totalBalance
+                        'missing_amount' => $gift->price - $giftOnlyBalance
                     ]
                 ], 400);
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
+            $totalBalance = $clientCoins->purchased_balance + $clientCoins->gift_balance;
             Log::info("💰 [CHAT] Procesando regalo directo", [
                 'client_total_balance_before' => $totalBalance,
                 'purchased_balance' => $clientCoins->purchased_balance,
@@ -1026,20 +1025,8 @@ class GiftSystemController extends Controller
                 'room_name' => $roomName
             ]);
             
-            // 1. Descontar del cliente (consumir primero de gift_balance, luego de purchased_balance)
-            // 🔥 IGUAL QUE VideoChatGiftController para mantener consistencia
-            $remainingToConsume = $gift->price;
-            
-            if ($clientCoins->gift_balance > 0 && $remainingToConsume > 0) {
-                $giftConsumed = min($clientCoins->gift_balance, $remainingToConsume);
-                $clientCoins->gift_balance -= $giftConsumed;
-                $remainingToConsume -= $giftConsumed;
-            }
-            
-            if ($remainingToConsume > 0) {
-                $clientCoins->purchased_balance -= $remainingToConsume;
-            }
-            
+            // 1. Descontar exclusivamente de gift_balance
+            $clientCoins->gift_balance -= $gift->price;
             $clientCoins->total_consumed += $gift->price;
             $clientCoins->last_consumption_at = now();
             $clientCoins->save();

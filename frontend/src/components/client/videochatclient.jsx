@@ -2264,9 +2264,9 @@ export default function VideoChatClient() {
 
     let autoEndTimeout = null;
 
-    // 🔥 ADVERTENCIA A LOS 2 MINUTOS
+    // 🔥 ADVERTENCIA A LOS 2 MINUTOS O MENOS
     if (remainingMinutes <= 2 && remainingMinutes > 0 && !warningShown) {
-      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos');
+      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos', { remainingMinutes });
       setWarningShown(true);
       
       // Mostrar notificación de advertencia
@@ -2278,9 +2278,9 @@ export default function VideoChatClient() {
       );
     }
 
-    // 🔥 MOSTRAR MODAL CUANDO QUEDAN 2 MINUTOS O MENOS
-    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat && !showLowBalanceModal) {
-      console.warn('🚨 [BALANCE] Tiempo restante <= 2 minutos - Mostrando modal de saldo bajo', { remainingMinutes });
+    // 🔥 MOSTRAR MODAL CUANDO QUEDAN MENOS DE 2 MINUTOS (no igual a 2)
+    if (remainingMinutes < 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat && !showLowBalanceModal) {
+      console.warn('🚨 [BALANCE] Tiempo restante < 2 minutos - Mostrando modal de saldo bajo', { remainingMinutes });
       setShowLowBalanceModal(true);
       hasAutoEndedRef.current = true;
       
@@ -4577,17 +4577,25 @@ useEffect(() => {
     return;
   }
 
-  // ✅ CLAVE ÚNICA ABSOLUTA POR SALA
-  const UNIQUE_KEY = `DEDUCTION_${roomName}_${Date.now()}`;
+  // ✅ CLAVE ÚNICA ESTABLE POR SALA (no cambia en cada render)
   const GLOBAL_LOCK = `LOCK_${roomName}`;
+  const UNIQUE_KEY = `DEDUCTION_${roomName}`;
   
-  // ✅ VERIFICAR SI YA HAY UN LOCK GLOBAL PARA ESTA SALA
+  // ✅ VERIFICAR SI YA HAY UN SISTEMA ACTIVO PARA ESTA SALA
   if (window[GLOBAL_LOCK]) {
     logDeduction('🚨 BLOQUEADO - Ya existe sistema para esta sala', { 
       existingLock: window[GLOBAL_LOCK],
-      newKey: UNIQUE_KEY 
+      roomName: roomName
     });
     return;
+  }
+
+  // ✅ LIMPIAR CUALQUIER INTERVALO ANTERIOR DE ESTA SALA
+  const intervalKey = `${UNIQUE_KEY}_interval`;
+  if (window[intervalKey]) {
+    clearInterval(window[intervalKey]);
+    delete window[intervalKey];
+    logDeduction('🧹 Limpiando intervalo anterior de esta sala');
   }
 
   // ✅ ESTABLECER LOCK GLOBAL
@@ -4596,12 +4604,20 @@ useEffect(() => {
 
   // ✅ VARIABLES DE CONTROL ESTRICTAS
   let isSystemActive = true;
-  let appliedCharges = {
-    initial: false,
-    regular90: false,
-    regular120: false,
-    continuousStarted: false
+  
+  // ✅ GUARDAR lastDeductedMinute EN localStorage PARA PERSISTENCIA
+  const getLastDeductedMinute = () => {
+    const key = `last_deducted_minute_${roomName}`;
+    const stored = localStorage.getItem(key);
+    return stored ? parseInt(stored) : 0;
   };
+  
+  const setLastDeductedMinute = (minute) => {
+    const key = `last_deducted_minute_${roomName}`;
+    localStorage.setItem(key, minute.toString());
+  };
+  
+  let lastDeductedMinute = getLastDeductedMinute(); // Cargar desde localStorage
 
   // ✅ TIEMPO DE INICIO DE SESIÓN
   const getSessionStart = () => {
@@ -4611,6 +4627,7 @@ useEffect(() => {
     if (!startTime) {
       startTime = Date.now().toString();
       localStorage.setItem(key, startTime);
+      setLastDeductedMinute(0); // Resetear cuando inicia nueva sesión
       logDeduction('⏰ Nuevo tiempo de sesión creado', { startTime });
     } else {
       logDeduction('⏰ Tiempo de sesión existente', { startTime });
@@ -4654,7 +4671,7 @@ useEffect(() => {
     }
 
     try {
-      logDeduction(`💰 APLICANDO DESCUENTO: ${amount} coins`, { reason });
+      logDeduction(`💰 APLICANDO DESCUENTO: ${amount} coins (${amount / 10} minuto(s))`, { reason });
       
       const authToken = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/api/livekit/periodic-deduction`, {
@@ -4665,7 +4682,7 @@ useEffect(() => {
         },
         body: JSON.stringify({
           room_name: roomName,
-          session_duration_seconds: 30,
+          session_duration_seconds: 60,
           manual_coins_amount: amount,
           reason: `${reason}_${UNIQUE_KEY.slice(-8)}` // Agregar ID único
         })
@@ -4677,6 +4694,7 @@ useEffect(() => {
           logDeduction(`✅ DESCUENTO EXITOSO: ${amount} coins`, { 
             reason,
             remainingBalance: data.remaining_balance,
+            remainingMinutes: data.minutes_remaining,
             uniqueId: UNIQUE_KEY.slice(-8)
           });
 
@@ -4709,96 +4727,97 @@ useEffect(() => {
     return Math.floor((Date.now() - sessionStartTime) / 1000);
   };
 
-  // ✅ EJECUTOR PRINCIPAL
+  // ✅ FUNCIÓN PARA OBTENER MINUTOS COMPLETOS TRANSCURRIDOS
+  const getCompletedMinutes = () => {
+    const elapsedSeconds = getElapsedSeconds();
+    return Math.floor(elapsedSeconds / 60); // Minutos completos (sin decimales)
+  };
+
+  // ✅ EJECUTOR PRINCIPAL - DESCUENTO POR MINUTOS COMPLETOS
   const runDeductionSystem = () => {
     const elapsed = getElapsedSeconds();
-    logDeduction('🚀 INICIANDO SISTEMA', { elapsedSeconds: elapsed });
+    const completedMinutes = getCompletedMinutes();
+    const intervalKey = `${UNIQUE_KEY}_interval`;
+    
+    logDeduction('🚀 INICIANDO SISTEMA DE DESCUENTO POR MINUTOS', { 
+      elapsedSeconds: elapsed,
+      completedMinutes: completedMinutes,
+      lastDeductedMinute: lastDeductedMinute,
+      uniqueKey: UNIQUE_KEY,
+      intervalKey: intervalKey
+    });
 
-    // ⏰ DESCUENTO INICIAL: 20 segundos = -10 coins
-    const scheduleInitial = () => {
-      if (appliedCharges.initial) return;
-      
-      const timeToWait = Math.max(0, 20 - elapsed) * 1000;
-      
-      setTimeout(async () => {
-        if (!isSystemActive || appliedCharges.initial) return;
-        
-        appliedCharges.initial = true;
-        const success = await applySecureDeduction(10, 'initial_20s');
-        
-        if (success) {
-          schedule90s();
-        }
-      }, timeToWait);
+    // Inicializar lastDeductedMinute si es la primera vez
+    if (lastDeductedMinute === 0 && completedMinutes === 0) {
+      // No descontar nada al inicio, esperar el primer minuto completo
+      logDeduction('⏰ Iniciando sesión - Esperando primer minuto completo');
+    } else if (completedMinutes > lastDeductedMinute) {
+      // Si ya pasó algún minuto completo (por ejemplo, si se recarga la página)
+      // Descontar solo los minutos faltantes, UNO A LA VEZ para evitar descuentos duplicados
+      logDeduction(`⏰ Detectados ${completedMinutes - lastDeductedMinute} minuto(s) acumulado(s) desde inicio`, {
+        completedMinutes,
+        lastDeductedMinute,
+        note: 'Se descontarán uno a la vez en el intervalo'
+      });
+      // No descontar aquí, dejar que el intervalo lo maneje uno a la vez
+    }
 
-      logDeduction(`⏳ Descuento inicial programado`, { waitMs: timeToWait });
-    };
+    // Configurar interval para verificar cada 10 segundos (más preciso que cada 60)
+    // Pero solo descontar cuando realmente pase un minuto completo
+    const interval = setInterval(async () => {
+      if (!isSystemActive) {
+        logDeduction('🛑 Sistema inactivo, deteniendo interval');
+        clearInterval(interval);
+        return;
+      }
 
-    // ⏰ PRIMER REGULAR: 90 segundos = -5 coins
-    const schedule90s = () => {
-      if (appliedCharges.regular90) return;
-      
       const currentElapsed = getElapsedSeconds();
-      const timeToWait = Math.max(0, 90 - currentElapsed) * 1000;
+      const currentCompletedMinutes = Math.floor(currentElapsed / 60);
       
-      setTimeout(async () => {
-        if (!isSystemActive || appliedCharges.regular90) return;
+      // 🔥 CRÍTICO: Solo descontar UN minuto a la vez cuando realmente pase un minuto completo
+      // NUNCA descontar múltiples minutos acumulados para evitar descuentos duplicados
+      if (currentCompletedMinutes > lastDeductedMinute && currentElapsed >= (currentCompletedMinutes * 60)) {
+        // 🔥 SIEMPRE descontar solo 1 minuto (10 coins), no múltiples minutos
+        const nextMinuteToDeduct = lastDeductedMinute + 1;
         
-        appliedCharges.regular90 = true;
-        const success = await applySecureDeduction(5, 'regular_90s');
-        
-        if (success) {
-          schedule120s();
+        // Verificar que el minuto a descontar es el siguiente lógico
+        if (nextMinuteToDeduct <= currentCompletedMinutes) {
+          const coinsToDeduct = 10; // SIEMPRE 10 coins (1 minuto)
+          
+          logDeduction(`⏰ Minuto ${nextMinuteToDeduct} completado (${currentElapsed}s) - Descontando 1 minuto (10 coins)`, {
+            currentElapsed,
+            currentCompletedMinutes,
+            lastDeductedMinute,
+            nextMinuteToDeduct,
+            coinsToDeduct
+          });
+          
+          // Actualizar lastDeductedMinute ANTES de hacer la llamada para evitar descuentos duplicados
+          lastDeductedMinute = nextMinuteToDeduct;
+          setLastDeductedMinute(nextMinuteToDeduct);
+          
+          const success = await applySecureDeduction(coinsToDeduct, `minute_${nextMinuteToDeduct}`);
+          if (!success) {
+            // Si falla el descuento, revertir lastDeductedMinute y detener el sistema
+            lastDeductedMinute = nextMinuteToDeduct - 1;
+            setLastDeductedMinute(nextMinuteToDeduct - 1);
+            isSystemActive = false;
+            clearInterval(interval);
+          }
         }
-      }, timeToWait);
+      }
+    }, 10000); // Verificar cada 10 segundos para mayor precisión
 
-      logDeduction(`⏳ Descuento 90s programado`, { waitMs: timeToWait });
-    };
-
-    // ⏰ SEGUNDO REGULAR: 120 segundos = -5 coins
-    const schedule120s = () => {
-      if (appliedCharges.regular120) return;
-      
-      const currentElapsed = getElapsedSeconds();
-      const timeToWait = Math.max(0, 120 - currentElapsed) * 1000;
-      
-      setTimeout(async () => {
-        if (!isSystemActive || appliedCharges.regular120) return;
-        
-        appliedCharges.regular120 = true;
-        const success = await applySecureDeduction(5, 'regular_120s');
-        
-        if (success) {
-          startContinuous();
-        }
-      }, timeToWait);
-
-      logDeduction(`⏳ Descuento 120s programado`, { waitMs: timeToWait });
-    };
-
-    // ⏰ CONTINUOS: Cada 30 segundos después de 120s = -5 coins
-    const startContinuous = () => {
-      if (appliedCharges.continuousStarted) return;
-      
-      appliedCharges.continuousStarted = true;
-      logDeduction('🔄 INICIANDO DESCUENTOS CONTINUOS cada 30s');
-      
-      const interval = setInterval(async () => {
-        if (!isSystemActive) {
-          logDeduction('🛑 Deteniendo interval continuo');
-          clearInterval(interval);
-          return;
-        }
-
-        await applySecureDeduction(5, 'continuous_30s');
-      }, 30000); // EXACTAMENTE 30 segundos
-
-      // Guardar referencia para limpieza
-      window[`${UNIQUE_KEY}_interval`] = interval;
-    };
-
-    // INICIAR FLUJO
-    scheduleInitial();
+    // Guardar referencia para limpieza
+    window[intervalKey] = interval;
+    
+    logDeduction('✅ Sistema de descuento iniciado - Descontará 1 minuto cada 60 segundos completos', {
+      checkInterval: '10000ms',
+      deductionInterval: '60000ms',
+      costPerMinute: '10 coins',
+      uniqueKey: UNIQUE_KEY,
+      intervalKey: intervalKey
+    });
   };
 
   // ✅ EJECUTAR EL SISTEMA
@@ -4806,7 +4825,7 @@ useEffect(() => {
 
   // ✅ FUNCIÓN DE LIMPIEZA COMPLETA
   return () => {
-    logDeduction('🧹 LIMPIANDO SISTEMA', { uniqueKey: UNIQUE_KEY });
+    logDeduction('🧹 LIMPIANDO SISTEMA', { uniqueKey: UNIQUE_KEY, roomName: roomName });
     
     // Desactivar sistema
     isSystemActive = false;
@@ -4816,13 +4835,14 @@ useEffect(() => {
     if (window[intervalKey]) {
       clearInterval(window[intervalKey]);
       delete window[intervalKey];
-      logDeduction('🗑️ Interval limpiado');
+      logDeduction('🗑️ Interval limpiado', { intervalKey });
     }
     
     // Liberar lock solo si es nuestro
     if (window[GLOBAL_LOCK] === UNIQUE_KEY) {
       window[GLOBAL_LOCK] = null;
-      logDeduction('🔓 LOCK liberado');
+      delete window[GLOBAL_LOCK];
+      logDeduction('🔓 LOCK liberado', { lockKey: GLOBAL_LOCK });
     }
   };
 
@@ -4832,20 +4852,21 @@ useEffect(() => {
 // 3️⃣ EFECTO SEPARADO PARA LIMPIEZA FINAL
 useEffect(() => {
   return () => {
-    if (roomName) {
-      // Limpiar localStorage
-      localStorage.removeItem(`session_start_${roomName}`);
-      
-      // Limpiar todos los locks de esta sala
-      Object.keys(window).forEach(key => {
-        if (key.includes(`LOCK_${roomName}`) || key.includes(`DEDUCTION_${roomName}`)) {
-          window[key] = null;
-          delete window[key];
-        }
-      });
-      
-      logDeduction('🧹 LIMPIEZA FINAL COMPLETA');
-    }
+      if (roomName) {
+        // Limpiar localStorage
+        localStorage.removeItem(`session_start_${roomName}`);
+        localStorage.removeItem(`last_deducted_minute_${roomName}`);
+        
+        // Limpiar todos los locks de esta sala
+        Object.keys(window).forEach(key => {
+          if (key.includes(`LOCK_${roomName}`) || key.includes(`DEDUCTION_${roomName}`)) {
+            window[key] = null;
+            delete window[key];
+          }
+        });
+        
+        logDeduction('🧹 LIMPIEZA FINAL COMPLETA');
+      }
   };
 }, []); // Sin dependencias para que solo se ejecute al desmontar
 
@@ -4865,15 +4886,15 @@ if (DEBUG_DEDUCTION) {
   }, []);
 }
 
-// ✅ FLUJO CORRECTO:
-// Segundo 20: -10 coins (UNA SOLA VEZ)
-// Segundo 90: -5 coins (UNA SOLA VEZ) 
-// Segundo 120: -5 coins (UNA SOLA VEZ)
-// Después: -5 coins cada 30 segundos (EXACTOS)
+// ✅ FLUJO CORRECTO DE DESCUENTO:
+// - Descuenta exactamente 1 minuto (10 coins) por cada minuto completo transcurrido
+// - Minuto 1 (60s): -10 coins (1 minuto)
+// - Minuto 2 (120s): -10 coins (1 minuto)
+// - Minuto 3 (180s): -10 coins (1 minuto)
+// - etc.
 
 // Total en 3 minutos (180s):
-// - 10 (inicial) + 5 (90s) + 5 (120s) + 5 (150s) + 5 (180s) = 30 coins
-// NO 500 coins como antes
+// - 10 + 10 + 10 = 30 coins (3 minutos)
 
 useEffect(() => {
 
