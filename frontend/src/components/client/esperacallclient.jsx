@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "./headercliente";
 import { useTranslation } from "react-i18next";
@@ -291,6 +291,29 @@ export default function PreCallLobbyClient() {
       isNavigatingRef.current = false;
     }
   };
+
+  // 🔥 LIMPIAR DATOS DE VIDEOLLAMADA AL MONTAR EL COMPONENTE
+  useEffect(() => {
+    // Limpiar datos de videollamada para desbloquear navegación
+    localStorage.removeItem('roomName');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('currentRoom');
+    localStorage.removeItem('inCall');
+    localStorage.removeItem('videochatActive');
+    localStorage.removeItem('callToken');
+    localStorage.removeItem('sessionTime');
+    localStorage.removeItem('sessionStartTime');
+    
+    // También limpiar sessionStorage
+    sessionStorage.removeItem('roomName');
+    sessionStorage.removeItem('userName');
+    sessionStorage.removeItem('currentRoom');
+    sessionStorage.removeItem('inCall');
+    sessionStorage.removeItem('videochatActive');
+    sessionStorage.removeItem('callToken');
+    
+    console.log('🧹 [EsperaCallCliente] Datos de videollamada limpiados');
+  }, []);
 
   // 🔥 USEEFFECTS MODIFICADOS
   useEffect(() => {

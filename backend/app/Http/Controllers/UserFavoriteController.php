@@ -15,12 +15,21 @@ class UserFavoriteController extends Controller
     public function addToFavorites(Request $request)
     {
         try {
+            $user = auth()->user();
+            
+            if (!$user) {
+                Log::error('❌ Usuario no autenticado en addToFavorites');
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Usuario no autenticado'
+                ], 401);
+            }
+            
             $request->validate([
                 'favorite_user_id' => 'required|integer|exists:users,id',
                 'note' => 'nullable|string|max:255'
             ]);
 
-            $user = auth()->user();
             $favoriteUserId = $request->favorite_user_id;
 
             if ($user->id == $favoriteUserId) {
@@ -38,16 +47,40 @@ class UserFavoriteController extends Controller
             }
 
             // Agregar nuevo favorito
-            DB::table('user_favorites')->insert([
-                'user_id' => $user->id,
-                'favorite_user_id' => $favoriteUserId,
-                'note' => $request->note ?? '',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
+            try {
+                DB::table('user_favorites')->insert([
+                    'user_id' => $user->id,
+                    'favorite_user_id' => $favoriteUserId,
+                    'note' => $request->note ?? '',
+                    'is_active' => true,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            } catch (\Illuminate\Database\QueryException $dbException) {
+                // Si es un error de duplicado (unique constraint), verificar si realmente existe
+                if ($dbException->getCode() == 23000 || str_contains($dbException->getMessage(), 'UNIQUE constraint') || str_contains($dbException->getMessage(), 'duplicate')) {
+                    Log::warning('⚠️ Intento de agregar favorito duplicado', [
+                        'user_id' => $user->id,
+                        'favorite_user_id' => $favoriteUserId,
+                        'error' => $dbException->getMessage()
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Ya está en favoritos'], 409);
+                }
+                // Re-lanzar si es otro tipo de error
+                throw $dbException;
+            }
 
             $favoriteUser = User::find($favoriteUserId);
+            
+            if (!$favoriteUser) {
+                Log::error('❌ Usuario favorito no encontrado después de insertar', [
+                    'favorite_user_id' => $favoriteUserId
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Usuario favorito no encontrado'
+                ], 404);
+            }
 
             return response()->json([
                 'success' => true,
@@ -59,8 +92,20 @@ class UserFavoriteController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error en addToFavorites: ' . $e->getMessage());
-            return response()->json(['success' => false, 'error' => 'Error interno del servidor'], 500);
+            Log::error('❌ Error en addToFavorites', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+                'favorite_user_id' => $request->input('favorite_user_id'),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor. Por favor, revisa los logs para más detalles.',
+                'message' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor. Por favor, revisa los logs para más detalles.'
+            ], 500);
         }
     }
 

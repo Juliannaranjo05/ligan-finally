@@ -20,6 +20,10 @@ class EnsureSingleSession
         $user = $request->user();
         
         if (!$user) {
+            Log::info('🔍 EnsureSingleSession: no user authenticated for request - skipping', [
+                'uri' => $request->getRequestUri(),
+                'ip' => $request->ip()
+            ]);
             return $next($request);
         }
 
@@ -38,12 +42,14 @@ class EnsureSingleSession
         if (!$tokenModel) {
             return response()->json(['message' => 'Token no encontrado'], 401);
         }
-        
+
         // Verificar si el token está suspendido
         if ($tokenModel->status === 'suspended') {
-            Log::info("⏸️ Sesión suspendida detectada para {$user->email}", [
+            Log::warning("⏸️ Sesión suspendida detectada para {$user->email}", [
                 'token_id' => $tokenId,
                 'ip' => $request->ip(),
+                'path' => $request->path(),
+                'method' => $request->method(),
                 'user_agent' => substr($request->userAgent(), 0, 100)
             ]);
             
@@ -60,17 +66,15 @@ class EnsureSingleSession
         if ($user->current_access_token_id != $tokenId) {
             // Si el token tiene status 'active' pero no es el current, fue reactivada otra sesión
             if ($tokenModel->status === 'active') {
-                Log::info("⏸️ Token activo detectado pero no es el current_access_token_id - otra sesión fue reactivada para {$user->email}", [
+                Log::warning("⏸️ Token activo detectado pero no es el current_access_token_id - otra sesión fue reactivada para {$user->email}", [
                     'token_actual_esperado' => $user->current_access_token_id,
                     'token_recibido' => $tokenId,
                     'token_status' => $tokenModel->status,
                     'ip' => $request->ip(),
-                    'user_agent' => substr($request->userAgent(), 0, 100)
+                    'path' => $request->path(),
+                    'method' => $request->method(),
                 ]);
-                
-                // Marcar este token como suspendido automáticamente
-                $tokenModel->update(['status' => 'suspended']);
-                
+
                 return response()->json([
                     'message' => 'Tu sesión ha sido suspendida',
                     'code' => 'SESSION_SUSPENDED',

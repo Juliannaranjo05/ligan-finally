@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useNavigate, useLocation } from 'react-router-dom';
 import IncomingCallOverlay from '../components/IncomingCallOverlay';
 import CallingSystem from '../components/CallingOverlay';
+import audioManager from '../utils/AudioManager.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -27,6 +28,9 @@ export const GlobalCallProvider = ({ children }) => {
   const [outgoingCallAudio, setOutgoingCallAudio] = useState(null);
   const audioRef = useRef(null);
   const outgoingAudioRef = useRef(null);
+  const playPromiseRef = useRef(null); // 🔥 REF para guardar la promesa de play() de llamada entrante
+  const outgoingPlayPromiseRef = useRef(null); // 🔥 REF para guardar la promesa de play() de llamada saliente
+  // 🔥 ELIMINADO: pendingAudioRef, audioUnlockedRef, unlockAudioRef - ahora se maneja en AudioManager
   
   // 🔥 REFS PARA CONTROL DE CONCURRENCIA Y POLLING
   const isCheckingRef = useRef(false); // Prevenir peticiones simultáneas
@@ -60,106 +64,183 @@ export const GlobalCallProvider = ({ children }) => {
   };
 
   // 🔥 REPRODUCIR SONIDO DE LLAMADA ENTRANTE
+  // 🔥 Escuchar mensajes de BroadcastChannel para suspender/ reanudar polling rápidamente
+  try {
+    const bcGlobal = new BroadcastChannel('ligando_bg');
+    bcGlobal.addEventListener('message', (ev) => {
+      try {
+        if (ev.data?.type === 'suspendBackgroundTasks') {
+          if (ev.data.value === true) {
+            console.log('⏸️ [CALL] BroadcastChannel - suspendiendo polling de llamadas');
+            if (incomingCallPollingIntervalRef.current) {
+              clearInterval(incomingCallPollingIntervalRef.current);
+              incomingCallPollingIntervalRef.current = null;
+            }
+          } else {
+            console.log('▶️ [CALL] BroadcastChannel - reanudando polling de llamadas');
+            if (!incomingCallPollingIntervalRef.current) {
+              verificarLlamadasEntrantes();
+              incomingCallPollingIntervalRef.current = setInterval(verificarLlamadasEntrantes, 5000);
+            }
+          }
+        }
+      } catch (e) {}
+    });
+  } catch (e) {}
+
+  // 🔥 ELIMINADO: Todo el código de desbloqueo se maneja en AudioManager
+  // El AudioManager se inicializa en App.jsx y maneja todo el desbloqueo
+
+  // 🔥 USAR AudioManager GLOBAL (ya inicializado al inicio de la app)
   const playIncomingCallSound = async () => {
     try {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+      console.log('📞 [GlobalCallContext] Iniciando reproducción de sonido de llamada entrante');
+      
+      // Usar AudioManager global (ya desbloqueado al inicio)
+      const success = await audioManager.playRingtone();
+      
+      if (success) {
+        // Guardar referencia para poder detenerlo después
+        audioRef.current = audioManager.ringtoneAudio;
+        setIncomingCallAudio(audioManager.ringtoneAudio);
+        console.log('✅ [GlobalCallContext] Ringtone reproduciendo (usando AudioManager)');
+      } else {
+        console.warn('⚠️ [GlobalCallContext] No se pudo reproducir ringtone');
+      }
+    } catch (error) {
+      console.error('❌ [GlobalCallContext] Error en playIncomingCallSound:', error);
+    }
+  };
+
+
+  const stopIncomingCallSound = () => {
+    console.log('🛑 [GlobalCallContext] Deteniendo sonido de llamada entrante');
+    
+    // Usar AudioManager global para detener ringtone
+    audioManager.stopRingtone();
+    
+    // Limpiar referencias locales
+    audioRef.current = null;
+    setIncomingCallAudio(null);
+    
+    console.log('✅ [GlobalCallContext] Sonido de llamada entrante detenido');
+  };
+
+  // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
+  const playOutgoingCallSound = useCallback(async () => {
+    try {
+      console.log('📞 [GlobalCallContext] Iniciando reproducción de sonido de llamada saliente');
+      
+      // 🔥 NOTA: El elemento Audio de HTML5 no requiere AudioContext para funcionar
+      // AudioContext solo se necesita para Web Audio API avanzada, no para elementos <audio>
+      // Por lo tanto, no intentamos crear AudioContext aquí para evitar warnings del navegador
+      
+      // Detener cualquier sonido anterior
+      if (outgoingAudioRef.current) {
+        outgoingAudioRef.current.pause();
+        outgoingAudioRef.current.currentTime = 0;
+        outgoingAudioRef.current = null;
       }
       
+      // Usar el sonido de llamada entrante (outgoing-call.mp3 no existe)
       const audio = new Audio('/sounds/incoming-call.mp3');
       audio.loop = true;
       audio.volume = 0.8;
       audio.preload = 'auto';
       
-      audioRef.current = audio;
-      setIncomingCallAudio(audio);
-      
-      try {
-        await audio.play();
-      } catch (playError) {
-        if (playError.name === 'NotAllowedError') {
-          console.warn('Reproducción de audio bloqueada por el navegador');
-        }
-      }
-    } catch (error) {
-      console.error('Error reproduciendo sonido de llamada entrante:', error);
-    }
-  };
-
-  const stopIncomingCallSound = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
-    }
-    if (incomingCallAudio) {
-      incomingCallAudio.pause();
-      incomingCallAudio.currentTime = 0;
-      setIncomingCallAudio(null);
-    }
-  };
-
-  // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
-  const playOutgoingCallSound = async () => {
-    try {
-      if (outgoingAudioRef.current) {
-        outgoingAudioRef.current.pause();
-        outgoingAudioRef.current.currentTime = 0;
-      }
-      
-      const audio = new Audio('/sounds/outgoing-call.mp3');
-      // Si no existe, usar el sonido de llamada entrante como fallback
-      audio.onerror = () => {
-        const fallbackAudio = new Audio('/sounds/incoming-call.mp3');
-        fallbackAudio.loop = true;
-        fallbackAudio.volume = 0.6;
-        fallbackAudio.preload = 'auto';
-        outgoingAudioRef.current = fallbackAudio;
-        setOutgoingCallAudio(fallbackAudio);
-        fallbackAudio.play().catch(() => {
-          console.warn('No se pudo reproducir sonido de llamada saliente');
-        });
-      };
-      
-      audio.loop = true;
-      audio.volume = 0.6;
-      audio.preload = 'auto';
+      // Agregar event listeners para debugging
+      audio.addEventListener('loadstart', () => {
+        console.log('📞 [GlobalCallContext] Audio saliente: loadstart');
+      });
+      audio.addEventListener('canplay', () => {
+        console.log('📞 [GlobalCallContext] Audio saliente: canplay');
+      });
+      audio.addEventListener('play', () => {
+        console.log('✅ [GlobalCallContext] Audio saliente: play iniciado');
+      });
+      audio.addEventListener('error', (e) => {
+        console.error('❌ [GlobalCallContext] Error en audio element saliente:', e);
+      });
       
       outgoingAudioRef.current = audio;
       setOutgoingCallAudio(audio);
       
       try {
-        await audio.play();
+        console.log('📞 [GlobalCallContext] Intentando reproducir audio saliente...');
+        // 🔥 Guardar la promesa de play() para poder manejarla si se interrumpe
+        outgoingPlayPromiseRef.current = audio.play();
+        await outgoingPlayPromiseRef.current;
+        outgoingPlayPromiseRef.current = null; // Limpiar la referencia cuando se completa
+        console.log('✅ [GlobalCallContext] Sonido de llamada saliente reproducido exitosamente');
       } catch (playError) {
-        if (playError.name === 'NotAllowedError') {
-          console.warn('Reproducción de audio bloqueada por el navegador');
+        outgoingPlayPromiseRef.current = null; // Limpiar la referencia en caso de error
+        // 🔥 Silenciar AbortError ya que es esperado cuando se interrumpe intencionalmente
+        if (playError.name === 'AbortError') {
+          console.log('ℹ️ [GlobalCallContext] Reproducción de audio saliente interrumpida (esperado)');
+          return; // Salir silenciosamente
         }
+        // 🔥 Silenciar NotAllowedError ya que es esperado cuando no hay interacción del usuario
+        if (playError.name === 'NotAllowedError') {
+          console.log('ℹ️ [GlobalCallContext] Reproducción de audio saliente requiere interacción del usuario (esperado)');
+          return; // Salir silenciosamente
+        }
+        // Solo mostrar warnings para otros errores
+        console.warn('⚠️ [GlobalCallContext] Error reproduciendo sonido de llamada saliente:', playError);
+        console.warn('⚠️ [GlobalCallContext] Detalles del error:', {
+          name: playError.name,
+          message: playError.message,
+          stack: playError.stack
+        });
       }
     } catch (error) {
-      console.error('Error reproduciendo sonido de llamada saliente:', error);
+      console.error('❌ [GlobalCallContext] Error en playOutgoingCallSound:', error);
+      console.error('❌ [GlobalCallContext] Stack:', error.stack);
     }
-  };
+  }, []);
 
   // 🔥 DETENER SONIDO DE LLAMADA SALIENTE
-  const stopOutgoingCallSound = () => {
+  const stopOutgoingCallSound = useCallback(() => {
+    // 🔥 Manejar la promesa de play() pendiente si existe
+    if (outgoingPlayPromiseRef.current) {
+      outgoingPlayPromiseRef.current.catch((error) => {
+        // 🔥 Silenciar AbortError ya que es esperado cuando se interrumpe intencionalmente
+        if (error.name !== 'AbortError') {
+          console.warn('⚠️ [GlobalCallContext] Error en promesa de play() saliente interrumpida:', error);
+        }
+      });
+      outgoingPlayPromiseRef.current = null;
+    }
+    
     if (outgoingAudioRef.current) {
       outgoingAudioRef.current.pause();
       outgoingAudioRef.current.currentTime = 0;
       outgoingAudioRef.current = null;
     }
-    if (outgoingCallAudio) {
-      outgoingCallAudio.pause();
-      outgoingCallAudio.currentTime = 0;
-      setOutgoingCallAudio(null);
-    }
-  };
+    // También limpiar el estado si existe
+    setOutgoingCallAudio(prev => {
+      if (prev) {
+        prev.pause();
+        prev.currentTime = 0;
+      }
+      return null;
+    });
+  }, []);
 
   // 🔥 VERIFICAR LLAMADAS ENTRANTES (GLOBAL) - OPTIMIZADO
   const verificarLlamadasEntrantes = useCallback(async () => {
-    // 🔥 NO HACER POLLING SI ESTAMOS EN UNA VIDELLAMADA ACTIVA O EN RUTAS DE AUTENTICACIÓN
+    // 🔥 NO HACER POLLING SI ESTAMOS EN UNA VIDELLAMADA ACTIVA, EN RUTAS DE AUTENTICACIÓN, O SI HAY UNA SUSPENSIÓN TEMPORAL
     if (isInVideoChat || isInAuthRoute) {
       return;
+    }
+
+    // 🔥 NO HACER POLLING SI HAY UNA SUSPENSIÓN PROVISTA POR ProfileChatRedirect
+    try {
+      if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+        if (import.meta.env.DEV) console.log('⏸️ [CALL] Polling suspendido por redirect (suspendBackgroundTasks)');
+        return;
+      }
+    } catch (e) {
+      // Ignorar errores de acceso a localStorage
     }
     
     // 🔥 PREVENIR PETICIONES SIMULTÁNEAS
@@ -287,7 +368,11 @@ export const GlobalCallProvider = ({ children }) => {
             });
             setIncomingCall(data.incoming_call);
             setIsReceivingCall(true);
-            await playIncomingCallSound();
+            // 🔥 REPRODUCIR RINGTONE INMEDIATAMENTE cuando se detecta la llamada entrante
+            // No esperar await para que no bloquee el renderizado del overlay
+            playIncomingCallSound().catch(err => {
+              console.warn('⚠️ [GlobalCallContext] Error al reproducir ringtone inicial:', err);
+            });
           } else {
             // 🔥 LOGGING DETALLADO DE POR QUÉ SE IGNORA (SIEMPRE PARA DEBUGGING)
             console.log('⏸️ [CALL] Ignorando llamada entrante:', {
@@ -362,9 +447,25 @@ export const GlobalCallProvider = ({ children }) => {
     }
   }, [isCallActive, isReceivingCall, isInVideoChat, isInAuthRoute, currentCall]);
 
+  // 🔥 DETENER SONIDO DE LLAMADA ENTRANTE CUANDO SE ENTRA A UNA VIDELLAMADA
+  // Solo detener si realmente estamos en una videollamada Y hay una llamada entrante activa
+  useEffect(() => {
+    if (isInVideoChat) {
+      // Si estamos en videollamada, detener cualquier sonido de llamada entrante que pueda estar sonando
+      if (isReceivingCall || incomingCall || audioRef.current) {
+        console.log('🛑 [GlobalCallContext] Detectado que estamos en videollamada, deteniendo sonido de llamada entrante');
+        stopIncomingCallSound();
+        if (isReceivingCall || incomingCall) {
+          setIsReceivingCall(false);
+          setIncomingCall(null);
+        }
+      }
+    }
+  }, [isInVideoChat]);
+
   // 🔥 INICIAR POLLING DE LLAMADAS ENTRANTES (PAUSAR DURANTE VIDELLAMADAS Y AUTENTICACIÓN)
   useEffect(() => {
-    // 🔥 NO INICIAR POLLING SI ESTAMOS EN UNA VIDELLAMADA ACTIVA O EN RUTAS DE AUTENTICACIÓN
+    // 🔥 NO INICIAR POLLING SI ESTAMOS EN UNA VIDELLAMADA ACTIVA, EN RUTAS DE AUTENTICACIÓN O HAY UNA SUSPENSIÓN TEMPORAL
     if (isInVideoChat || isInAuthRoute) {
       console.log('⏸️ [CALL] Polling pausado - en videochat o ruta de autenticación', {
         isInVideoChat,
@@ -377,6 +478,19 @@ export const GlobalCallProvider = ({ children }) => {
         incomingCallPollingIntervalRef.current = null;
       }
       return;
+    }
+
+    try {
+      if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+        console.log('⏸️ [CALL] Polling no iniciado - suspendBackgroundTasks activo');
+        if (incomingCallPollingIntervalRef.current) {
+          clearInterval(incomingCallPollingIntervalRef.current);
+          incomingCallPollingIntervalRef.current = null;
+        }
+        return;
+      }
+    } catch (e) {
+      // Ignorar errores de acceso a localStorage
     }
     
     // 🔥 VERIFICAR QUE HAY TOKEN ANTES DE INICIAR POLLING
@@ -1058,6 +1172,8 @@ export const GlobalCallProvider = ({ children }) => {
     stopIncomingCallSound();
   }, [incomingCall]);
 
+  // 🔥 ELIMINADO: El AudioManager maneja todo el desbloqueo y reproducción de audio pendiente
+
   // Cleanup al desmontar
   useEffect(() => {
     return () => {
@@ -1082,9 +1198,11 @@ export const GlobalCallProvider = ({ children }) => {
       startCall,
       cancelCall,
       answerCall,
-      declineCall
+      declineCall,
+      playOutgoingCallSound,
+      stopOutgoingCallSound
     };
-  }, [isCallActive, currentCall, isReceivingCall, incomingCall, startCall, cancelCall, answerCall, declineCall]);
+  }, [isCallActive, currentCall, isReceivingCall, incomingCall, startCall, cancelCall, answerCall, declineCall, playOutgoingCallSound, stopOutgoingCallSound]);
 
   return (
     <GlobalCallContext.Provider value={value}>

@@ -59,8 +59,10 @@ export default function CountrySelector({ onSelect, onClose }) {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredCountries = COUNTRIES.filter(country => {
-    const matchesSearch = country.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         country.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const name = (country && country.name) ? country.name : '';
+    const code = (country && country.code) ? country.code : '';
+    const matchesSearch = name.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+                         code.toLowerCase().includes((searchTerm || '').toLowerCase());
     return matchesSearch;
   });
 
@@ -70,7 +72,8 @@ export default function CountrySelector({ onSelect, onClose }) {
       code: country.code,
       name: country.name,
       currency: country.currency,
-      pricePerHour: country.pricePerHour
+      pricePerHour: country.pricePerHour,
+      flag: country.flag
     }));
     onSelect(country);
   };

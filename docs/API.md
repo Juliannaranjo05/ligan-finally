@@ -3,7 +3,7 @@
 ## Base URL
 
 ```
-https://ligando.duckdns.org/api
+https://ligandome.com/api
 ```
 
 ## Autenticación

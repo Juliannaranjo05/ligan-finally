@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   Home, 
   Star, 
@@ -75,16 +75,27 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
     const handleStorageChange = () => {
       const blocked = checkRoomNameInStorage();
       setIsBlocked(blocked);
-          };
+    };
+    
+    // 🔥 ESCUCHAR EVENTO PERSONALIZADO DE LIMPIEZA DE VIDEOCHAT
+    const handleVideoChatCleaned = () => {
+      console.log('🧹 [Header] Evento de limpieza de videochat recibido');
+      const blocked = checkRoomNameInStorage();
+      setIsBlocked(blocked);
+    };
 
     // Escuchar cambios en localStorage
     window.addEventListener('storage', handleStorageChange);
     
+    // Escuchar evento personalizado de limpieza
+    window.addEventListener('videochatCleaned', handleVideoChatCleaned);
+    
     // También verificar periódicamente (por si los cambios son en la misma pestaña)
-    const interval = setInterval(handleStorageChange, 1000);
+    const interval = setInterval(handleStorageChange, 500); // 🔥 Reducido a 500ms para respuesta más rápida
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('videochatCleaned', handleVideoChatCleaned);
       clearInterval(interval);
     };
   }, []);

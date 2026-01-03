@@ -196,12 +196,8 @@ const iniciarPollingLlamada = useCallback((callId) => {
           console.log('✅ [message] Llamada ACEPTADA, redirigiendo', { callId, roomName: data.call.room_name });
           logger.info('Llamada ACEPTADA, redirigiendo');
           
-          // 🔥 DETENER SONIDO DE LLAMADA
-          if (outgoingCallAudioRef.current) {
-            outgoingCallAudioRef.current.pause();
-            outgoingCallAudioRef.current.currentTime = 0;
-            outgoingCallAudioRef.current = null;
-          }
+          // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+          stopOutgoingCallSound();
           
           clearInterval(interval);
           setCallPollingInterval(null);
@@ -308,6 +304,9 @@ const iniciarPollingLlamada = useCallback((callId) => {
 const redirigirAVideochatCliente = useCallback((callData) => {
   console.log('🚀 [message] redirigirAVideochatCliente ejecutado', callData);
   logger.debug('Redirigiendo a videochat CLIENTE', callData);
+  
+  // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+  stopOutgoingCallSound();
   
   // Verificar que tenemos datos mínimos
   if (!callData.room_name) {
@@ -1326,11 +1325,167 @@ useEffect(() => {
   }
 }, [userParam, conversaciones, marcarComoVisto, navigate]);
 
+// 🔗 Abrir chat con modelo desde URL (cuando viene del link de perfil)
+useEffect(() => {
+  const modeloId = searchParams.get('modelo');
+  
+  if (!modeloId) return;
+  if (!usuario.id || usuario.rol !== 'cliente') return;
+  if (hasOpenedSpecificChat.current) return;
+  if (conversaciones.length === 0 && loading) return; // Esperar a que se carguen las conversaciones
+
+  const abrirChatConModelo = async () => {
+    // Marcar como procesado PRIMERO
+    hasOpenedSpecificChat.current = true;
+    
+    try {
+      const targetModelId = parseInt(modeloId);
+      if (!targetModelId) return;
+
+      // Buscar si ya existe una conversación con este modelo
+      const conversacionExistente = conversaciones.find(
+        conv => conv.other_user_id === targetModelId
+      );
+
+      if (conversacionExistente) {
+        // Abrir la conversación existente
+        await abrirConversacion(conversacionExistente);
+        
+        // Limpiar parámetro de URL
+        setTimeout(() => {
+          navigate('/message', { replace: true });
+        }, 500);
+      } else {
+        // Crear nueva conversación en el backend
+        const response = await fetch(`${API_BASE_URL}/api/chat/start-conversation`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ other_user_id: targetModelId })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.room_name) {
+            // Recargar conversaciones para incluir la nueva
+            await cargarConversaciones();
+            
+            // Esperar un momento y luego buscar la nueva conversación
+            setTimeout(async () => {
+              // Recargar conversaciones una vez más para obtener la lista actualizada
+              await cargarConversaciones();
+              
+              // Esperar un pequeño delay para asegurar que el estado se actualizó
+              setTimeout(async () => {
+                // Crear objeto de conversación con los datos disponibles
+                const conversacionTemporal = {
+                  room_name: data.room_name,
+                  other_user_id: targetModelId,
+                  other_user_name: 'Modelo',
+                  other_user_display_name: 'Modelo',
+                  other_user_role: 'modelo',
+                  last_message: '',
+                  last_message_time: new Date().toISOString(),
+                  unread_count: 0
+                };
+                
+                // Agregar a la lista de conversaciones si no existe
+                setConversaciones(prev => {
+                  const exists = prev.some(conv => 
+                    conv.room_name === conversacionTemporal.room_name ||
+                    conv.other_user_id === conversacionTemporal.other_user_id
+                  );
+                  if (!exists) {
+                    return [conversacionTemporal, ...prev];
+                  }
+                  return prev.map(conv => 
+                    conv.room_name === conversacionTemporal.room_name || 
+                    conv.other_user_id === conversacionTemporal.other_user_id
+                      ? conversacionTemporal
+                      : conv
+                  );
+                });
+                
+                // Abrir la conversación
+                setTimeout(async () => {
+                  await abrirConversacion(conversacionTemporal);
+                  
+                  // Limpiar parámetro de URL
+                  setTimeout(() => {
+                    navigate('/message', { replace: true });
+                  }, 500);
+                }, 100);
+              }, 300);
+            }, 500);
+          }
+        } else {
+          // Si falla la creación, usar conversación local
+          const conversacionLocal = {
+            room_name: `chat_user_${Math.min(usuario.id, targetModelId)}_${Math.max(usuario.id, targetModelId)}`,
+            other_user_id: targetModelId,
+            other_user_name: 'Modelo',
+            other_user_display_name: 'Modelo',
+            other_user_role: 'modelo',
+            createdLocally: true,
+            needsSync: true,
+            last_message: '',
+            last_message_time: new Date().toISOString(),
+            unread_count: 0
+          };
+          
+          setConversaciones(prev => {
+            const exists = prev.some(conv => 
+              conv.room_name === conversacionLocal.room_name ||
+              conv.other_user_id === conversacionLocal.other_user_id
+            );
+            if (exists) {
+              return prev.map(conv => {
+                if (conv.room_name === conversacionLocal.room_name || conv.other_user_id === conversacionLocal.other_user_id) {
+                  return { ...conversacionLocal, id: conv.id };
+                }
+                return conv;
+              });
+            }
+            return [conversacionLocal, ...prev];
+          });
+          
+          setTimeout(async () => {
+            await abrirConversacion(conversacionLocal);
+            setTimeout(() => {
+              navigate('/message', { replace: true });
+            }, 500);
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error abriendo chat con modelo:', error);
+      hasOpenedSpecificChat.current = false; // Permitir reintentar en caso de error
+    }
+  };
+
+  abrirChatConModelo();
+}, [searchParams, usuario.id, usuario.rol, conversaciones, loading, getAuthHeaders, navigate, cargarConversaciones, abrirConversacion]);
+
 
   // 🔥 FUNCIONES DE LLAMADAS SIMPLIFICADAS
   // 🔥 FUNCIÓN PARA REPRODUCIR SONIDO DE LLAMADA SALIENTE
   const playOutgoingCallSound = useCallback(async () => {
     try {
+      console.log('📞 [MESSAGE-CLIENT] Iniciando reproducción de sonido de llamada saliente');
+      
+      // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
+      if (typeof window !== 'undefined' && window.AudioContext) {
+        try {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            console.log('📞 [MESSAGE-CLIENT] AudioContext suspendido, resumiendo...');
+            await audioContext.resume();
+            console.log('✅ [MESSAGE-CLIENT] AudioContext resumido');
+          }
+        } catch (ctxError) {
+          console.warn('⚠️ [MESSAGE-CLIENT] Error con AudioContext:', ctxError);
+        }
+      }
+      
       // Detener cualquier sonido anterior
       if (outgoingCallAudioRef.current) {
         outgoingCallAudioRef.current.pause();
@@ -1344,17 +1499,42 @@ useEffect(() => {
       audio.volume = 0.8;
       audio.preload = 'auto';
       
+      // Agregar event listeners para debugging
+      audio.addEventListener('loadstart', () => {
+        console.log('📞 [MESSAGE-CLIENT] Audio saliente: loadstart');
+      });
+      audio.addEventListener('canplay', () => {
+        console.log('📞 [MESSAGE-CLIENT] Audio saliente: canplay');
+      });
+      audio.addEventListener('play', () => {
+        console.log('✅ [MESSAGE-CLIENT] Audio saliente: play iniciado');
+      });
+      audio.addEventListener('error', (e) => {
+        console.error('❌ [MESSAGE-CLIENT] Error en audio element saliente:', e);
+      });
+      
       outgoingCallAudioRef.current = audio;
       
       try {
+        console.log('📞 [MESSAGE-CLIENT] Intentando reproducir audio saliente...');
         await audio.play();
+        console.log('✅ [MESSAGE-CLIENT] Sonido de llamada saliente reproducido exitosamente');
         logger.debug('Sonido de llamada saliente iniciado');
       } catch (playError) {
+        console.warn('⚠️ [MESSAGE-CLIENT] Error reproduciendo sonido de llamada saliente:', playError);
+        console.warn('⚠️ [MESSAGE-CLIENT] Detalles del error:', {
+          name: playError.name,
+          message: playError.message,
+          stack: playError.stack
+        });
         if (playError.name === 'NotAllowedError') {
           logger.warn('Permiso de audio no concedido');
+          console.warn('⚠️ [MESSAGE-CLIENT] Reproducción de audio bloqueada por el navegador - se requiere interacción del usuario');
         }
       }
     } catch (error) {
+      console.error('❌ [MESSAGE-CLIENT] Error en playOutgoingCallSound:', error);
+      console.error('❌ [MESSAGE-CLIENT] Stack:', error.stack);
       logger.error('Error al reproducir sonido de llamada', error);
     }
   }, []);
@@ -3829,13 +4009,6 @@ const renderMensaje = useCallback((mensaje) => {
           userBalance: userBalance + giftBalance,  // 🔥 Balance total (purchased + gift) para mostrar en el modal
         })}
         loading={loadingGift}
-      />
-      <GiftNotificationOverlay
-        pendingRequests={pendingRequests}
-        onAccept={handleAcceptGift}
-        onReject={handleRejectGift}
-        onClose={() => setPendingRequests([])}
-        isVisible={pendingRequests.length > 0}
       />
       <IncomingCallOverlay
         isVisible={isReceivingCall}

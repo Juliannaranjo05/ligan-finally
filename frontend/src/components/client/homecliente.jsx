@@ -199,18 +199,134 @@ export default function InterfazCliente() {
     setTimeout(() => setNotification(null), 4000); // Ocultar después de 4 segundos
   }, []);
 
+  // Estado para rastrear pagos pendientes y polling
+  const [pendingPurchaseId, setPendingPurchaseId] = useState(null);
+  const [paymentPollingActive, setPaymentPollingActive] = useState(false);
+  const paymentPollingRef = useRef(null);
+  const paymentPollingStartTimeRef = useRef(null);
+
+  // Función para verificar estado de pago
+  const checkPaymentStatus = useCallback(async (purchaseIdToCheck) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseIdToCheck}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await response.json();
+
+      if (data.success && data.purchase) {
+        if (data.purchase.status === 'completed') {
+          // Pago completado - detener polling y actualizar
+          setPendingPurchaseId(null);
+          setPaymentPollingActive(false);
+          if (paymentPollingRef.current) {
+            clearInterval(paymentPollingRef.current);
+            paymentPollingRef.current = null;
+          }
+          showNotification(`¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`, 'success');
+          // Actualizar balance - usar función helper directamente
+          try {
+            const token = localStorage.getItem('token');
+            const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            if (balanceResponse.ok) {
+              const balanceData = await balanceResponse.json();
+              if (balanceData.success) {
+                setUserBalance(balanceData.balance);
+                setBalanceDetails(balanceData);
+              }
+            }
+          } catch (error) {
+            console.error('Error actualizando balance:', error);
+          }
+          return true; // Indica que el pago se completó
+        } else if (data.purchase.status === 'pending') {
+          // Sigue pendiente - continuar polling
+          return false;
+        } else {
+          // Pago fallido - detener polling
+          setPendingPurchaseId(null);
+          setPaymentPollingActive(false);
+          if (paymentPollingRef.current) {
+            clearInterval(paymentPollingRef.current);
+            paymentPollingRef.current = null;
+          }
+          showNotification('El pago no se completó. Por favor intenta nuevamente.', 'error');
+          return true; // Indica que terminó (aunque falló)
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error verificando estado del pago:', error);
+      return false;
+    }
+  }, [API_BASE_URL, showNotification]);
+
+  // Polling automático para pagos pendientes
+  useEffect(() => {
+    if (paymentPollingActive && pendingPurchaseId) {
+      // Verificar si ha pasado más de 5 minutos (300 segundos)
+      const maxPollingTime = 5 * 60 * 1000; // 5 minutos en milisegundos
+      const elapsed = Date.now() - (paymentPollingStartTimeRef.current || Date.now());
+      
+      if (elapsed > maxPollingTime) {
+        // Detener polling después de 5 minutos
+        console.log('Polling de pago detenido después de 5 minutos');
+        setPaymentPollingActive(false);
+        setPendingPurchaseId(null);
+        if (paymentPollingRef.current) {
+          clearInterval(paymentPollingRef.current);
+          paymentPollingRef.current = null;
+        }
+        return;
+      }
+
+      // Iniciar polling cada 5 segundos
+      paymentPollingRef.current = setInterval(async () => {
+        const completed = await checkPaymentStatus(pendingPurchaseId);
+        if (completed) {
+          // El pago se completó o falló, limpiar
+          setPaymentPollingActive(false);
+          setPendingPurchaseId(null);
+          if (paymentPollingRef.current) {
+            clearInterval(paymentPollingRef.current);
+            paymentPollingRef.current = null;
+          }
+        }
+      }, 5000); // Verificar cada 5 segundos
+
+      return () => {
+        if (paymentPollingRef.current) {
+          clearInterval(paymentPollingRef.current);
+          paymentPollingRef.current = null;
+        }
+      };
+    }
+  }, [paymentPollingActive, pendingPurchaseId, checkPaymentStatus]);
+
   // Verificar pago de Wompi cuando el usuario regresa
   useEffect(() => {
     const payment = searchParams.get('payment');
     const reference = searchParams.get('reference');
     const purchaseId = searchParams.get('purchase_id');
+    const txId = searchParams.get('id');
+    const env = searchParams.get('env');
 
-    if (payment === 'wompi' && purchaseId) {
-      // Verificar el estado del pago
-      const checkPaymentStatus = async () => {
+    // Caso: Wompi puede redirigir con ?id=<transaction_id>&env=test (especialmente sandbox)
+    // Intentar resolver la transacción directamente por transaction id si existe
+    if (txId) {
+      const resolveByTx = async () => {
         try {
           const token = localStorage.getItem('token');
-          const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseId}`, {
+          const response = await fetch(`${API_BASE_URL}/api/wompi/resolve/${txId}`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -221,13 +337,46 @@ export default function InterfazCliente() {
           if (data.success && data.purchase) {
             if (data.purchase.status === 'completed') {
               showNotification(`¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`, 'success');
-              // Actualizar balance
-              consultarSaldoUsuario();
+              // Actualizar balance después de un pequeño delay
+              setTimeout(() => {
+                window.location.reload(); // Recargar para actualizar balance
+              }, 1000);
             } else if (data.purchase.status === 'pending') {
               showNotification('Tu pago está siendo procesado. Las monedas se agregarán cuando se confirme.', 'info');
-            } else {
-              showNotification('El pago no se completó. Por favor intenta nuevamente.', 'error');
+              // Iniciar polling automático
+              setPendingPurchaseId(data.purchase.id);
+              setPaymentPollingActive(true);
+              paymentPollingStartTimeRef.current = Date.now();
             }
+          } else {
+            // Si no se resuelve la compra localmente, avisar que está procesándose
+            showNotification('Tu pago está siendo procesado. Si el redireccionamiento vino de Wompi, intentaremos resolverlo automáticamente.', 'info');
+          }
+        } catch (error) {
+          console.error('Error resolviendo transacción por id:', error);
+        } finally {
+          // Limpiar parámetros id/env de la URL
+          searchParams.delete('id');
+          searchParams.delete('env');
+          setSearchParams(searchParams, { replace: true });
+        }
+      };
+
+      resolveByTx();
+      return; // Evitar ejecutar la lógica de purchase_id simultáneamente
+    }
+
+    if (payment === 'wompi' && purchaseId) {
+      // Verificar el estado del pago inmediatamente
+      const initialCheck = async () => {
+        const completed = await checkPaymentStatus(purchaseId);
+
+        if (!completed) {
+          // Si sigue pendiente, iniciar polling automático
+          showNotification('Tu pago está siendo procesado. Verificando automáticamente...', 'info');
+          setPendingPurchaseId(purchaseId);
+          setPaymentPollingActive(true);
+          paymentPollingStartTimeRef.current = Date.now();
           }
 
           // Limpiar parámetros de la URL
@@ -235,18 +384,15 @@ export default function InterfazCliente() {
           searchParams.delete('reference');
           searchParams.delete('purchase_id');
           setSearchParams(searchParams, { replace: true });
-        } catch (error) {
-          console.error('Error verificando estado del pago:', error);
-        }
       };
 
-      checkPaymentStatus();
+      initialCheck();
     } else if (payment === 'cancelled') {
       showNotification('El pago fue cancelado.', 'info');
       searchParams.delete('payment');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams, API_BASE_URL, showNotification]);
+  }, [searchParams, setSearchParams, API_BASE_URL, showNotification, checkPaymentStatus]);
 
   const abrirModalCompraMinutos = () => {
     setShowBuyMinutes(true);
@@ -386,7 +532,7 @@ export default function InterfazCliente() {
   const [callPollingInterval, setCallPollingInterval] = useState(null);
   
   // 🔥 USAR CONTEXTO GLOBAL PARA LLAMADAS ENTRANTES
-  const { isReceivingCall } = useGlobalCall();
+  const { isReceivingCall, playOutgoingCallSound, stopOutgoingCallSound } = useGlobalCall();
   // 🔥 ESTADOS PARA MODAL DE CONFIRMACIÓN
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -919,6 +1065,14 @@ export default function InterfazCliente() {
       });
       setIsCallActive(true);
       
+      // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
+      try {
+        await playOutgoingCallSound();
+        console.log('✅ [HOME-CLIENTE] Sonido de llamada saliente iniciado');
+      } catch (error) {
+        console.warn('⚠️ [HOME-CLIENTE] Error reproduciendo sonido de llamada saliente:', error);
+      }
+      
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
@@ -943,6 +1097,7 @@ export default function InterfazCliente() {
         });
         iniciarPollingLlamada(data.call_id);
       } else {
+        stopOutgoingCallSound();
         setIsCallActive(false);
         setCurrentCall(null);
         
@@ -990,6 +1145,7 @@ export default function InterfazCliente() {
         }
       }
     } catch (error) {
+      stopOutgoingCallSound();
       setIsCallActive(false);
       setCurrentCall(null);
       
@@ -1174,6 +1330,10 @@ export default function InterfazCliente() {
               if (interval) clearInterval(interval);
               if (notificationInterval) clearInterval(notificationInterval);
               setCallPollingInterval(null);
+              
+              // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+              stopOutgoingCallSound();
+              
               redirigirAVideochat(data.call);
               
             } else if (callStatus === 'rejected') {
@@ -1182,6 +1342,7 @@ export default function InterfazCliente() {
               if (interval) clearInterval(interval);
               if (notificationInterval) clearInterval(notificationInterval);
               setCallPollingInterval(null);
+              stopOutgoingCallSound();
               setIsCallActive(false);
               setCurrentCall(null);
               alert(t('clientInterface.callRejected'));
@@ -1192,6 +1353,7 @@ export default function InterfazCliente() {
               if (interval) clearInterval(interval);
               if (notificationInterval) clearInterval(notificationInterval);
               setCallPollingInterval(null);
+              stopOutgoingCallSound();
               setIsCallActive(false);
               setCurrentCall(null);
               alert(t('clientInterface.callExpired'));
@@ -1271,6 +1433,7 @@ export default function InterfazCliente() {
         if (notificationInterval) clearInterval(notificationInterval);
         setCallPollingInterval(null);
         if (isCallActive) {
+          stopOutgoingCallSound();
           setIsCallActive(false);
           setCurrentCall(null);
           alert(t('clientInterface.timeoutExpired'));
@@ -1303,6 +1466,9 @@ export default function InterfazCliente() {
         setCallPollingInterval(null);
       }
       
+      // 🔥 DETENER SONIDO DE LLAMADA SALIENTE
+      stopOutgoingCallSound();
+      
     } catch (error) {
           }
     
@@ -1314,6 +1480,9 @@ export default function InterfazCliente() {
 
   // 🔥 NUEVA FUNCIÓN: REDIRIGIR AL VIDEOCHAT CLIENTE
   const redirigirAVideochat = (callData) => {
+    // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+    stopOutgoingCallSound();
+    
     // 🔥 Obtener room_name de diferentes posibles ubicaciones
     const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
     
@@ -1558,6 +1727,53 @@ export default function InterfazCliente() {
     );
   };
 
+  // Estado para verificación de pagos
+  const [checkingPayments, setCheckingPayments] = useState(false);
+
+  // Función para verificar todos los pagos pendientes
+  const checkAllPendingPayments = async () => {
+    setCheckingPayments(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/wompi/check-all-pending`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        if (data.processed > 0) {
+          showNotification(
+            `¡Excelente! Se procesaron ${data.processed} pago(s) pendiente(s). Se agregaron las monedas a tu cuenta.`,
+            'success'
+          );
+          // Actualizar balance después de un pequeño delay
+          setTimeout(() => {
+            consultarSaldoUsuario();
+          }, 1000);
+        } else if (data.still_pending > 0) {
+          showNotification(
+            `Hay ${data.still_pending} pago(s) aún pendiente(s). Se verificarán automáticamente.`,
+            'info'
+          );
+        } else {
+          showNotification('No hay pagos pendientes por verificar.', 'info');
+        }
+      } else {
+        showNotification(data.error || 'Error al verificar los pagos pendientes.', 'error');
+      }
+    } catch (error) {
+      console.error('Error verificando pagos pendientes:', error);
+      showNotification('Error de conexión al verificar pagos.', 'error');
+    } finally {
+      setCheckingPayments(false);
+    }
+  };
+
   const SaldoWidget = () => {
     const { t: tWidget } = useTranslation(); // 🔥 USAR useTranslation DENTRO DEL COMPONENTE
     if (!userBalance) return null;
@@ -1582,8 +1798,18 @@ export default function InterfazCliente() {
               {userBalance.total_coins || userBalance.total_available || 0}
             </span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between text-xs items-center">
+            <div className="flex items-center gap-2">
             <span className="text-white/50">{tWidget('clientInterface.minutes')}</span>
+              <button
+                onClick={checkAllPendingPayments}
+                disabled={checkingPayments}
+                className="text-[10px] px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded border border-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={tWidget('clientInterface.verifyPaymentsTitle')}
+              >
+                {checkingPayments ? tWidget('clientInterface.verifyingPayments') : tWidget('clientInterface.verifyPayments')}
+              </button>
+            </div>
             <span className="text-white/70">{userBalance.minutes_available || 0}</span>
           </div>
           <div className="flex justify-between text-xs">
@@ -1755,6 +1981,17 @@ export default function InterfazCliente() {
                         {userBalance.minutes_available || 0}
                       </span>
                       <span className="text-xs text-white/60 whitespace-nowrap">{t('clientInterface.minutes')}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          checkAllPendingPayments();
+                        }}
+                        disabled={checkingPayments}
+                        className="text-[10px] px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded border border-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-2"
+                        title={t('clientInterface.verifyPaymentsTitle')}
+                      >
+                        {checkingPayments ? t('clientInterface.verifyingPayments') : t('clientInterface.verifyPayments')}
+                      </button>
                     </div>
                     <div className="flex items-center gap-2">
                       <button 

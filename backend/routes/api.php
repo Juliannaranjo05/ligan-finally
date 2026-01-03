@@ -47,6 +47,11 @@ Route::post('/reset-password-with-token', [SecurityController::class, 'resetPass
 Route::get('/verificacion/archivo/{filename}', [VerificacionController::class, 'verArchivo'])
     ->name('verificacion.archivo');
 
+// Public model by slug (explicit route to avoid auth middleware issues)
+Route::get('/public/model/by-slug/{slug}', [ProfileLinkController::class, 'getModelBySlug']);
+// Legacy route kept for compatibility - may be protected by middleware in some groups
+Route::get('/model/by-slug/{slug}', [ProfileLinkController::class, 'getModelBySlug']);
+
 // 📊 RUTAS DE ADMIN - Requieren autenticación de admin (admin.auth)
 Route::middleware(['admin.auth', 'throttle:30,1'])->prefix('admin')->group(function () {
     // Verificaciones
@@ -144,14 +149,12 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     Route::post('/blocks/unblock-user', [App\Http\Controllers\UserBlockController::class, 'unblockUser']);
     Route::get('/blocks/list', [App\Http\Controllers\UserBlockController::class, 'getBlockedUsers']);
     Route::get('/blocks/block-status', [App\Http\Controllers\UserBlockController::class, 'getBlockStatus']);
-    Route::post('check-if-blocked-by', [UserBlockController::class, 'checkIfBlockedBy']);
-    Route::get('who-blocked-me', [UserBlockController::class, 'getWhoBlockedMe']);
-    Route::get('block-status', [UserBlockController::class, 'getBlockStatus']);
-    
-    // Favoritos
+    // Endpoint usado por frontend
+    Route::post('/blocks/check-if-blocked-by', [UserBlockController::class, 'checkIfBlockedBy']);
+    Route::get('/blocks/who-blocked-me', [UserBlockController::class, 'getWhoBlockedMe']);
+    Route::get('/favorites/list', [App\Http\Controllers\UserFavoriteController::class, 'getFavorites']);
     Route::post('/favorites/add', [App\Http\Controllers\UserFavoriteController::class, 'addToFavorites']);
     Route::post('/favorites/remove', [App\Http\Controllers\UserFavoriteController::class, 'removeFromFavorites']);
-    Route::get('/favorites/list', [App\Http\Controllers\UserFavoriteController::class, 'getFavorites']);
     Route::post('/favorites/start-chat', [App\Http\Controllers\UserFavoriteController::class, 'startChatWithFavorite']);
     
     // 🎰 LIVEKIT TOKENS - CRÍTICO para conexión de videochat
@@ -289,6 +292,8 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         Route::get('my-nicknames', [UserNicknameController::class, 'getMyNicknames']);
     });
 
+    // Public: Obtener modelo por slug (no auth required) - route defined earlier (no duplication)
+
     Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/profile/photo/upload', [ProfileSettingsController::class, 'uploadPhoto']);
     Route::post('/profile/photo/take', [ProfileSettingsController::class, 'takePhoto']);
@@ -308,9 +313,6 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     
     // 🔗 Link de perfil para modelos verificadas
     Route::get('/profile/link', [ProfileLinkController::class, 'getProfileLink']);
-    
-    // Obtener modelo por slug (para clientes)
-    Route::get('/model/by-slug/{slug}', [ProfileLinkController::class, 'getModelBySlug']);
     });
     Route::middleware('auth:sanctum')->group(function () {
     
@@ -488,7 +490,9 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         Route::post('/wompi/create-payment', [App\Http\Controllers\WompiController::class, 'createPayment']);
         Route::post('/wompi/sandbox-purchase', [App\Http\Controllers\WompiController::class, 'createSandboxPurchase']);
         Route::get('/wompi/status/{purchaseId}', [App\Http\Controllers\WompiController::class, 'checkPurchaseStatus']);
+        Route::get('/wompi/resolve/{transactionId}', [App\Http\Controllers\WompiController::class, 'resolveByTransactionId']);
         Route::get('/wompi/history', [App\Http\Controllers\WompiController::class, 'getPurchaseHistory']);
+        Route::post('/wompi/check-all-pending', [App\Http\Controllers\WompiController::class, 'checkAllPendingPayments']);
     });
 
     
@@ -596,6 +600,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/validate-call', [App\Http\Controllers\VideoChatCoinController::class, 'validateForVideoCall']);
         Route::post('/consume', [App\Http\Controllers\VideoChatCoinController::class, 'consumeCoins']);
         Route::post('/add', [App\Http\Controllers\VideoChatCoinController::class, 'addCoins']);
+        Route::post('/check-client-balance', [App\Http\Controllers\VideoChatCoinController::class, 'getClientBalanceForModel']);
         Route::get('/history', [App\Http\Controllers\VideoChatCoinController::class, 'getConsumptionHistory']);
         Route::post('/process-consumption', [App\Http\Controllers\VideoChatCoinController::class, 'processPeriodicConsumption']);
     });
@@ -805,6 +810,8 @@ Route::middleware(['auth:sanctum', 'only.current.token', 'throttle:30,1'])->grou
 
     // 📋 SISTEMA DE VERIFICACIÓN DE IDENTIDAD
     Route::get('/verificacion/estado', [VerificacionController::class, 'estado']);
+    // Subida por chunks de videos para la verificación (frontend -> /api/verificacion/upload-chunk)
+    Route::post('/verificacion/upload-chunk', [VerificacionController::class, 'uploadChunk']);
     Route::post('/verificacion', [VerificacionController::class, 'store'])
         ->middleware('verificacion.estado:sin_verificar');
 

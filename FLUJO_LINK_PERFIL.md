@@ -34,3 +34,7 @@ https://ligandome.com/message?user={username}
 3. **El endpoint `/api/model/by-name/{username}` NO requiere autenticación**
 4. **Si hay token, debe permitir acceso directo sin redirecciones**
 
+
+
+
+

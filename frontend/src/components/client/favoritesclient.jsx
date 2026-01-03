@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "./headercliente";
 import { useTranslation } from 'react-i18next';
 import { useSessionValidation } from '../hooks/useSessionValidation';
+import { useGlobalCall } from '../../contexts/GlobalCallContext';
 
 // 🔥 IMPORTAR COMPONENTES DE LLAMADA (como en mensajes)
 import CallingSystem from '../CallingOverlay';
@@ -275,6 +276,14 @@ export default function Favoritos() {
       });
       setIsCallActive(true);
       
+      // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
+      try {
+        await playOutgoingCallSound();
+        console.log('✅ [FAVORITES-CLIENT] Sonido de llamada saliente iniciado');
+      } catch (error) {
+        console.warn('⚠️ [FAVORITES-CLIENT] Error reproduciendo sonido de llamada saliente:', error);
+      }
+      
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -336,6 +345,7 @@ export default function Favoritos() {
         setCurrentCall(null);
       }
     } catch (error) {
+      stopOutgoingCallSound();
       setIsCallActive(false);
       setCurrentCall(null);
       
@@ -381,16 +391,22 @@ export default function Favoritos() {
           if (callStatus === 'active') {
             clearInterval(interval);
             setCallPollingInterval(null);
+            
+            // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+            stopOutgoingCallSound();
+            
             redirigirAVideochat(data.call);
           } else if (callStatus === 'rejected') {
             clearInterval(interval);
             setCallPollingInterval(null);
+            stopOutgoingCallSound();
             setIsCallActive(false);
             setCurrentCall(null);
             alert(t('favorites.calls.rejected'));
           } else if (callStatus === 'cancelled') {
             clearInterval(interval);
             setCallPollingInterval(null);
+            stopOutgoingCallSound();
             setIsCallActive(false);
             setCurrentCall(null);
             alert(t('favorites.calls.expired'));
@@ -418,6 +434,9 @@ export default function Favoritos() {
         clearInterval(callPollingInterval);
         setCallPollingInterval(null);
       }
+      
+      // 🔥 DETENER SONIDO DE LLAMADA SALIENTE
+      stopOutgoingCallSound();
     } catch (error) {
           }
     
@@ -427,6 +446,9 @@ export default function Favoritos() {
 
   // 🔥 REDIRIGIR AL VIDEOCHAT (igual que en mensajes)
   const redirigirAVideochat = (callData) => {
+    // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
+    stopOutgoingCallSound();
+    
     const userData = JSON.parse(localStorage.getItem('user') || '{}');
     
     localStorage.setItem('roomName', callData.room_name);

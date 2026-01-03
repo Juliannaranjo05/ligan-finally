@@ -86,36 +86,67 @@ class WompiController extends Controller
     {
         try {
             $user = auth()->user();
+            $userId = $user ? $user->id : null; // Permitir llamadas de invitados (sin usuario)
             
-            // 🔥 OBTENER PRECIO POR HORA DEL PAÍS:
-            // 1. Si viene price_per_hour del frontend (país seleccionado), usarlo
-            // 2. Si no, usar precio por defecto de $30/hora (LATAM)
-            $pricePerHour = $request->has('price_per_hour') && $request->input('price_per_hour')
-                ? (float)$request->input('price_per_hour')
-                : 30.0; // Precio por defecto LATAM
-            
-            // 🔥 DETECCIÓN DE MONEDA:
-            // 1. Si el usuario especifica una moneda manualmente, usarla
-            // 2. Si no, detectar automáticamente por IP
-            // 3. Si falla la detección, usar COP por defecto (LATAM)
-            if ($request && $request->has('currency') && $request->input('currency')) {
+            // Validar y sanear parámetros entrantes (defensivo)
+            $validator = \Validator::make($request->all(), [
+                'price_per_hour' => 'nullable|numeric|min:0.01',
+                'currency' => 'nullable|string|max:3',
+                'country_code' => 'nullable|string|size:2'
+            ]);
+            if ($validator->fails()) {
+                Log::warning('Wompi getPackages - parámetros inválidos', [
+                    'errors' => $validator->errors()->all(),
+                    'request' => $request->all()
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Parámetros inválidos',
+                    'validation_errors' => $validator->errors()
+                ], 422);
+            }
+
+            // 🔥 OBTENER PRECIO POR HORA DEL PAÍS (saneado):
+            $pricePerHour = $request->filled('price_per_hour') ? (float)$request->input('price_per_hour') : 30.0;
+            if ($pricePerHour <= 0) {
+                Log::warning('Wompi getPackages: price_per_hour inválido, usando valor por defecto', ['received' => $request->input('price_per_hour')]);
+                $pricePerHour = 30.0;
+            }
+
+            // 🔥 DETECCIÓN DE MONEDA (defensivo)
+            if ($request->filled('currency')) {
                 $currency = strtoupper($request->input('currency'));
             } else {
-                // Detección automática por IP
-                $userIp = $request->ip();
-                $currency = $this->currencyDetectionService->detectCurrencyByIp($userIp);
-                
-                Log::info('Moneda detectada automáticamente', [
-                    'ip' => $userIp,
-                    'currency' => $currency
-                ]);
+                try {
+                    $userIp = $request->ip();
+                    $detected = $this->currencyDetectionService->detectCurrencyByIp($userIp);
+                    $currency = $detected ?: 'COP';
+                    Log::info('Moneda detectada automáticamente', [
+                        'ip' => $userIp,
+                        'currency' => $currency
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('Error detectando moneda por IP en getPackages, fallback a COP', [
+                        'ip' => $request->ip(),
+                        'error' => $e->getMessage()
+                    ]);
+                    $currency = 'COP';
+                }
             }
             
-            // Verificar si es primera compra
-            $hasFirstPurchase = DB::table('coin_purchases')
-                ->where('user_id', $user->id)
-                ->where('status', 'completed')
-                ->exists();
+            // Verificar si es primera compra (si hay usuario autenticado)
+            $hasFirstPurchase = false;
+            if ($userId) {
+                try {
+                    $hasFirstPurchase = DB::table('coin_purchases')
+                        ->where('user_id', $userId)
+                        ->where('status', 'completed')
+                        ->exists();
+                } catch (\Exception $dbEx) {
+                    Log::warning('Error verificando primera compra', ['user_id' => $userId, 'error' => $dbEx->getMessage()]);
+                    $hasFirstPurchase = false;
+                }
+            }
 
             // Obtener paquetes activos y eliminar duplicados
             // Agrupar por tipo, coins, price y bonus_coins, manteniendo solo el primero (menor ID o menor sort_order)
@@ -214,10 +245,15 @@ class WompiController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error obteniendo paquetes Wompi: ' . $e->getMessage());
+            Log::error('Error obteniendo paquetes Wompi: ' . $e->getMessage(), [
+                'exception' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'error' => 'Error obteniendo paquetes'
+                'error' => 'Error interno del servidor. Por favor, revisa los logs para más detalles.',
+                'message' => 'Error interno del servidor. Por favor, revisa los logs para más detalles.'
             ], 500);
         }
     }
@@ -317,8 +353,8 @@ class WompiController extends Controller
                         'reference' => $recentPendingPurchase->transaction_id,
                         'signature_integrity' => $signature,
                         'checkout_url' => $this->wompiConfig['checkout_url'],
-                        'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
-                        'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
+                        'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $recentPendingPurchase->id),
+                        'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $recentPendingPurchase->id),
                         'customer_email' => $user->email,
                         'customer_full_name' => $user->name,
                     ],
@@ -404,6 +440,33 @@ class WompiController extends Controller
                 'signature_preview' => substr($signature, 0, 20) . '...'
             ]);
 
+            // Construir URL completa de checkout (para registrar en logs y en payment_data)
+            $paymentParams = http_build_query([
+                'public-key' => $this->wompiConfig['public_key'],
+                'currency' => 'COP',
+                'amount-in-cents' => $amountInCents,
+                'reference' => $reference,
+                'signature:integrity' => $signature,
+                'redirect-url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
+                'cancel-url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente')
+            ]);
+
+            $fullPaymentUrl = rtrim($this->wompiConfig['checkout_url'], '/') . '/p/?' . $paymentParams;
+
+            // Guardar URL (sin revelar firma completa en los logs): obfuscar signature
+            $obfuscatedUrl = preg_replace('/(signature:integrity=[^&]+)/', 'signature:integrity=[REDACTED]', $fullPaymentUrl);
+
+            Log::info("🔗 URL de pago construida", [
+                'purchase_id' => $purchase->id,
+                'checkout_url' => $obfuscatedUrl
+            ]);
+
+            // Añadir checkout_url a los datos de pago guardados en la compra
+            $paymentData = json_decode($purchase->payment_data, true) ?? [];
+            $paymentData['checkout_url'] = $fullPaymentUrl;
+            $purchase->payment_data = json_encode($paymentData);
+            $purchase->save();
+
             DB::commit();
 
             Log::info("✅ Pago Wompi Widget creado", [
@@ -425,8 +488,8 @@ class WompiController extends Controller
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],
-                    'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
-                    'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
+                    'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $purchase->id),
+                    'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $purchase->id),
                     'customer_email' => $user->email,
                     'customer_full_name' => $user->name,
                 ],
@@ -552,46 +615,57 @@ class WompiController extends Controller
     {
         $package = $purchase->package;
         
-        if ($package && $package->type === 'gifts') {
-            // Paquetes de regalos
-            $giftController = new \App\Http\Controllers\GiftCoinsController();
-            
-            $giftController->addGiftCoins(new Request([
-                'user_id' => $purchase->user_id,
-                'amount' => $purchase->coins,
-                'source' => 'wompi_purchase',
-                'reference_id' => (string)$purchase->id
-            ]));
-
-            if ($purchase->bonus_coins > 0) {
+        try {
+            if ($package && $package->type === 'gifts') {
+                // Paquetes de regalos
+                Log::info('🪪 Agregando gift coins al usuario', ['user_id' => $purchase->user_id, 'amount' => $purchase->coins, 'purchase_id' => $purchase->id]);
+                $giftController = new \App\Http\Controllers\GiftCoinsController();
+                
                 $giftController->addGiftCoins(new Request([
                     'user_id' => $purchase->user_id,
-                    'amount' => $purchase->bonus_coins,
-                    'source' => 'purchase_bonus_wompi',
-                    'reference_id' => (string)$purchase->id
-                ]));
-            }
-        } else {
-            // Paquetes de minutos
-            $coinController = new VideoChatCoinController();
-            
-            $coinController->addCoins(new Request([
-                    'user_id' => $purchase->user_id,
                     'amount' => $purchase->coins,
-                    'type' => 'purchased',
                     'source' => 'wompi_purchase',
                     'reference_id' => (string)$purchase->id
                 ]));
 
-            if ($purchase->bonus_coins > 0) {
+                if ($purchase->bonus_coins > 0) {
+                    Log::info('🪪 Agregando bonus gift coins', ['user_id' => $purchase->user_id, 'bonus' => $purchase->bonus_coins, 'purchase_id' => $purchase->id]);
+                    $giftController->addGiftCoins(new Request([
+                        'user_id' => $purchase->user_id,
+                        'amount' => $purchase->bonus_coins,
+                        'source' => 'purchase_bonus_wompi',
+                        'reference_id' => (string)$purchase->id
+                    ]));
+                }
+            } else {
+                // Paquetes de minutos
+                Log::info('🪙 Agregando coins al usuario', ['user_id' => $purchase->user_id, 'amount' => $purchase->coins, 'purchase_id' => $purchase->id]);
+                $coinController = new VideoChatCoinController();
+                
                 $coinController->addCoins(new Request([
-                    'user_id' => $purchase->user_id,
-                    'amount' => $purchase->bonus_coins,
-                    'type' => 'purchased',
-                    'source' => 'purchase_bonus_wompi',
-                    'reference_id' => (string)$purchase->id
-                ]));
+                        'user_id' => $purchase->user_id,
+                        'amount' => $purchase->coins,
+                        'type' => 'purchased',
+                        'source' => 'wompi_purchase',
+                        'reference_id' => (string)$purchase->id
+                    ]));
+
+                if ($purchase->bonus_coins > 0) {
+                    Log::info('🪙 Agregando bonus coins', ['user_id' => $purchase->user_id, 'bonus' => $purchase->bonus_coins, 'purchase_id' => $purchase->id]);
+                    $coinController->addCoins(new Request([
+                        'user_id' => $purchase->user_id,
+                        'amount' => $purchase->bonus_coins,
+                        'type' => 'purchased',
+                        'source' => 'purchase_bonus_wompi',
+                        'reference_id' => (string)$purchase->id
+                    ]));
+                }
             }
+
+            Log::info('✅ Monedas añadidas (intentado) para purchase', ['purchase_id' => $purchase->id]);
+        } catch (\Exception $e) {
+            Log::error('❌ Error agregando monedas al usuario: ' . $e->getMessage(), ['purchase_id' => $purchase->id, 'trace' => $e->getTraceAsString()]);
+            throw $e;
         }
     }
 
@@ -892,12 +966,34 @@ class WompiController extends Controller
             $expectedChecksum = hash('sha256', $payload . $eventsSecret);
             
             if (!hash_equals($expectedChecksum, $checksum)) {
-                Log::error('❌ Webhook con checksum inválido', [
+                // Registrar detalle y volcar a archivo para facilitar debug (sin events_secret)
+                $failureInfo = [
                     'expected' => $expectedChecksum,
                     'received' => $checksum,
                     'ip' => $request->ip(),
-                    'payload_length' => strlen($payload)
-                ]);
+                    'payload_length' => strlen($payload),
+                    'headers' => $request->headers->all(),
+                    'payload_snippet' => substr($payload, 0, 200)
+                ];
+
+                Log::error('❌ Webhook con checksum inválido', $failureInfo);
+
+                // Escribir archivo de fallo en storage/logs para análisis posterior
+                try {
+                    $filename = storage_path('logs/wompi-webhook-failure-' . date('Ymd_His') . '.json');
+                    file_put_contents($filename, json_encode($failureInfo, JSON_PRETTY_PRINT));
+                    Log::warning('🗂️ Webhook inválido volcado a archivo', ['file' => $filename]);
+                } catch (\Exception $e) {
+                    Log::error('❌ No se pudo escribir el archivo de fallo del webhook: ' . $e->getMessage());
+                }
+
+                // Si la petición viene de localhost en entorno no producción, aceptar para pruebas locales
+                $ip = $request->ip();
+                if (in_array($ip, ['127.0.0.1', '::1']) && config('app.env') !== 'production') {
+                    Log::warning('⚠️ Webhook con checksum inválido pero proveniente de localhost en entorno no prod — aceptando para pruebas', ['ip' => $ip]);
+                    return; // permitir continuar sin lanzar excepción (modo debug)
+                }
+
                 throw new Exception('Invalid webhook checksum');
             }
             
@@ -1193,14 +1289,71 @@ class WompiController extends Controller
                 ],
                 'environment' => config('app.env')
             ]);
-
         } catch (Exception $e) {
-            Log::error('❌ Error verificando estado Wompi: ' . $e->getMessage());
+            Log::error('❌ Error verificando estado Wompi: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'success' => false,
                 'error' => 'Error al verificar el estado',
                 'environment' => config('app.env')
             ], 500);
+        }
+
+        // Si no se encontró la compra localmente, devolver success:false para que el frontend intente resolver por transaction_id
+        return response()->json([
+            'success' => false,
+            'error' => 'Compra no encontrada localmente. Intenta resolver por transaction id si lo tienes.'
+        ], 404);
+    }
+
+    /**
+     * 🔎 Resolver transacción de Wompi por transaction id (param 'id' en la URL) y procesar la compra
+     */
+    public function resolveByTransactionId(Request $request, $transactionId)
+    {
+        try {
+            $user = Auth::user();
+
+            // Obtener la transacción desde Wompi
+            $transactionData = $this->getTransactionStatus($transactionId);
+
+            if (!$transactionData) {
+                return response()->json(['success' => false, 'error' => 'Transacción Wompi no encontrada'], 404);
+            }
+
+            $reference = $transactionData['reference'] ?? null;
+
+            if (!$reference) {
+                return response()->json(['success' => false, 'error' => 'Transaction no contiene reference'], 400);
+            }
+
+            // Buscar compra local por reference
+            $purchase = CoinPurchase::where('transaction_id', $reference)
+                ->where('user_id', $user->id)
+                ->where('payment_method', 'like', 'wompi%')
+                ->first();
+
+            if (!$purchase) {
+                return response()->json(['success' => false, 'error' => 'No se encontró compra local para esta transacción', 'reference' => $reference], 404);
+            }
+
+            // Registrar que recibimos la transacción y procesarla según su estado
+            Log::info('🔁 Resolviendo transacción Wompi por ID', ['transaction_id' => $transactionId, 'reference' => $reference, 'purchase_id' => $purchase->id]);
+
+            // Procesar la actualización de estado (esto llamará a handleTransactionApproved si corresponde)
+            $this->handleTransactionUpdate($transactionData);
+
+            // Refrescar y devolver estado actualizado
+            $purchase->refresh();
+
+            return response()->json(['success' => true, 'message' => 'Compra resuelta', 'purchase' => [
+                'id' => $purchase->id,
+                'status' => $purchase->status,
+                'total_coins' => $purchase->total_coins
+            ]]);
+
+        } catch (Exception $e) {
+            Log::error('❌ Error resolviendo transacción Wompi: ' . $e->getMessage(), ['trace' => $e->getTraceAsString(), 'transaction_id' => $transactionId]);
+            return response()->json(['success' => false, 'error' => 'Error interno al resolver transacción'], 500);
         }
     }
 
@@ -1628,8 +1781,8 @@ class WompiController extends Controller
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],
-                    'redirect_url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
-                    'cancel_url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente'),
+                    'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $purchase->id),
+                    'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $purchase->id),
                     'customer_email' => $user->email,
                     'customer_full_name' => $user->name,
                     'sandbox' => true

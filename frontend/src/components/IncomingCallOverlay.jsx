@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import audioManager from '../utils/AudioManager';
 
 const IncomingCallOverlay = ({ 
   isVisible = false, 
@@ -64,7 +65,12 @@ const IncomingCallOverlay = ({
   }, [isVisible, callData]);
 
   // 🔥 FUNCIÓN: ACEPTAR LLAMADA
-  const handleAccept = async () => {
+  const handleAccept = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     if (isResponding) return;
     
     setIsResponding(true);
@@ -84,7 +90,12 @@ const IncomingCallOverlay = ({
   };
 
   // 🔥 FUNCIÓN: RECHAZAR LLAMADA
-  const handleDecline = async () => {
+  const handleDecline = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     if (isResponding) return;
     
     setIsResponding(true);
@@ -108,21 +119,80 @@ const IncomingCallOverlay = ({
     return `${seconds}s`;
   };
 
-  // 🔥 DEBUG: Ver qué datos estamos recibiendo (DEBE estar antes del return condicional)
+  // 🔥 INTENTAR REPRODUCIR AUDIO CUANDO SE MUESTRA EL OVERLAY
   useEffect(() => {
     if (isVisible && callData) {
+      // 🔥 DISPARAR INTERACCIÓN AUTOMÁTICA INMEDIATAMENTE cuando se muestra el overlay
+      // Esto desbloquea el audio y permite que suene el ringtone
+      window.dispatchEvent(new CustomEvent('userInteraction'));
+      
+      // 🔥 INTENTAR REPRODUCIR EL RINGTONE DIRECTAMENTE
+      // Primero intentar desbloquear el audio si no está desbloqueado
+      const tryPlayRingtone = async () => {
+        try {
+          // Si el audio no está desbloqueado, intentar desbloquearlo primero
+          if (audioManager && !audioManager.isAudioReady()) {
+            console.log('🔓 [IncomingCallOverlay] Audio no desbloqueado, intentando desbloquear...');
+            const unlocked = await audioManager.initialize();
+            if (!unlocked) {
+              console.warn('⚠️ [IncomingCallOverlay] No se pudo desbloquear el audio');
+              return;
+            }
+          }
+          
+          // Intentar reproducir el ringtone
+          if (audioManager && typeof audioManager.playRingtone === 'function') {
+            console.log('📞 [IncomingCallOverlay] Intentando reproducir ringtone cuando se muestra el overlay');
+            const success = await audioManager.playRingtone();
+            if (success) {
+              console.log('✅ [IncomingCallOverlay] Ringtone reproducido exitosamente');
+            } else {
+              console.warn('⚠️ [IncomingCallOverlay] No se pudo reproducir ringtone');
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ [IncomingCallOverlay] Error al reproducir ringtone:', err);
+        }
+      };
+      
+      // Ejecutar inmediatamente (sin delay) para que suene lo antes posible
+      tryPlayRingtone();
     }
   }, [isVisible, callData]);
+
+  // 🔥 INTENTAR REPRODUCIR AUDIO PENDIENTE CUANDO EL USUARIO INTERACTÚE CON EL OVERLAY
+  const handleOverlayInteraction = (e) => {
+    // Solo disparar si se hace click en el backdrop, no en el contenido
+    if (e.target === e.currentTarget) {
+      window.dispatchEvent(new CustomEvent('userInteraction'));
+    }
+  };
 
   if (!isVisible || !callData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center"
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fadeIn"></div>
+      <div 
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fadeIn"
+        onClick={handleOverlayInteraction}
+        onTouchStart={handleOverlayInteraction}
+      ></div>
       
       {/* Contenido de llamada entrante */}
-      <div className="relative z-10 bg-gradient-to-br from-[#1f2125] to-[#2a2d31] rounded-2xl p-8 shadow-2xl border border-[#ff007a]/30 max-w-sm w-full mx-6 animate-slideUp">
+      <div 
+        className="relative z-10 bg-gradient-to-br from-[#1f2125] to-[#2a2d31] rounded-2xl p-8 shadow-2xl border border-[#ff007a]/30 max-w-sm w-full mx-6 animate-slideUp"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      >
         
         {/* Indicador de llamada entrante */}
         <div className="text-center mb-6">
@@ -183,6 +253,7 @@ const IncomingCallOverlay = ({
         <div className="flex justify-center gap-6">
           {/* Botón rechazar */}
           <button
+            type="button"
             onClick={handleDecline}
             disabled={isResponding}
             className="bg-red-500 hover:bg-red-600 disabled:bg-gray-500 text-white p-4 rounded-full shadow-lg transition-all duration-200 transform hover:scale-105 disabled:scale-100"
@@ -192,6 +263,7 @@ const IncomingCallOverlay = ({
           
           {/* Botón aceptar */}
           <button
+            type="button"
             onClick={handleAccept}
             disabled={isResponding}
             className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white p-4 rounded-full shadow-lg transition-all duration-200 transform hover:scale-105 disabled:scale-100 animate-bounce"

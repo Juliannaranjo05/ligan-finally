@@ -91,8 +91,13 @@ const CameraAudioSettings = ({
     }
   }, [isOpen]);
 
-  // 🔥 Manejar cambio de cámara - COMUNICAR AL PADRE INMEDIATAMENTE
+  // 🔥 Manejar cambio de cámara - COMUNICAR AL PADRE INMEDIATAMENTE CON DEBOUNCE
   const handleCameraChange = (deviceId) => {
+    // Prevenir cambios si es el mismo dispositivo
+    if (deviceId === selectedCamera) {
+      return;
+    }
+    
     setSelectedCamera(deviceId);
     // Comunicar cambio al componente padre inmediatamente
     if (onCameraChange) {
@@ -100,8 +105,13 @@ const CameraAudioSettings = ({
     }
   };
 
-  // 🔥 Manejar cambio de micrófono - COMUNICAR AL PADRE INMEDIATAMENTE
+  // 🔥 Manejar cambio de micrófono - COMUNICAR AL PADRE INMEDIATAMENTE CON DEBOUNCE
   const handleMicrophoneChange = (deviceId) => {
+    // Prevenir cambios si es el mismo dispositivo
+    if (deviceId === selectedMicrophone) {
+      return;
+    }
+    
     setSelectedMicrophone(deviceId);
     // Comunicar cambio al componente padre inmediatamente
     if (onMicrophoneChange) {

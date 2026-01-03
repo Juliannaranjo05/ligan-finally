@@ -48,10 +48,10 @@ class PlatformSettingsSeeder extends Seeder
             // Configuraciones de regalos
             [
                 'key' => 'gift_commission_percentage',
-                'value' => '40',
+                'value' => '30',
                 'type' => 'integer',
                 'category' => 'gifts',
-                'description' => 'Porcentaje de comisión de la plataforma en regalos'
+                'description' => 'Porcentaje de comisión de la plataforma en regalos (30% plataforma, 70% modelo)'
             ],
             // Configuraciones de historias
             [

@@ -267,6 +267,21 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
           if (data.wompi_data.customer_full_name) {
             paymentParams.append('customer-data:full-name', data.wompi_data.customer_full_name);
           }
+
+          // Añadir URLs de redirección si están disponibles (muestra botón "Volver al comercio" / "Finalizar")
+          if (data.wompi_data.redirect_url) {
+            paymentParams.append('redirect-url', data.wompi_data.redirect_url);
+            paymentParams.append('redirect_url', data.wompi_data.redirect_url);
+          }
+          if (data.wompi_data.cancel_url) {
+            paymentParams.append('cancel-url', data.wompi_data.cancel_url);
+            paymentParams.append('cancel_url', data.wompi_data.cancel_url);
+          }
+
+          // Añadir teléfono del cliente si existe
+          if (data.wompi_data.customer_phone) {
+            paymentParams.append('customer-data:phone', data.wompi_data.customer_phone);
+          }
           
           const fullPaymentUrl = `https://checkout.wompi.co/p/?${paymentParams.toString()}`;
           setPaymentUrl(fullPaymentUrl);
@@ -298,6 +313,21 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
           }
           if (data.wompi_data.customer_full_name) {
             paymentParams.append('customer-data:full-name', data.wompi_data.customer_full_name);
+          }
+
+          // Añadir URLs de redirección si están disponibles (muestra botón "Volver al comercio" / "Finalizar")
+          if (data.wompi_data.redirect_url) {
+            paymentParams.append('redirect-url', data.wompi_data.redirect_url);
+            paymentParams.append('redirect_url', data.wompi_data.redirect_url);
+          }
+          if (data.wompi_data.cancel_url) {
+            paymentParams.append('cancel-url', data.wompi_data.cancel_url);
+            paymentParams.append('cancel_url', data.wompi_data.cancel_url);
+          }
+
+          // Añadir teléfono del cliente si existe
+          if (data.wompi_data.customer_phone) {
+            paymentParams.append('customer-data:phone', data.wompi_data.customer_phone);
           }
           
           const fullPaymentUrl = `https://checkout.wompi.co/p/?${paymentParams.toString()}`;

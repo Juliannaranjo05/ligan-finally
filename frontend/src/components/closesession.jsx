@@ -1,5 +1,5 @@
 // hooks/useSessionCleanup.js - VERSIÓN CORREGIDA
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;

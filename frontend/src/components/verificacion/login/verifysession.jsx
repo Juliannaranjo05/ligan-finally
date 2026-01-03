@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router-dom";
 import { checkAuthStatus, rechazarNuevaSesion, allowNewSession } from "../../../utils/auth";

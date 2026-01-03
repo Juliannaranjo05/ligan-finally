@@ -6,71 +6,67 @@ export default function ProfileChatRedirect() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
+
   useEffect(() => {
     const redirectToChat = async () => {
+      let logSteps = [];
       try {
-        // Verificar si el usuario está autenticado
-        const user = await getUser(false);
-        
-        // Si no está autenticado, redirigir a /home
-        if (!user) {
-          console.log('🔒 Usuario no autenticado, redirigiendo a /home');
-          navigate('/home', { replace: true });
-          return;
-        }
+        // Establecer flag para suspender polling/heartbeats temporales y evitar race conditions
+        try { localStorage.setItem('suspendBackgroundTasks', 'true'); logSteps.push('Set suspendBackgroundTasks'); } catch (e) { logSteps.push('Error set suspendBackgroundTasks'); }
+        // Comunicar la suspensión a otras pestañas inmediatamente vía BroadcastChannel para minimizar races
+        try {
+          const bc = new BroadcastChannel('ligando_bg');
+          bc.postMessage({ type: 'suspendBackgroundTasks', value: true });
+          bc.close();
+          logSteps.push('BroadcastChannel suspendBackgroundTasks');
+        } catch (e) { logSteps.push('BroadcastChannel not supported'); }
 
-        console.log('👤 Usuario autenticado:', { id: user.id, rol: user.rol });
-
-        // Solo clientes pueden usar este link
-        if (user.rol !== 'cliente') {
-          console.log('❌ Usuario no es cliente, redirigiendo a /home');
-          navigate('/home', { replace: true });
-          return;
-        }
-
-        // Obtener el ID del modelo desde el backend usando el slug
+        // Obtener el ID del modelo desde el backend usando el slug (esto puede hacerse sin token)
         try {
           const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-          const token = localStorage.getItem("token");
-          
-          console.log('🔍 Obteniendo información del modelo con slug:', slug);
-          
-          const response = await fetch(`${API_BASE_URL}/api/model/by-slug/${slug}`, {
+          logSteps.push(`Obteniendo modelo slug: ${slug}`);
+          const response = await fetch(`${API_BASE_URL}/api/public/model/by-slug/${slug}`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             }
           });
 
           if (response.ok) {
             const data = await response.json();
-            console.log('✅ Respuesta del backend:', data);
-            
+            logSteps.push(`Respuesta backend: success=${data.success}, model_id=${data.model_id}`);
             if (data.success && data.model_id) {
-              // Redirigir directamente al chat con el ID del modelo
-              console.log('✅ Redirigiendo al chat con modelo ID:', data.model_id);
+              logSteps.push(`Redirigiendo a /mensajes?modelo=${data.model_id}`);
+              await fetch(`${API_BASE_URL}/api/log/frontend`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({logSteps,context:'ProfileChatRedirect',slug})});
               navigate(`/mensajes?modelo=${data.model_id}`, { replace: true });
               return;
             } else {
-              console.error('❌ No se pudo obtener el ID del modelo:', data);
+              logSteps.push(`No se pudo obtener el ID del modelo: ${JSON.stringify(data)}`);
             }
           } else {
             const errorData = await response.json().catch(() => ({}));
-            console.error('❌ Error en la respuesta del backend:', response.status, errorData);
+            logSteps.push(`Error backend: status=${response.status}, data=${JSON.stringify(errorData)}`);
           }
         } catch (err) {
-          console.error('❌ Error obteniendo modelo:', err);
+          logSteps.push(`Error obteniendo modelo: ${(err?.message || 'error')}`);
         }
 
-        // Fallback: si algo falla, redirigir a /home
-        console.log('⚠️ Fallback: redirigiendo a /home');
+        // Fallback: si algo falla, redirigir al chat público del slug
+        logSteps.push(`Fallback: redirigiendo a /visit/${slug}`);
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+        await fetch(`${API_BASE_URL}/api/log/frontend`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({logSteps,context:'ProfileChatRedirect',slug,token:!!token})});
+        navigate(`/visit/${slug}`, { replace: true });
+      } catch (err) {
+        logSteps.push(`Error en redirección: ${(err?.message || 'error')}`);
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+        await fetch(`${API_BASE_URL}/api/log/frontend`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({logSteps,context:'ProfileChatRedirect',slug})});
         navigate('/home', { replace: true });
-      } catch (error) {
-        console.error('❌ Error en redirección:', error);
-        navigate('/home', { replace: true });
+      } finally {
+        // Limpiar flag de suspensión para que polling/heartbeats puedan reanudar
+        try { localStorage.removeItem('suspendBackgroundTasks'); logSteps.push('Removed suspendBackgroundTasks'); } catch (e) { logSteps.push('Error remove suspendBackgroundTasks'); }
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+        await fetch(`${API_BASE_URL}/api/log/frontend`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({logSteps,context:'ProfileChatRedirect',slug})});
       }
     };
-
     redirectToChat();
   }, [slug, navigate]);
 

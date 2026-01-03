@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Home, Star, MessageSquare, LogOut, Settings, Wallet, Menu, X, Bell, Send, Play, Gift, Lock, User, DollarSign } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import logoproncipal from "../imagenes/logoprincipal.png";

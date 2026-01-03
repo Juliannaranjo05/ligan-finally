@@ -1,5 +1,5 @@
 // src/hooks/usePageAccess.jsx
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getUser } from '../../utils/auth';
 
@@ -299,5 +299,5 @@ export function ProtectedPage({ children }) {
     );
   }
 
-  return children;
+  return <>{children}</>;
 }

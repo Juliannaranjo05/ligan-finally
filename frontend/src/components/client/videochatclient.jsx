@@ -518,8 +518,31 @@ export default function VideoChatClient() {
     // options: { replace: true, state: null, immediate: false }
     const immediate = options.immediate || false;
     const navState = options.state || null;
+    
+    // 🔥 FUNCIÓN PARA LIMPIAR Y NAVEGAR
+    const cleanupAndNavigate = () => {
+      // 🔥 LIMPIAR DATOS DE VIDEOCHAT ANTES DE NAVEGAR
+      const itemsToRemove = [
+        'roomName', 'userName', 'currentRoom',
+        'inCall', 'callToken', 'videochatActive',
+        'sessionTime', 'sessionStartTime'
+      ];
+      
+      itemsToRemove.forEach(item => {
+        localStorage.removeItem(item);
+        sessionStorage.removeItem(item);
+      });
+      
+      // 🔥 DISPARAR EVENTO PERSONALIZADO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ
+      window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
+      
+      setTimeout(() => {
+        navigate('/homecliente', { replace: true, state: navState });
+      }, 100);
+    };
+    
     if (immediate) {
-      navigate('/homecliente', { replace: true, state: navState });
+      cleanupAndNavigate();
       return;
     }
 
@@ -540,7 +563,7 @@ export default function VideoChatClient() {
         return;
       }
 
-      navigate('/homecliente', { replace: true, state: navState });
+      cleanupAndNavigate();
       safeNavigateHomeTimerRef.current = null;
     }, 8000); // esperar 8s antes de navegar
   };
@@ -612,14 +635,32 @@ export default function VideoChatClient() {
           <button
             onClick={() => {
               console.log('🔘 [VideoChatClient] Botón "Volver al Inicio" clickeado');
+              
+              // 🔥 LIMPIAR DATOS DE VIDEOCHAT ANTES DE NAVEGAR
+              const itemsToRemove = [
+                'roomName', 'userName', 'currentRoom',
+                'inCall', 'callToken', 'videochatActive',
+                'sessionTime', 'sessionStartTime'
+              ];
+              
+              itemsToRemove.forEach(item => {
+                localStorage.removeItem(item);
+                sessionStorage.removeItem(item);
+              });
+              
+              // 🔥 DISPARAR EVENTO PERSONALIZADO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ
+              window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
+              
               const userRole = localStorage.getItem('userRole') || 'cliente';
-              if (userRole === 'modelo') {
-                console.log('🔄 [VideoChatClient] Navegando a /homellamadas');
-                navigate('/homellamadas', { replace: true });
-              } else {
-                console.log('🔄 [VideoChatClient] Navegando a /homecliente');
-                navigate('/homecliente', { replace: true });
-              }
+              setTimeout(() => {
+                if (userRole === 'modelo') {
+                  console.log('🔄 [VideoChatClient] Navegando a /homellamadas');
+                  navigate('/homellamadas', { replace: true });
+                } else {
+                  console.log('🔄 [VideoChatClient] Navegando a /homecliente');
+                  navigate('/homecliente', { replace: true });
+                }
+              }, 100);
             }}
             className="bg-[#ff007a] px-6 py-3 rounded-full text-white font-medium"
           >
@@ -1365,10 +1406,26 @@ export default function VideoChatClient() {
   // 🔥 DEFINIR playAlternativeGiftSound PRIMERO para evitar errores de inicialización
   const playAlternativeGiftSound = useCallback(async () => {
     try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // 🔥 Solo crear AudioContext si realmente se necesita y durante una interacción
+      // Usar el AudioManager global si está disponible, o crear uno solo si es necesario
+      let audioContext = null;
+      try {
+        // Intentar usar el AudioContext del AudioManager si existe y está activo
+        if (typeof window !== 'undefined' && window.AudioContext) {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        }
+      } catch (ctxError) {
+        // Si falla, usar HTML5 audio en su lugar
+        console.log('ℹ️ [VideoChat] AudioContext no disponible, usando HTML5 audio');
+        return; // Salir si no se puede crear AudioContext
+      }
       
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
+      if (!audioContext) {
+        return; // No continuar sin AudioContext
       }
       
       const playNote = (frequency, startTime, duration, volume = 0.5) => {
@@ -1409,10 +1466,22 @@ export default function VideoChatClient() {
   const playGiftSound = useCallback(async (soundType = 'sent') => {
     try {
       // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO
+      // Solo crear AudioContext si realmente se necesita y durante una interacción
       if (typeof window !== 'undefined' && window.AudioContext) {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
+        let audioContext = null;
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+        } catch (ctxError) {
+          // Si falla, no usar AudioContext - el sistema funciona sin él
+          console.log('ℹ️ [VideoChat] AudioContext no disponible para sonido de regalo');
+          return; // Salir si no se puede crear AudioContext
+        }
+        
+        if (!audioContext || audioContext.state !== 'running') {
+          return; // No continuar si el contexto no está activo
         }
       }
       
@@ -1877,21 +1946,28 @@ export default function VideoChatClient() {
     });
     
     clearUserCache();
+    
+    // 🔥 DISPARAR EVENTO PERSONALIZADO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ
+    window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
+    
     startSearching();
     
-    // 🔥 NAVEGAR INMEDIATAMENTE
-    const userRole = currentUserData?.role || 'cliente';
-    const urlParams = new URLSearchParams({
-      role: userRole,
-      action: 'siguiente',
-      from: 'videochat_siguiente',
-      excludeUser: currentOtherUser?.id || '',
-      excludeUserName: currentOtherUser?.name || '',
-      selectedCamera: selectedCamera || selectedCameraDevice || '',
-      selectedMic: selectedMic || selectedMicrophoneDevice || ''
-    });
-    
-    navigate(`/usersearch?${urlParams}`, { replace: true });
+    // 🔥 PEQUEÑO DELAY PARA ASEGURAR QUE EL LOCALSTORAGE SE LIMPIÓ ANTES DE NAVEGAR
+    setTimeout(() => {
+      // 🔥 NAVEGAR INMEDIATAMENTE
+      const userRole = currentUserData?.role || 'cliente';
+      const urlParams = new URLSearchParams({
+        role: userRole,
+        action: 'siguiente',
+        from: 'videochat_siguiente',
+        excludeUser: currentOtherUser?.id || '',
+        excludeUserName: currentOtherUser?.name || '',
+        selectedCamera: selectedCamera || selectedCameraDevice || '',
+        selectedMic: selectedMic || selectedMicrophoneDevice || ''
+      });
+      
+      navigate(`/usersearch?${urlParams}`, { replace: true });
+    }, 100);
     
     // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY
     setTimeout(() => {
@@ -2200,6 +2276,9 @@ export default function VideoChatClient() {
       
       clearUserCache();
       
+      // 🔥 DISPARAR EVENTO PERSONALIZADO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ
+      window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
+      
       // 🔥 ACTUALIZAR HEARTBEAT (no esperar)
       if (authToken) {
         fetch(`${API_BASE_URL}/api/heartbeat`, {
@@ -2215,9 +2294,12 @@ export default function VideoChatClient() {
         }).catch(() => {});
       }
       
-      // 🔥 NAVEGAR INMEDIATAMENTE (NO ESPERAR)
-      const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
-      navigate(targetRoute, { replace: true, state: null });
+      // 🔥 PEQUEÑO DELAY PARA ASEGURAR QUE EL LOCALSTORAGE SE LIMPIÓ ANTES DE NAVEGAR
+      setTimeout(() => {
+        // 🔥 NAVEGAR INMEDIATAMENTE (NO ESPERAR)
+        const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
+        navigate(targetRoute, { replace: true, state: null });
+      }, 100);
       
     } catch (error) {
       console.error('Error en finalizarChat:', error);
@@ -2229,13 +2311,25 @@ export default function VideoChatClient() {
         localStorage.removeItem('currentRoom');
         localStorage.removeItem('inCall');
         localStorage.removeItem('videochatActive');
+        sessionStorage.removeItem('roomName');
+        sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('currentRoom');
+        sessionStorage.removeItem('inCall');
+        sessionStorage.removeItem('videochatActive');
+        
+        // 🔥 DISPARAR EVENTO PERSONALIZADO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ
+        window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
         
         if (currentRoom) currentRoom.disconnect().catch(() => {});
         if (window.livekitRoom) window.livekitRoom.disconnect().catch(() => {});
         
-        const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
-        navigate(targetRoute, { replace: true });
+        setTimeout(() => {
+          const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
+          navigate(targetRoute, { replace: true });
+        }, 100);
       } catch (fallbackError) {
+        // 🔥 DISPARAR EVENTO PERSONALIZADO INCLUSO EN CASO DE ERROR
+        window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
         const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
         window.location.href = targetRoute;
       }
@@ -2264,9 +2358,9 @@ export default function VideoChatClient() {
 
     let autoEndTimeout = null;
 
-    // 🔥 ADVERTENCIA A LOS 2 MINUTOS O MENOS
+    // 🔥 ADVERTENCIA A LOS 2 MINUTOS
     if (remainingMinutes <= 2 && remainingMinutes > 0 && !warningShown) {
-      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos', { remainingMinutes });
+      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos');
       setWarningShown(true);
       
       // Mostrar notificación de advertencia
@@ -2278,9 +2372,9 @@ export default function VideoChatClient() {
       );
     }
 
-    // 🔥 MOSTRAR MODAL CUANDO QUEDAN MENOS DE 2 MINUTOS (no igual a 2)
-    if (remainingMinutes < 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat && !showLowBalanceModal) {
-      console.warn('🚨 [BALANCE] Tiempo restante < 2 minutos - Mostrando modal de saldo bajo', { remainingMinutes });
+    // 🔥 MOSTRAR MODAL CUANDO QUEDAN 2 MINUTOS O MENOS
+    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !hasAutoEndedRef.current && connected && finalizarChat && !showLowBalanceModal) {
+      console.warn('🚨 [BALANCE] Tiempo restante <= 2 minutos - Mostrando modal de saldo bajo', { remainingMinutes });
       setShowLowBalanceModal(true);
       hasAutoEndedRef.current = true;
       
@@ -3003,15 +3097,20 @@ export default function VideoChatClient() {
                 
         // 🔥 MANEJO DE ERRORES ESPECÍFICOS
         let errorTitle = t('videochat.error.title');
-        let errorMessage = result.error;
+        let errorMessage = result.error || result.message;
         
-        if (result.error?.includes('saldo insuficiente') || result.error?.includes('insufficient balance')) {
+        // Si el error viene del backend con un mensaje específico, usarlo
+        if (result.message && result.message.includes('Error interno')) {
+          errorMessage = result.message;
+        } else if (result.error === 'processing_failed' || result.error === 'internal_error') {
+          errorMessage = result.message || 'Error al procesar el regalo. Por favor, intenta nuevamente.';
+        } else if (result.error?.includes('saldo insuficiente') || result.error?.includes('insufficient balance') || result.error === 'insufficient_balance') {
           errorTitle = t('videochat.balance.insufficientGiftCoins');
-          errorMessage = t('videochat.balance.notEnoughGiftCoins');
+          errorMessage = result.message || t('videochat.balance.notEnoughGiftCoins');
         } else if (result.error?.includes('expirado') || result.error?.includes('expired')) {
           errorTitle = t('videochat.gift.requestExpired');
-          errorMessage = t('videochat.gift.requestExpiredMessage');
-        } else if (result.error?.includes('ya procesada') || result.error?.includes('already processed') || result.error === 'request_not_found') {
+          errorMessage = result.message || t('videochat.gift.requestExpiredMessage');
+        } else if (result.error?.includes('ya procesada') || result.error?.includes('already processed') || result.error === 'request_not_found' || result.error === 'invalid_request') {
           // Si la solicitud ya fue procesada, no mostrar error (puede ser doble click)
           // Solo recargar balance para asegurar sincronización
           if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
@@ -3019,6 +3118,8 @@ export default function VideoChatClient() {
           }
           console.log('ℹ️ [ACCEPT GIFT] Solicitud ya procesada, ignorando error');
           return { success: true }; // Considerar como éxito
+        } else if (result.error === 'security_violation') {
+          errorMessage = result.message || 'Error de seguridad. Por favor, recarga la página.';
         }
         
         addNotification('error', errorTitle, errorMessage);
@@ -3026,7 +3127,7 @@ export default function VideoChatClient() {
         // Cerrar notificación en caso de error
         setShowGiftNotification(false);
         
-        return { success: false, error: result.error };
+        return { success: false, error: errorMessage };
       }
       
     } catch (error) {
@@ -3779,8 +3880,9 @@ const handleSendGift = async (giftId, recipientId, roomName, message) => {
         console.warn('Error reproduciendo sonido de regalo enviado:', error);
       }
       
-      // 🔥 CERRAR MODAL
-      setShowGiftsModal(false);
+      // 🔥 NO CERRAR EL MODAL AQUÍ - dejar que el modal lo haga después de recibir la respuesta
+      // El modal manejará el cierre y el reseteo del loading
+      // setShowGiftsModal(false); // 🔥 COMENTADO: El modal debe cerrarse desde giftModal.jsx
       
       // 🔥 NOTIFICACIÓN
       addNotification(
@@ -3789,17 +3891,45 @@ const handleSendGift = async (giftId, recipientId, roomName, message) => {
         t('videochat.gift.giftSentTo', { giftName: result.gift_name, userName: otherUser?.name || t('videochat.model') })
       );
       
+      // 🔥 RETORNAR INMEDIATAMENTE para que el modal pueda procesar la respuesta y cerrarse
       return { success: true };
       
     } else {
-            addNotification('error', t('videochat.error.title'), result.error || t('videochat.error.sendGiftError'));
-      return { success: false, error: result.error };
+      // 🔥 MEJORAR MENSAJE DE ERROR SEGÚN EL TIPO
+      let errorTitle = t('videochat.error.title');
+      let errorMessage = result.error || result.message || t('videochat.error.sendGiftError');
+      
+      // Si el error viene del backend con un mensaje específico, usarlo
+      if (result.message && result.message.includes('Error interno')) {
+        errorMessage = result.message;
+      } else if (result.error === 'processing_failed' || result.error === 'internal_error') {
+        errorMessage = result.message || 'Error al procesar el regalo. Por favor, intenta nuevamente.';
+      } else if (result.error === 'insufficient_balance') {
+        errorTitle = t('videochat.balance.insufficientGiftCoins');
+        errorMessage = result.message || t('videochat.balance.notEnoughGiftCoins');
+      }
+      
+      addNotification('error', errorTitle, errorMessage);
+      return { success: false, error: errorMessage };
     }
     
   } catch (error) {
-        addNotification('error', t('videochat.error.connectionErrorTitle'), t('videochat.error.couldNotSendGift'));
-    return { success: false, error: error.message };
+      // 🔥 MEJORAR MANEJO DE ERRORES DE RED
+      let errorMessage = t('videochat.error.couldNotSendGift');
+      
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        errorMessage = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      addNotification('error', t('videochat.error.connectionErrorTitle'), errorMessage);
+      // 🔥 SIEMPRE retornar un objeto, incluso en caso de error
+      return { success: false, error: errorMessage };
   }
+  
+  // 🔥 FALLBACK: Si por alguna razón no se retornó nada, retornar error
+  return { success: false, error: 'Error desconocido al enviar regalo' };
 };
   // 🔥 FUNCIÓN DE RATE LIMITING
   const handleRateLimit = useCallback((error, context = 'general') => {
@@ -4577,25 +4707,17 @@ useEffect(() => {
     return;
   }
 
-  // ✅ CLAVE ÚNICA ESTABLE POR SALA (no cambia en cada render)
+  // ✅ CLAVE ÚNICA ABSOLUTA POR SALA
+  const UNIQUE_KEY = `DEDUCTION_${roomName}_${Date.now()}`;
   const GLOBAL_LOCK = `LOCK_${roomName}`;
-  const UNIQUE_KEY = `DEDUCTION_${roomName}`;
   
-  // ✅ VERIFICAR SI YA HAY UN SISTEMA ACTIVO PARA ESTA SALA
+  // ✅ VERIFICAR SI YA HAY UN LOCK GLOBAL PARA ESTA SALA
   if (window[GLOBAL_LOCK]) {
     logDeduction('🚨 BLOQUEADO - Ya existe sistema para esta sala', { 
       existingLock: window[GLOBAL_LOCK],
-      roomName: roomName
+      newKey: UNIQUE_KEY 
     });
     return;
-  }
-
-  // ✅ LIMPIAR CUALQUIER INTERVALO ANTERIOR DE ESTA SALA
-  const intervalKey = `${UNIQUE_KEY}_interval`;
-  if (window[intervalKey]) {
-    clearInterval(window[intervalKey]);
-    delete window[intervalKey];
-    logDeduction('🧹 Limpiando intervalo anterior de esta sala');
   }
 
   // ✅ ESTABLECER LOCK GLOBAL
@@ -4604,20 +4726,7 @@ useEffect(() => {
 
   // ✅ VARIABLES DE CONTROL ESTRICTAS
   let isSystemActive = true;
-  
-  // ✅ GUARDAR lastDeductedMinute EN localStorage PARA PERSISTENCIA
-  const getLastDeductedMinute = () => {
-    const key = `last_deducted_minute_${roomName}`;
-    const stored = localStorage.getItem(key);
-    return stored ? parseInt(stored) : 0;
-  };
-  
-  const setLastDeductedMinute = (minute) => {
-    const key = `last_deducted_minute_${roomName}`;
-    localStorage.setItem(key, minute.toString());
-  };
-  
-  let lastDeductedMinute = getLastDeductedMinute(); // Cargar desde localStorage
+  let lastDeductedMinute = 0; // Minuto último descontado
 
   // ✅ TIEMPO DE INICIO DE SESIÓN
   const getSessionStart = () => {
@@ -4627,7 +4736,6 @@ useEffect(() => {
     if (!startTime) {
       startTime = Date.now().toString();
       localStorage.setItem(key, startTime);
-      setLastDeductedMinute(0); // Resetear cuando inicia nueva sesión
       logDeduction('⏰ Nuevo tiempo de sesión creado', { startTime });
     } else {
       logDeduction('⏰ Tiempo de sesión existente', { startTime });
@@ -4683,7 +4791,7 @@ useEffect(() => {
         body: JSON.stringify({
           room_name: roomName,
           session_duration_seconds: 60,
-          manual_coins_amount: amount,
+          manual_coins_amount: parseInt(amount, 10), // 🔥 Asegurar que sea integer
           reason: `${reason}_${UNIQUE_KEY.slice(-8)}` // Agregar ID único
         })
       });
@@ -4713,13 +4821,62 @@ useEffect(() => {
           }
 
           return true;
+        } else {
+          // 🔥 Si el backend retorna success: false, loggear pero NO desconectar
+          logDeduction(`⚠️ DESCUENTO FALLÓ (success: false): ${data.error || 'Unknown error'}`, { 
+            reason,
+            error: data.error,
+            message: data.message
+          });
+          // NO desconectar al cliente, solo retornar false para que se reintente
+          return false;
         }
+      } else {
+        // 🔥 Manejar errores HTTP sin desconectar
+        let errorData = { error: 'Unknown error' };
+        try {
+          const responseText = await response.text();
+          errorData = responseText ? JSON.parse(responseText) : { error: 'Empty response' };
+        } catch (parseError) {
+          logDeduction(`⚠️ No se pudo parsear respuesta de error: ${parseError.message}`, { reason });
+          errorData = { error: `HTTP ${response.status}` };
+        }
+        
+        logDeduction(`❌ ERROR HTTP EN DESCUENTO: ${response.status} - ${errorData.error || 'Unknown'}`, { 
+          reason,
+          status: response.status,
+          error: errorData.error,
+          message: errorData.message
+        });
+        
+        // 🔥 Solo desconectar si es un error 402 (Payment Required / Saldo insuficiente real)
+        if (response.status === 402) {
+          logDeduction('💳 SALDO REALMENTE INSUFICIENTE (402)', { reason });
+          isSystemActive = false;
+          window[GLOBAL_LOCK] = null;
+          addNotification('error', t('videochat.balance.balanceExhausted'), t('videochat.balance.sessionEnding'));
+          setTimeout(() => finalizarChat(true), 2000);
+          return false;
+        }
+        
+        // 🔥 Para errores de validación (422) u otros errores, NO desconectar
+        // Solo loggear y retornar false para que se pueda reintentar
+        if (response.status === 422) {
+          logDeduction('⚠️ ERROR DE VALIDACIÓN (422) - No se desconectará al cliente', { 
+            reason,
+            validationErrors: errorData.errors || errorData.message
+          });
+        }
+        
+        // Para otros errores, NO desconectar, solo retornar false
+        return false;
       }
     } catch (error) {
-      logDeduction(`❌ ERROR EN DESCUENTO: ${amount} coins`, { reason, error: error.message });
+      // 🔥 Error de red u otro error - NO desconectar, solo loggear
+      logDeduction(`❌ ERROR DE RED EN DESCUENTO: ${error.message}`, { reason, error: error.message });
+      // NO desconectar al cliente por errores de red
+      return false;
     }
-
-    return false;
   };
 
   // ✅ FUNCIÓN PARA OBTENER TIEMPO TRANSCURRIDO
@@ -4737,33 +4894,22 @@ useEffect(() => {
   const runDeductionSystem = () => {
     const elapsed = getElapsedSeconds();
     const completedMinutes = getCompletedMinutes();
-    const intervalKey = `${UNIQUE_KEY}_interval`;
     
     logDeduction('🚀 INICIANDO SISTEMA DE DESCUENTO POR MINUTOS', { 
       elapsedSeconds: elapsed,
       completedMinutes: completedMinutes,
-      lastDeductedMinute: lastDeductedMinute,
-      uniqueKey: UNIQUE_KEY,
-      intervalKey: intervalKey
+      lastDeductedMinute: lastDeductedMinute
     });
 
-    // Inicializar lastDeductedMinute si es la primera vez
-    if (lastDeductedMinute === 0 && completedMinutes === 0) {
-      // No descontar nada al inicio, esperar el primer minuto completo
-      logDeduction('⏰ Iniciando sesión - Esperando primer minuto completo');
-    } else if (completedMinutes > lastDeductedMinute) {
-      // Si ya pasó algún minuto completo (por ejemplo, si se recarga la página)
-      // Descontar solo los minutos faltantes, UNO A LA VEZ para evitar descuentos duplicados
-      logDeduction(`⏰ Detectados ${completedMinutes - lastDeductedMinute} minuto(s) acumulado(s) desde inicio`, {
-        completedMinutes,
-        lastDeductedMinute,
-        note: 'Se descontarán uno a la vez en el intervalo'
-      });
-      // No descontar aquí, dejar que el intervalo lo maneje uno a la vez
-    }
+    // 🔥 NO DESCONTAR AL INICIO - Solo el intervalo se encargará de descontar
+    // Esto evita descuentos duplicados entre el descuento inicial y el intervalo
+    // El intervalo comenzará a descontar cuando se complete el primer minuto (60 segundos)
+    logDeduction('⏸️ Inicio del sistema - Esperando a que se complete el primer minuto para comenzar descuentos', {
+      completedMinutes,
+      lastDeductedMinute
+    });
 
-    // Configurar interval para verificar cada 10 segundos (más preciso que cada 60)
-    // Pero solo descontar cuando realmente pase un minuto completo
+    // Configurar interval para descontar cada minuto completo
     const interval = setInterval(async () => {
       if (!isSystemActive) {
         logDeduction('🛑 Sistema inactivo, deteniendo interval');
@@ -4771,52 +4917,43 @@ useEffect(() => {
         return;
       }
 
-      const currentElapsed = getElapsedSeconds();
-      const currentCompletedMinutes = Math.floor(currentElapsed / 60);
+      const currentCompletedMinutes = getCompletedMinutes();
       
-      // 🔥 CRÍTICO: Solo descontar UN minuto a la vez cuando realmente pase un minuto completo
-      // NUNCA descontar múltiples minutos acumulados para evitar descuentos duplicados
-      if (currentCompletedMinutes > lastDeductedMinute && currentElapsed >= (currentCompletedMinutes * 60)) {
-        // 🔥 SIEMPRE descontar solo 1 minuto (10 coins), no múltiples minutos
-        const nextMinuteToDeduct = lastDeductedMinute + 1;
+      // 🔥 CORRECCIÓN: Solo descontar 1 minuto a la vez, sin importar cuántos minutos hayan pasado
+      // Esto evita descuentos dobles si hay algún delay
+      if (currentCompletedMinutes > lastDeductedMinute) {
+        // 🔥 SIEMPRE descontar solo 1 minuto (10 coins), no acumulado
+        const coinsToDeduct = 10; // Siempre 10 coins = 1 minuto
         
-        // Verificar que el minuto a descontar es el siguiente lógico
-        if (nextMinuteToDeduct <= currentCompletedMinutes) {
-          const coinsToDeduct = 10; // SIEMPRE 10 coins (1 minuto)
-          
-          logDeduction(`⏰ Minuto ${nextMinuteToDeduct} completado (${currentElapsed}s) - Descontando 1 minuto (10 coins)`, {
-            currentElapsed,
-            currentCompletedMinutes,
-            lastDeductedMinute,
-            nextMinuteToDeduct,
-            coinsToDeduct
+        // 🔥 ACTUALIZAR lastDeductedMinute INMEDIATAMENTE antes del descuento para evitar doble descuento
+        const previousLastDeductedMinute = lastDeductedMinute;
+        const nextMinute = lastDeductedMinute + 1;
+        lastDeductedMinute = nextMinute;
+        
+        logDeduction(`⏰ Minuto ${nextMinute} completado - Descontando 1 minuto (10 coins)`, {
+          currentCompletedMinutes,
+          previousLastDeductedMinute,
+          newLastDeductedMinute: lastDeductedMinute,
+          coinsToDeduct
+        });
+        
+        const success = await applySecureDeduction(coinsToDeduct, `minute_${nextMinute}`);
+        if (!success) {
+          // 🔥 Si falla el descuento, revertir lastDeductedMinute
+          lastDeductedMinute = previousLastDeductedMinute;
+          logDeduction('⚠️ Descuento falló, revirtiendo lastDeductedMinute', {
+            revertedTo: lastDeductedMinute
           });
-          
-          // Actualizar lastDeductedMinute ANTES de hacer la llamada para evitar descuentos duplicados
-          lastDeductedMinute = nextMinuteToDeduct;
-          setLastDeductedMinute(nextMinuteToDeduct);
-          
-          const success = await applySecureDeduction(coinsToDeduct, `minute_${nextMinuteToDeduct}`);
-          if (!success) {
-            // Si falla el descuento, revertir lastDeductedMinute y detener el sistema
-            lastDeductedMinute = nextMinuteToDeduct - 1;
-            setLastDeductedMinute(nextMinuteToDeduct - 1);
-            isSystemActive = false;
-            clearInterval(interval);
-          }
         }
       }
-    }, 10000); // Verificar cada 10 segundos para mayor precisión
+    }, 5000); // 🔥 Verificar cada 5 segundos para detectar cuando se completa un minuto exactamente
 
     // Guardar referencia para limpieza
-    window[intervalKey] = interval;
+    window[`${UNIQUE_KEY}_interval`] = interval;
     
-    logDeduction('✅ Sistema de descuento iniciado - Descontará 1 minuto cada 60 segundos completos', {
-      checkInterval: '10000ms',
-      deductionInterval: '60000ms',
-      costPerMinute: '10 coins',
-      uniqueKey: UNIQUE_KEY,
-      intervalKey: intervalKey
+    logDeduction('✅ Sistema de descuento iniciado - Descontará 1 minuto cada 60 segundos', {
+      interval: '60000ms',
+      costPerMinute: '10 coins'
     });
   };
 
@@ -4825,7 +4962,7 @@ useEffect(() => {
 
   // ✅ FUNCIÓN DE LIMPIEZA COMPLETA
   return () => {
-    logDeduction('🧹 LIMPIANDO SISTEMA', { uniqueKey: UNIQUE_KEY, roomName: roomName });
+    logDeduction('🧹 LIMPIANDO SISTEMA', { uniqueKey: UNIQUE_KEY });
     
     // Desactivar sistema
     isSystemActive = false;
@@ -4835,14 +4972,13 @@ useEffect(() => {
     if (window[intervalKey]) {
       clearInterval(window[intervalKey]);
       delete window[intervalKey];
-      logDeduction('🗑️ Interval limpiado', { intervalKey });
+      logDeduction('🗑️ Interval limpiado');
     }
     
     // Liberar lock solo si es nuestro
     if (window[GLOBAL_LOCK] === UNIQUE_KEY) {
       window[GLOBAL_LOCK] = null;
-      delete window[GLOBAL_LOCK];
-      logDeduction('🔓 LOCK liberado', { lockKey: GLOBAL_LOCK });
+      logDeduction('🔓 LOCK liberado');
     }
   };
 
@@ -4852,21 +4988,20 @@ useEffect(() => {
 // 3️⃣ EFECTO SEPARADO PARA LIMPIEZA FINAL
 useEffect(() => {
   return () => {
-      if (roomName) {
-        // Limpiar localStorage
-        localStorage.removeItem(`session_start_${roomName}`);
-        localStorage.removeItem(`last_deducted_minute_${roomName}`);
-        
-        // Limpiar todos los locks de esta sala
-        Object.keys(window).forEach(key => {
-          if (key.includes(`LOCK_${roomName}`) || key.includes(`DEDUCTION_${roomName}`)) {
-            window[key] = null;
-            delete window[key];
-          }
-        });
-        
-        logDeduction('🧹 LIMPIEZA FINAL COMPLETA');
-      }
+    if (roomName) {
+      // Limpiar localStorage
+      localStorage.removeItem(`session_start_${roomName}`);
+      
+      // Limpiar todos los locks de esta sala
+      Object.keys(window).forEach(key => {
+        if (key.includes(`LOCK_${roomName}`) || key.includes(`DEDUCTION_${roomName}`)) {
+          window[key] = null;
+          delete window[key];
+        }
+      });
+      
+      logDeduction('🧹 LIMPIEZA FINAL COMPLETA');
+    }
   };
 }, []); // Sin dependencias para que solo se ejecute al desmontar
 

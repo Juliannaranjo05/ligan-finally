@@ -165,9 +165,10 @@ class ProfileLinkController extends Controller
                 ]);
             }
 
-            // Construir el link completo
-            $baseUrl = $request->getSchemeAndHttpHost();
-            $profileLink = "{$baseUrl}/chat/{$user->profile_slug}";
+            // Construir el link completo (preferir FRONTEND_URL si está configurada)
+            $baseUrl = config('app.frontend_url', $request->getSchemeAndHttpHost());
+            Log::info('🔧 [ProfileLink] Usando baseUrl', ['baseUrl' => $baseUrl]);
+            $profileLink = "{$baseUrl}/message?modelo={$user->id}";
 
             Log::info('✅ [ProfileLink] Link generado exitosamente', [
                 'user_id' => $user->id,
@@ -263,6 +264,13 @@ class ProfileLinkController extends Controller
     public function getModelBySlug($slug)
     {
         try {
+            Log::warning('🔍 [ProfileLink] getModelBySlug called', [
+                'slug' => $slug,
+                'auth_check' => Auth::check(),
+                'auth_user_id' => Auth::id(),
+                'authorization_header' => request()->header('Authorization')
+            ]);
+
             $user = User::where('profile_slug', $slug)->first();
 
             if (!$user) {

@@ -4,6 +4,7 @@ import { loginWithoutRedirect, getUser } from "../../../utils/auth";
 import { useTranslation } from 'react-i18next';
 import GoogleLoginButton from '../../auth/GoogleLoginButton';
 import ForgotPasswordModal from './ForgotPasswordModal'; // 👈 NUEVO IMPORT
+import audioManager from '../../../utils/AudioManager.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -93,6 +94,15 @@ export default function LoginLigand({ onClose, onShowRegister }) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    // 🔥 DESBLOQUEAR AUDIO DURANTE EL CLIC DEL BOTÓN (antes del login)
+    // Esto asegura que el audio se desbloquee mientras el evento de clic está activo
+    try {
+      await audioManager.unlockOnUserInteraction();
+      console.log('✅ [Login] Audio desbloqueado durante clic del botón');
+    } catch (error) {
+      console.warn('⚠️ [Login] Error desbloqueando audio:', error);
+    }
 
     try {
       await loginWithoutRedirect(email, password);

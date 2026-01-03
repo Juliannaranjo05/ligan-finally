@@ -114,7 +114,8 @@ class UserCacheManager {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        timeout: 10000 // 10 segundos timeout
+        timeout: 10000, // 10 segundos timeout
+        skipInterceptor: true // Evitar que el interceptor global limpie el token en 401
       });
 
       if (response.status === 200 && response.data) {

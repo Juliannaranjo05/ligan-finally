@@ -343,7 +343,8 @@ class ClientBalanceController extends Controller
                 'remaining_minutes' => $remainingMinutes,
                 'status' => $userCoins->balance_status,
                 // 🔥 CORRECCIÓN: should_end_session debe basarse en remaining_minutes (solo purchased), NO en total_coins
-                'should_end_session' => $remainingMinutes <= 2, // ≤ 2 minutos (solo purchased_balance)
+                // Cambiar a < 2 en lugar de <= 2 para evitar cortes prematuros
+                'should_end_session' => $remainingMinutes < 2, // < 2 minutos (solo purchased_balance) - menos estricto
                 'should_show_warning' => $remainingMinutes <= 5  // ≤ 5 minutos (solo purchased_balance)
             ]);
 

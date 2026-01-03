@@ -165,6 +165,24 @@ export const GIFT_CARD_TEXTS = {
   }
 };
 
+// Texto adicional para aclarar que el saldo mostrado es para regalos
+GIFT_CARD_TEXTS.balanceForGifts = {
+  es: 'Saldo disponible para regalos',
+  en: 'Available for gifts',
+  pt: 'Saldo disponível para presentes',
+  fr: 'Solde disponible pour les cadeaux',
+  de: 'Für Geschenke verfügbar',
+  it: 'Disponibile per i regali',
+  ru: 'Доступно для подарков',
+  ja: 'ギフトに利用可能',
+  ko: '선물에 사용 가능',
+  zh: '可用于礼物',
+  ar: 'الرصيد المتاح للهدايا',
+  hi: 'उपहारों के लिए उपलब्ध शेष',
+  nl: 'Beschikbaar voor cadeaus',
+  tr: 'Hediyeler için kullanılabilir bakiye'
+};
+
 export const GIFT_TRANSLATIONS = {
   // ID del regalo (usado como clave) -> Traducciones por idioma
   'moño': {

@@ -1,5 +1,5 @@
 // src/hooks/useRegistrationAccess.jsx
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getUser } from '../../utils/auth';
 

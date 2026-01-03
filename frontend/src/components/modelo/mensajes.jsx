@@ -132,29 +132,71 @@ export default function ChatPrivado() {
 
 
   const playIncomingCallSound = useCallback(async () => {
-  try {
-    if (audioRef.current) {
-      return;
-    }
-    
-    const audio = new Audio('/sounds/incoming-call.mp3');
-    audio.loop = true;
-    audio.volume = 0.8;
-    audio.preload = 'auto';
-    
-    audioRef.current = audio;
-    
     try {
-      await audio.play();
-    } catch (playError) {
-      if (playError.name === 'NotAllowedError') {
-        // Usuario no ha interactuado aún
+      console.log('📞 [MENSAJES] Iniciando reproducción de sonido de llamada entrante');
+      
+      // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
+      if (typeof window !== 'undefined' && window.AudioContext) {
+        try {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            console.log('📞 [MENSAJES] AudioContext suspendido, resumiendo...');
+            await audioContext.resume();
+            console.log('✅ [MENSAJES] AudioContext resumido');
+          }
+        } catch (ctxError) {
+          console.warn('⚠️ [MENSAJES] Error con AudioContext:', ctxError);
+        }
       }
+      
+      if (audioRef.current) {
+        console.log('📞 [MENSAJES] Ya hay un sonido reproduciéndose, deteniendo...');
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current = null;
+      }
+      
+      const audio = new Audio('/sounds/incoming-call.mp3');
+      audio.loop = true;
+      audio.volume = 0.8;
+      audio.preload = 'auto';
+      
+      // Agregar event listeners para debugging
+      audio.addEventListener('loadstart', () => {
+        console.log('📞 [MENSAJES] Audio: loadstart');
+      });
+      audio.addEventListener('canplay', () => {
+        console.log('📞 [MENSAJES] Audio: canplay');
+      });
+      audio.addEventListener('play', () => {
+        console.log('✅ [MENSAJES] Audio: play iniciado');
+      });
+      audio.addEventListener('error', (e) => {
+        console.error('❌ [MENSAJES] Error en audio element:', e);
+      });
+      
+      audioRef.current = audio;
+      
+      try {
+        console.log('📞 [MENSAJES] Intentando reproducir audio...');
+        await audio.play();
+        console.log('✅ [MENSAJES] Sonido de llamada entrante reproducido exitosamente');
+      } catch (playError) {
+        console.warn('⚠️ [MENSAJES] Error reproduciendo sonido de llamada entrante:', playError);
+        console.warn('⚠️ [MENSAJES] Detalles del error:', {
+          name: playError.name,
+          message: playError.message,
+          stack: playError.stack
+        });
+        if (playError.name === 'NotAllowedError') {
+          console.warn('⚠️ [MENSAJES] Reproducción de audio bloqueada por el navegador - se requiere interacción del usuario');
+        }
+      }
+    } catch (error) {
+      console.error('❌ [MENSAJES] Error en playIncomingCallSound:', error);
+      console.error('❌ [MENSAJES] Stack:', error.stack);
     }
-  } catch (error) {
-    console.error('Error reproduciendo sonido:', error);
-  }
-}, []);
+  }, []);
 
 const stopIncomingCallSound = useCallback(() => {
   if (audioRef.current) {
@@ -275,34 +317,19 @@ useEffect(() => {
     }
   }, [bloqueados, bloqueadoPor]);
 
-  const playGiftReceivedSound = useCallback(async () => {
-  try {
-        
-    // Crear audio para regalo recibido
-    const audio = new Audio('/sounds/gift-received.mp3');
-    audio.volume = 0.8;
-    audio.preload = 'auto';
-    
-    try {
-      await audio.play();
-          } catch (playError) {
-            if (playError.name === 'NotAllowedError') {
-                // Sonido alternativo más corto
-        playAlternativeGiftSound();
-      }
-    }
-  } catch (error) {
-        playAlternativeGiftSound();
-  }
-  }, []);
-
-  const playAlternativeGiftSound = useCallback(() => {
+  // 🔥 DEFINIR playAlternativeGiftSound PRIMERO para evitar errores de inicialización
+  const playAlternativeGiftSound = useCallback(async () => {
     try {
       // Sonido sintetizado como alternativa
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       
+      // 🔥 ACTIVAR AUDIOCONTEXT SI ESTÁ SUSPENDIDO
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      
       // Crear una melodía alegre para regalos
-      const playNote = (frequency, startTime, duration) => {
+      const playNote = (frequency, startTime, duration, volume = 0.5) => {
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
         
@@ -313,7 +340,7 @@ useEffect(() => {
         oscillator.type = 'triangle';
         
         gainNode.gain.setValueAtTime(0, startTime);
-        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
         gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
         
         oscillator.start(startTime);
@@ -322,20 +349,88 @@ useEffect(() => {
       
       // Melodía alegre: Do-Mi-Sol-Do
       const now = audioContext.currentTime;
-      playNote(523.25, now, 0.2);      // Do
-      playNote(659.25, now + 0.15, 0.2); // Mi
-      playNote(783.99, now + 0.3, 0.2);  // Sol
-      playNote(1046.5, now + 0.45, 0.3); // Do (octava alta)
+      playNote(523.25, now, 0.15, 0.6);        // Do
+      playNote(659.25, now + 0.1, 0.15, 0.6);  // Mi
+      playNote(783.99, now + 0.2, 0.15, 0.6);  // Sol
+      playNote(1046.5, now + 0.3, 0.2, 0.7);   // Do (octava alta)
       
-          } catch (error) {
-          }
+      console.log('✅ [MENSAJES] Sonido alternativo de regalo reproducido');
+    } catch (error) {
+      console.error('❌ [MENSAJES] Error en playAlternativeGiftSound:', error);
+    }
   }, []);
+
+  const playGiftReceivedSound = useCallback(async () => {
+    try {
+      console.log('🔊 [MENSAJES] Iniciando reproducción de sonido de regalo recibido');
+      
+      // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
+      if (typeof window !== 'undefined' && window.AudioContext) {
+        try {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            console.log('🔊 [MENSAJES] AudioContext suspendido, resumiendo...');
+            await audioContext.resume();
+            console.log('✅ [MENSAJES] AudioContext resumido');
+          }
+        } catch (ctxError) {
+          console.warn('⚠️ [MENSAJES] Error con AudioContext:', ctxError);
+        }
+      }
+      
+      // Crear audio para regalo recibido (mismo sonido que cuando se envía)
+      const audio = new Audio('/sounds/gift-received.mp3');
+      audio.volume = 0.8;
+      audio.preload = 'auto';
+      
+      // Agregar event listeners para debugging
+      audio.addEventListener('loadstart', () => {
+        console.log('🔊 [MENSAJES] Audio: loadstart');
+      });
+      audio.addEventListener('canplay', () => {
+        console.log('🔊 [MENSAJES] Audio: canplay');
+      });
+      audio.addEventListener('play', () => {
+        console.log('✅ [MENSAJES] Audio: play iniciado');
+      });
+      audio.addEventListener('error', (e) => {
+        console.error('❌ [MENSAJES] Error en audio element:', e);
+      });
+      
+      try {
+        console.log('🔊 [MENSAJES] Intentando reproducir audio...');
+        await audio.play();
+        console.log('✅ [MENSAJES] Sonido de regalo reproducido exitosamente');
+        return true;
+      } catch (playError) {
+        console.warn('⚠️ [MENSAJES] Error reproduciendo sonido de regalo:', playError);
+        console.warn('⚠️ [MENSAJES] Detalles del error:', {
+          name: playError.name,
+          message: playError.message,
+          stack: playError.stack
+        });
+        // Sonido alternativo más corto
+        console.log('🔊 [MENSAJES] Intentando reproducir sonido alternativo...');
+        await playAlternativeGiftSound();
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ [MENSAJES] Error en playGiftReceivedSound:', error);
+      console.error('❌ [MENSAJES] Stack:', error.stack);
+      await playAlternativeGiftSound();
+      return false;
+    }
+  }, [playAlternativeGiftSound]);
 
   // 🎁 FUNCIÓN PARA REPRODUCIR NOTIFICACIÓN DE REGALO
   const playGiftNotification = useCallback(async (giftName) => {
     try {
+      console.log('🎁 [MENSAJES] playGiftNotification llamado con giftName:', giftName);
+      
       // Reproducir sonido
-      await playGiftReceivedSound();
+      console.log('🔊 [MENSAJES] Llamando a playGiftReceivedSound...');
+      const soundPlayed = await playGiftReceivedSound();
+      console.log('🔊 [MENSAJES] Resultado de playGiftReceivedSound:', soundPlayed);
       
       // Mostrar notificación visual si está permitido
       if (Notification.permission === 'granted') {
@@ -352,8 +447,9 @@ useEffect(() => {
         navigator.vibrate([200, 100, 200, 100, 400]);
       }
       
-          } catch (error) {
-          }
+    } catch (error) {
+      console.error('❌ [MENSAJES] Error en playGiftNotification:', error);
+    }
   }, [playGiftReceivedSound]);
 
 
@@ -1830,13 +1926,24 @@ const cargarMensajes = useCallback(async (roomName) => {
           if (newMessages.length > 0) {
                         
             // 🎁 DETECTAR REGALOS RECIBIDOS EN MENSAJES NUEVOS
-            const newGiftMessages = newMessages.filter(msg => 
-              msg.type === 'gift_received' && 
-              msg.user_id !== usuario.id // Solo si no soy yo quien envió
-            );
+            const newGiftMessages = newMessages.filter(msg => {
+              const isGiftReceived = msg.type === 'gift_received' && msg.user_id !== usuario.id;
+              if (isGiftReceived) {
+                console.log('🎁 [MENSAJES] Regalo recibido detectado:', {
+                  messageId: msg.id,
+                  type: msg.type,
+                  userId: msg.user_id,
+                  usuarioId: usuario.id,
+                  giftData: msg.gift_data,
+                  extraData: msg.extra_data
+                });
+              }
+              return isGiftReceived;
+            });
             
             if (newGiftMessages.length > 0) {
-                            
+              console.log(`🎁 [MENSAJES] ${newGiftMessages.length} regalo(s) recibido(s), reproduciendo sonido...`);
+              
               // Reproducir sonido para cada regalo
               for (const giftMsg of newGiftMessages) {
                 try {
@@ -1848,11 +1955,13 @@ const cargarMensajes = useCallback(async (roomName) => {
                     try {
                       giftData = JSON.parse(giftData);
                     } catch (e) {
+                      console.warn('⚠️ [MENSAJES] Error parseando gift_data:', e);
                       giftData = { gift_name: 'Regalo Especial' };
                     }
                   }
                   
                   const giftName = giftData.gift_name || 'Regalo Especial';
+                  console.log('🔊 [MENSAJES] Reproduciendo sonido para regalo:', giftName);
                                     
                   // Reproducir notificación con sonido
                   await playGiftNotification(giftName);
@@ -1862,7 +1971,8 @@ const cargarMensajes = useCallback(async (roomName) => {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                   }
                 } catch (error) {
-                                  }
+                  console.error('❌ [MENSAJES] Error procesando regalo recibido:', error);
+                }
               }
             }
 
@@ -2013,7 +2123,7 @@ const cargarMensajes = useCallback(async (roomName) => {
 
         // Si viene un slug, obtener el ID del modelo
         if (slug && !modeloId) {
-          const response = await fetch(`${API_BASE_URL}/api/model/by-slug/${slug}`, {
+          const response = await fetch(`${API_BASE_URL}/api/public/model/by-slug/${slug}`, {
             headers: getAuthHeaders()
           });
 

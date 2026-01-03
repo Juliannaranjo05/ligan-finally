@@ -1,5 +1,5 @@
 // 📁 src/hooks/useTranslation.js
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // Importar contexto global con fallback
 let useGlobalTranslation;

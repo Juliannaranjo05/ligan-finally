@@ -1,3 +1,4 @@
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { initializeAuth } from "./utils/auth";
@@ -25,8 +26,6 @@ import Favoritos from "./components/modelo/favorites.jsx";
 import HistorySub from "./components/modelo/historysu.jsx";
 import EsperancoCall from "./components/modelo/esperacall.jsx";
 import EsperandoCallCliente from "./components/client/esperacallclient";
-import Videochat from "./components/modelo/videochat.jsx";
-// VideochatClient importado más abajo con el nombre correcto
 import ConfiPerfil from "./components/modelo/confiperfil.jsx";
 import ConfiClient from "./components/client/configclient.jsx";
 import MessageClient from "./components/client/message.jsx"
@@ -54,12 +53,61 @@ import { NotificationProvider } from './contexts/NotificationContext.jsx';
 import { GlobalCallProvider } from './contexts/GlobalCallContext.jsx';
 import GoogleCallback from './components/auth/GoogleCallback.jsx';
 import ProfileChatRedirect from './components/ProfileChatRedirect.jsx';
+import PublicProfile from './components/PublicProfile';
 import VideoChatClient from "./components/client/videochatclient";
+import audioManager from './utils/AudioManager.js';
 
 
 function App() {
   useEffect(() => {
     initializeAuth();
+    
+    // 🔥 INICIALIZAR AudioManager AL INICIO DE LA APP (UNA SOLA VEZ)
+    audioManager.initialize().then(success => {
+      if (success) {
+        console.log('✅ [App] AudioManager inicializado correctamente');
+        
+        // Si ya está desbloqueado en localStorage, no necesitamos interacción
+        if (audioManager.isAudioReady()) {
+          console.log('✅ [App] Audio ya desbloqueado desde localStorage');
+        }
+      } else {
+        console.warn('⚠️ [App] AudioManager no se pudo inicializar completamente');
+      }
+    });
+    
+    // 🔥 ESCUCHAR CUALQUIER INTERACCIÓN DEL USUARIO PARA DESBLOQUEAR AUDIO
+    // Esto funciona ANTES del login, en cualquier momento que el usuario interactúe
+    const unlockOnInteraction = async (event) => {
+      if (!audioManager.isAudioReady()) {
+        try {
+          // Desbloquear inmediatamente durante la interacción
+          const unlocked = await audioManager.unlockOnUserInteraction();
+          if (unlocked) {
+            console.log('✅ [App] Audio desbloqueado exitosamente');
+            // Remover listeners una vez desbloqueado (opcional, pero más eficiente)
+            events.forEach(eventType => {
+              document.removeEventListener(eventType, unlockOnInteraction);
+            });
+          }
+        } catch (error) {
+          // Silencioso
+        }
+      }
+    };
+
+    // Eventos que desbloquean audio (cualquier interacción)
+    const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown'];
+    
+    events.forEach(eventType => {
+      document.addEventListener(eventType, unlockOnInteraction, { once: false, passive: true });
+    });
+
+    return () => {
+      events.forEach(eventType => {
+        document.removeEventListener(eventType, unlockOnInteraction);
+      });
+    };
   }, []);
   useUserLanguage();
   return (
@@ -83,6 +131,7 @@ function App() {
               <Route path="/auth/google/callback" element={<GoogleCallback />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/chat/:slug" element={<ProfileChatRedirect />} />
+              <Route path="/visit/:slug" element={<PublicProfile />} />
               
               {/* 🔐 RUTAS DE ADMIN - PÚBLICAS (sin protección inicial) */}
               <Route path="/AdminCodeVerification" element={<AdminCodeVerification />} />

@@ -136,31 +136,63 @@ class VerificacionController extends Controller
                 $documento = $userFolder . '/' . $documentoName;
                 $selfieDoc = $userFolder . '/' . $selfieDocName;
                 
-                // SIMPLIFICADO: Manejar video directamente
+                // Manejar video: puede venir como archivo directo o como upload por chunks (video_upload_id)
                 $videoFile = $request->file('video_directo') ?? $request->file('video');
-                
-                if (!$videoFile) {
+                $videoUploadId = $request->input('video_upload_id');
+
+                // Si no viene archivo directo, intentar buscar el ensamblado por upload_id
+                if (!$videoFile && $videoUploadId) {
+                    $tmpDir = 'verificaciones/tmp/' . $videoUploadId;
+                    if (!Storage::disk('local')->exists($tmpDir)) {
+                        Log::error('❌ Upload chunks folder no encontrado', ['upload_id' => $videoUploadId]);
+                        throw new \Exception('Video no encontrado. Completa la subida por chunks antes de finalizar la verificación.');
+                    }
+
+                    $files = Storage::disk('local')->files($tmpDir);
+                    $assembled = null;
+                    foreach ($files as $f) {
+                        if (strpos(basename($f), 'assembled_') === 0) {
+                            $assembled = $f; break;
+                        }
+                    }
+
+                    if (!$assembled) {
+                        Log::error('❌ No se encontró archivo ensamblado en tmp', ['upload_id' => $videoUploadId, 'files' => $files]);
+                        throw new \Exception('Video no encontrado. Completa la subida por chunks antes de finalizar la verificación.');
+                    }
+
+                    // Mover archivo ensamblado a la carpeta final del usuario
+                    $videoFileName = 'video_' . time() . '_' . uniqid() . '.' . pathinfo($assembled, PATHINFO_EXTENSION);
+                    $videoPath = $userFolder . '/' . $videoFileName;
+                    Storage::disk('local')->move($assembled, $videoPath);
+                    $video = $videoPath;
+
+                    Log::info('✅ Video ensamblado movido', ['upload_id' => $videoUploadId, 'path' => $videoPath]);
+
+                } elseif ($videoFile) {
+
+                    Log::info('📹 Guardando video directo', [
+                        'name' => $videoFile->getClientOriginalName(),
+                        'size' => $videoFile->getSize(),
+                        'mime' => $videoFile->getMimeType()
+                    ]);
+
+                    $videoFileName = 'video_' . time() . '_' . uniqid() . '.' . $videoFile->getClientOriginalExtension();
+                    $videoPath = $userFolder . '/' . $videoFileName;
+                    $videoFile->storeAs($userFolder, $videoFileName, 'local');
+                    $video = $videoPath;
+
+                    Log::info('✅ Video guardado', ['path' => $video]);
+
+                } else {
                     Log::error('❌ No se recibió ningún archivo de video', [
                         'has_video_directo' => $request->hasFile('video_directo'),
                         'has_video' => $request->hasFile('video'),
+                        'video_upload_id' => $videoUploadId,
                         'all_files' => array_keys($request->allFiles())
                     ]);
                     throw new \Exception('El video de verificación es obligatorio.');
                 }
-                
-                Log::info('📹 Guardando video', [
-                    'name' => $videoFile->getClientOriginalName(),
-                    'size' => $videoFile->getSize(),
-                    'mime' => $videoFile->getMimeType()
-                ]);
-                
-                // Guardar video directamente
-                $videoFileName = 'video_' . time() . '_' . uniqid() . '.' . $videoFile->getClientOriginalExtension();
-                $videoPath = $userFolder . '/' . $videoFileName;
-                $videoFile->storeAs($userFolder, $videoFileName, 'local');
-                $video = $videoPath;
-                
-                Log::info('✅ Video guardado', ['path' => $video]);
 
                 // Crear registro de verificación
                 $verificacion = Verificacion::create([
@@ -336,6 +368,69 @@ class VerificacionController extends Controller
                 'message' => 'Error al obtener el estado.',
                 'error_code' => 'VERIFICATION_STATUS_ERROR'
             ], 500);
+        }
+    }
+
+    /**
+     * Subir un chunk de video para verificación
+     * Campos esperados: chunk (file), chunkIndex (int), totalChunks (int), uploadId (string), originalName (string)
+     */
+    public function uploadChunk(Request $request)
+    {
+        try {
+            $request->validate([
+                'chunk' => 'required|file',
+                'chunkIndex' => 'required|integer|min:0',
+                'totalChunks' => 'required|integer|min:1',
+                'uploadId' => 'required|string',
+                'originalName' => 'nullable|string'
+            ]);
+
+            $chunk = $request->file('chunk');
+            $chunkIndex = (int) $request->chunkIndex;
+            $totalChunks = (int) $request->totalChunks;
+            $uploadId = $request->uploadId;
+            $originalName = $request->originalName ?? 'video_' . time() . '.mp4';
+
+            $tmpDir = 'verificaciones/tmp/' . $uploadId;
+            Storage::disk('local')->makeDirectory($tmpDir);
+
+            $chunkPath = $tmpDir . '/chunk_' . $chunkIndex;
+            $chunk->storeAs($tmpDir, 'chunk_' . $chunkIndex, 'local');
+
+            // Si es el último chunk, ensamblar
+            if ($chunkIndex === ($totalChunks - 1)) {
+                $assembledName = 'assembled_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+                $assembledPath = Storage::disk('local')->path($tmpDir . '/' . $assembledName);
+
+                $out = fopen($assembledPath, 'ab');
+                for ($i = 0; $i < $totalChunks; $i++) {
+                    $partPath = Storage::disk('local')->path($tmpDir . '/chunk_' . $i);
+                    if (!file_exists($partPath)) {
+                        fclose($out);
+                        throw new \Exception("Falta el chunk {$i} para uploadId {$uploadId}");
+                    }
+                    $in = fopen($partPath, 'rb');
+                    while (!feof($in)) {
+                        $buffer = fread($in, 8192);
+                        fwrite($out, $buffer);
+                    }
+                    fclose($in);
+                    // Eliminar chunk para ahorrar espacio
+                    unlink($partPath);
+                }
+                fclose($out);
+
+                return response()->json(['success' => true, 'upload_id' => $uploadId, 'assembled' => $tmpDir . '/' . $assembledName], 201);
+            }
+
+            return response()->json(['success' => true, 'upload_id' => $uploadId, 'chunk_index' => $chunkIndex], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'errors' => $e->errors()], 422);
+        } catch (Exception $e) {
+            Log::error('Error uploadChunk', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'error' => 'Error subiendo chunk: ' . $e->getMessage()], 500);
         }
     }
 

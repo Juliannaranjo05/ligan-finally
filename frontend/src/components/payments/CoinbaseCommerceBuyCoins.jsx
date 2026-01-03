@@ -162,6 +162,11 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
   };
 
   const selectPackage = async (pkg) => {
+    if (!pkg) {
+      console.warn('⚠️ [Coinbase] selectPackage called with null/undefined pkg');
+      return;
+    }
+
     setSelectedPackage(pkg);
     setProcessing(true);
     
@@ -572,19 +577,36 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
           {/* Paquetes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {getFilteredPackages().map((pkg) => {
-              const isGiftPackage = pkg.type === 'gifts';
+              if (!pkg) return null; // defensiva
+
+              const {
+                id = null,
+                name = 'Paquete',
+                coins = 0,
+                bonus_coins = 0,
+                total_coins = 0,
+                is_popular = false,
+                price_usd = 0,
+                type = '',
+              } = pkg || {};
+
+              const isGiftPackage = String(type) === 'gifts';
+
+              if (!pkg.name || !pkg.id || !pkg.price_usd) {
+                console.warn('⚠️ [Coinbase] Paquete con campos faltantes detectado', { pkg });
+              }
 
               return (
                 <div
-                  key={pkg.id}
+                  key={id || Math.random()}
                   className={`relative bg-[#2b2d31] rounded-xl p-6 border-2 transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
-                    pkg.is_popular
+                    is_popular
                       ? 'border-[#ff007a] shadow-lg shadow-[#ff007a]/20'
                       : 'border-gray-600 hover:border-[#ff007a]/50'
                   } ${processing ? 'pointer-events-none opacity-50' : ''}`}
                   onClick={() => !processing && selectPackage(pkg)}
                 >
-                  {pkg.is_popular && (
+                  {is_popular && (
                     <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                       <div className="bg-gradient-to-r from-[#ff007a] to-[#ff4081] text-white px-4 py-1 rounded-full text-sm font-bold flex items-center gap-1">
                         <Star size={14} fill="currentColor" />
@@ -594,30 +616,30 @@ export default function CoinbaseCommerceBuyCoins({ onClose }) {
                   )}
 
                   <div className="text-center">
-                    <h3 className="text-lg sm:text-xl font-bold mb-2">{pkg.name}</h3>
+                    <h3 className="text-lg sm:text-xl font-bold mb-2">{name}</h3>
 
                     <div className="mb-4">
                       <div className="text-2xl sm:text-3xl font-bold text-[#ff007a] mb-1">
-                        {formatCoins(pkg.coins)} monedas
+                        {formatCoins(coins)} monedas
                       </div>
                       
-                      {pkg.bonus_coins > 0 && (
+                      {bonus_coins > 0 && (
                         <div className="flex items-center justify-center gap-1 text-yellow-400 text-sm">
                           <Gift size={14} />
-                          +{formatCoins(pkg.bonus_coins)} gratis
+                          +{formatCoins(bonus_coins)} gratis
                         </div>
                       )}
                       
                       {!isGiftPackage && (
                         <div className="text-blue-400 text-sm mt-1">
-                          ≈ {formatMinutesFromCoins(pkg.total_coins)} de videochat
+                          ≈ {formatMinutesFromCoins(total_coins)} de videochat
                         </div>
                       )}
                     </div>
 
                     <div className="mb-4">
                       <div className="text-xl sm:text-2xl font-bold mb-1">
-                        {formatUSD(pkg.price_usd)}
+                        {formatUSD(price_usd)}
                       </div>
                       <div className="text-xs text-white/40">
                         {formatUSD(pkg.price_usd / pkg.total_coins)} por moneda

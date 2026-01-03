@@ -4,6 +4,7 @@ import { register } from "/src/utils/auth.js";
 import ReCAPTCHA from "react-google-recaptcha";
 import { useTranslation } from "react-i18next";
 import GoogleLoginButton from '../../auth/GoogleLoginButton'; // Ajusta la ruta
+import audioManager from '../../../utils/AudioManager.js';
 
 const RECAPTCHA_SITE_KEY = "6LfNonwrAAAAAIgJSmx1LpsprNhNct1VVWMWp2rz";
 
@@ -36,6 +37,15 @@ export default function Register({ onClose, onShowLogin }) {
     if (!email || !password) {
       setError(t("register.errorFields"));
       return;
+    }
+
+    // 🔥 DESBLOQUEAR AUDIO DURANTE EL CLIC DEL BOTÓN (antes del registro)
+    // Esto asegura que el audio se desbloquee mientras el evento de clic está activo
+    try {
+      await audioManager.unlockOnUserInteraction();
+      console.log('✅ [Register] Audio desbloqueado durante clic del botón');
+    } catch (error) {
+      console.warn('⚠️ [Register] Error desbloqueando audio:', error);
     }
 
     try {

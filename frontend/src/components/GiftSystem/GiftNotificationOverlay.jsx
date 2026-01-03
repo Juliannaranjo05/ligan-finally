@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Gift, Clock, X, Sparkles } from "lucide-react";
 
 export const GiftNotificationOverlay = ({ 

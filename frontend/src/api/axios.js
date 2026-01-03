@@ -99,6 +99,15 @@ instance.interceptors.response.use(
                                       reason === 'Otra sesión fue reactivada en otro dispositivo';
       
       if (shouldCloseImmediately) {
+        // Si estamos en un redirect/transición, posponer el cierre inmediato para no interferir con la navegación
+        try {
+          if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+            logger.warn('⏸️ suspendBackgroundTasks activo - posponiendo cierre inmediato por SESSION_SUSPENDED');
+            try { localStorage.setItem('deferred_session_suspended', 'true'); } catch (e) {}
+            return Promise.reject(error);
+          }
+        } catch (e) {}
+
         logger.warn('⏸️ Sesión suspendida por reactivación - cerrando inmediatamente', {
           status,
           codigo,
@@ -179,10 +188,25 @@ instance.interceptors.response.use(
         codigo !== 'SESSION_DUPLICATED' && 
         codigo !== 'SESSION_CLOSED_BY_OTHER_DEVICE' &&
         codigo !== 'SESSION_SUSPENDED') {
+      // Si hay una suspensión temporal (p.ej. estamos redirigiendo a un perfil), no limpiar token inmediatamente
+      try {
+        if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+          logger.warn('⏸️ [Axios] suspendBackgroundTasks activo - posponiendo limpieza de token');
+          try { localStorage.setItem('deferred_logout', 'true'); } catch (e) {}
+          return Promise.reject(error);
+        }
+      } catch (e) {
+        // Ignorar errores de acceso a localStorage
+      }
+
       isRefreshing = true;
       hasLoggedOut = true;
       
-            
+      // Añadir traza en consola para debugging en vivo
+      try {
+        console.warn('🔒 [Axios] Limpiando token debido a respuesta 401/403', { url, status, codigo, mensaje });
+      } catch (e) {}
+
       // Limpiar token
       localStorage.removeItem("token");
       localStorage.removeItem("reclamando_sesion");

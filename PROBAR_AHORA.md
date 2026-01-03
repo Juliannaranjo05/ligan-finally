@@ -3,7 +3,7 @@
 ## 📋 Datos de tu Webhook
 
 - **Nombre:** Ligando
-- **URL:** `https://ligando.duckdns.org/api/livekit/webhook`
+- **URL:** `https://ligandome.com/api/livekit/webhook`
 - **Signing API Key:** `APIYFF3U2G6J4DV`
 
 ---
@@ -95,7 +95,7 @@ Esto te mostrará en tiempo real todos los eventos relacionados con webhooks.
 Si quieres probar que el endpoint funciona sin esperar una videollamada:
 
 ```bash
-curl -X POST https://ligando.duckdns.org/api/livekit/webhook \
+curl -X POST https://ligandome.com/api/livekit/webhook \\
   -H "Content-Type: application/json" \
   -d '{
     "event": {
@@ -164,11 +164,11 @@ php artisan tinker
 1. ¿El webhook está activo en LiveKit Dashboard? (debe aparecer como "Ligando")
 2. ¿Agregaste `LIVEKIT_WEBHOOK_SECRET` al `.env`?
 3. ¿Ejecutaste `php artisan config:clear && php artisan config:cache`?
-4. ¿La URL `https://ligando.duckdns.org/api/livekit/webhook` es accesible?
+4. ¿La URL `https://ligandome.com/api/livekit/webhook` es accesible?
 
 **Probar manualmente:**
 ```bash
-curl https://ligando.duckdns.org/api/livekit/webhook
+curl https://ligandome.com/api/livekit/webhook
 # Debe responder algo (aunque sea un error de método)
 ```
 
@@ -223,7 +223,7 @@ php artisan tinker
 
 **Lo que ya tienes:**
 - ✅ Webhook configurado en LiveKit
-- ✅ URL: `https://ligando.duckdns.org/api/livekit/webhook`
+- ✅ URL: `https://ligandome.com/api/livekit/webhook`
 - ✅ Signing Key: `APIYFF3U2G6J4DV`
 
 **Lo que falta hacer:**
@@ -239,6 +239,10 @@ php artisan tinker
 ¡Listo para probar! 🚀
 
 Ejecuta los pasos en orden y deberías ver los eventos en los logs cuando alguien se desconecte.
+
+
+
+
 
 
 

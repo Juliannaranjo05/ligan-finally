@@ -1,7 +1,7 @@
 // 📁 utils/translationSystem.jsx
 // 🌍 SISTEMA DE TRADUCCIÓN CORREGIDO CON EXPORTACIONES FIJAS
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Globe, ToggleLeft, ToggleRight, X, Eye, EyeOff, Languages, Volume2 } from "lucide-react";
 
 // 🔥 CONFIGURACIÓN DE TRADUCCIÓN

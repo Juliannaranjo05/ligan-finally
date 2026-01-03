@@ -76,6 +76,8 @@ const SimpleChat = ({ userName, userRole = 'modelo', roomName, onMessageReceived
   const isFetchingMessages = useRef(false);
 
   const fetchParticipants = async () => {
+    // No ejecutar polling si hay una suspensión temporal activa (p.ej. redirect desde otro tab)
+    try { if (localStorage.getItem('suspendBackgroundTasks') === 'true') { if (import.meta.env.DEV) console.log('⏸️ [CHAT] Polling suspendido por suspendBackgroundTasks - skip fetchParticipants'); return; } } catch (e) {}
     if (!roomName) return;
     const endpoint = `participants_${roomName}`;
     try {
@@ -98,6 +100,8 @@ const SimpleChat = ({ userName, userRole = 'modelo', roomName, onMessageReceived
   };
 
   const fetchMessages = async () => {
+    // No ejecutar polling si hay una suspensión temporal activa (p.ej. redirect desde otro tab)
+    try { if (localStorage.getItem('suspendBackgroundTasks') === 'true') { if (import.meta.env.DEV) console.log('⏸️ [CHAT] Polling suspendido por suspendBackgroundTasks - skip fetchMessages'); return; } } catch (e) {}
     if (isFetchingMessages.current) return; if (disabled || suppressMessages) return; if (!roomName) return;
     isFetchingMessages.current = true;
     const endpoint = `messages_${roomName}`;
@@ -167,7 +171,27 @@ const SimpleChat = ({ userName, userRole = 'modelo', roomName, onMessageReceived
     try { let response; try { response = await doFetch(`${base}/api/chat/send-message`); } catch (e) { response = await doFetch('/api/chat/send-message'); } if (response && response.ok) { chatCache.invalidateCache(`messages_${roomName}`); fetchMessages(); return true; } try { const txt = await response.text(); console.warn('sendEmoji failed', response?.status, txt); } catch (e) { console.warn('sendEmoji failed', response?.status); } return false; } catch (err) { return false; } };
 
   useEffect(() => {
-    if (!roomName) return; fetchParticipants(); fetchMessages(); pollingInterval.current = setInterval(fetchMessages, 3000); participantsInterval.current = setInterval(fetchParticipants, 6000);
+    if (!roomName) return;
+
+    // Si hay una suspensión, no iniciar polling; registrar listener para reanudar cuando la bandera se limpie
+    try {
+      if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+        if (import.meta.env.DEV) console.log('⏸️ [CHAT] Polling no iniciado por suspendBackgroundTasks');
+        const onStorage = (e) => {
+          if (e.key === 'suspendBackgroundTasks' && e.newValue !== 'true') {
+            fetchParticipants(); fetchMessages(); if (!pollingInterval.current) pollingInterval.current = setInterval(fetchMessages, 3000);
+            if (!participantsInterval.current) participantsInterval.current = setInterval(fetchParticipants, 6000);
+            window.removeEventListener('storage', onStorage);
+          }
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+      }
+    } catch (e) {
+      // Ignorar errores de localStorage
+    }
+
+    fetchParticipants(); fetchMessages(); pollingInterval.current = setInterval(fetchMessages, 3000); participantsInterval.current = setInterval(fetchParticipants, 6000);
     return () => { if (pollingInterval.current) clearInterval(pollingInterval.current); if (participantsInterval.current) clearInterval(participantsInterval.current); const currentRoom = localStorage.getItem('roomName'); if (currentRoom !== roomName) { chatCache.clearCache(); persistedUser.current = null; } };
   }, [roomName, userName]);
 

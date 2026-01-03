@@ -102,9 +102,24 @@ const DesktopChatPanel = ({
   // 🎁 FUNCIÓN PARA REPRODUCIR NOTIFICACIÓN DE REGALO
   const playGiftNotification = useCallback(async (giftName) => {
     try {
+      console.log('🎁 [DesktopChatPanel] Reproduciendo sonido de regalo recibido:', giftName);
+      
       // Reproducir sonido usando la función centralizada
-      if (playGiftSound) {
-        await playGiftSound('received');
+      if (playGiftSound && typeof playGiftSound === 'function') {
+        console.log('🔊 [DesktopChatPanel] Llamando playGiftSound con tipo: received');
+        const soundResult = await playGiftSound('received');
+        console.log('🔊 [DesktopChatPanel] Resultado de playGiftSound:', soundResult);
+      } else {
+        console.warn('⚠️ [DesktopChatPanel] playGiftSound no está disponible o no es una función:', playGiftSound);
+        // Fallback: intentar reproducir sonido directamente
+        try {
+          const audio = new Audio('/sounds/gift-received.mp3');
+          audio.volume = 0.8;
+          await audio.play();
+          console.log('✅ [DesktopChatPanel] Sonido reproducido directamente');
+        } catch (audioError) {
+          console.error('❌ [DesktopChatPanel] Error reproduciendo sonido directamente:', audioError);
+        }
       }
       
       // Mostrar notificación visual si está permitido
@@ -123,7 +138,7 @@ const DesktopChatPanel = ({
       }
       
     } catch (error) {
-      console.error('Error en playGiftNotification:', error);
+      console.error('❌ [DesktopChatPanel] Error en playGiftNotification:', error);
     }
   }, [playGiftSound]);
 

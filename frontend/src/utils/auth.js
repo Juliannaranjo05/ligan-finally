@@ -29,6 +29,33 @@ const getCurrentActivityType = () => {
 
 const sendHeartbeat = async () => {
   try {
+    // Suspender heartbeat si hay una navegación de redirect en curso (ProfileChatRedirect)
+    try {
+      if (localStorage.getItem('suspendBackgroundTasks') === 'true') {
+        if (import.meta.env.DEV) console.log('⏸️ [Auth] Heartbeat suspendido por redirect (suspendBackgroundTasks)');
+        return;
+      }
+    } catch (e) {
+      // Ignorar errores de acceso a localStorage
+    }
+
+    // Escuchar BroadcastChannel para suspender heartbeat inmediatamente
+    try {
+      const bc = new BroadcastChannel('ligando_bg');
+      bc.addEventListener('message', (ev) => {
+        try {
+          if (ev.data?.type === 'suspendBackgroundTasks' && ev.data.value === true) {
+            if (import.meta.env.DEV) console.log('⏸️ [Auth] BroadcastChannel - suspendiendo heartbeat');
+            stopHeartbeat();
+          }
+          if (ev.data?.type === 'suspendBackgroundTasks' && ev.data.value === false) {
+            if (import.meta.env.DEV) console.log('▶️ [Auth] BroadcastChannel - reanudando heartbeat');
+            startHeartbeat();
+          }
+        } catch (e) {}
+      });
+    } catch (e) {}
+
     const token = localStorage.getItem("token");
     if (!token) return;
 
@@ -40,7 +67,8 @@ const sendHeartbeat = async () => {
 
     await axios.post(`${API_BASE_URL}/api/heartbeat`, payload, {
       headers: { 'Authorization': `Bearer ${token}` },
-      timeout: 5000 // reducir timeout
+      timeout: 5000, // reducir timeout
+      skipInterceptor: true // Evitar que el interceptor global limpie el token en 401 durante heartbeat
     });
       } catch (error) {
     // 🔥 DETECTAR SESIÓN SUSPENDIDA O CERRADA POR OTRO DISPOSITIVO
@@ -118,6 +146,9 @@ export const register = async (email, password) => {
     const token = response.data.access_token;
     if (token) {
       localStorage.setItem("token", token);
+      
+      // 🔥 NOTA: El audio se desbloquea en el componente de registro durante el clic del botón
+      // No es necesario desbloquearlo aquí porque ya se hizo durante la interacción del usuario
     } else {
       throw new Error("No se recibió token de autenticación");
     }
@@ -144,10 +175,13 @@ export const loginWithWait = async (email, password, onStatusUpdate = null) => {
       password 
     }, { skipInterceptor: true });
 
-    // Login exitoso directo (no había sesión activa)
-    if (response.data.access_token) {
-      localStorage.setItem('token', response.data.access_token);
-      localStorage.setItem("just_logged_in", "true");
+      // Login exitoso directo (no había sesión activa)
+      if (response.data.access_token) {
+        localStorage.setItem('token', response.data.access_token);
+        localStorage.setItem("just_logged_in", "true");
+        
+        // 🔥 NOTA: El audio se desbloquea en el componente de login durante el clic del botón
+        // No es necesario desbloquearlo aquí porque ya se hizo durante la interacción del usuario
 
       setTimeout(() => {
         localStorage.removeItem("just_logged_in");
@@ -242,6 +276,14 @@ const waitForUserDecision = async (email, password, initialResponse, onStatusUpd
             if (loginResponse.data.access_token) {
               localStorage.setItem('token', loginResponse.data.access_token);
               localStorage.setItem("just_logged_in", "true");
+              
+              // 🔥 DESBLOQUEAR AUDIO DURANTE LOGIN (el usuario ya está interactuando)
+              try {
+                await audioManager.unlockOnUserInteraction();
+                console.log('✅ [Auth] Audio desbloqueado durante login (después de espera)');
+              } catch (error) {
+                console.warn('⚠️ [Auth] Error desbloqueando audio durante login:', error);
+              }
 
               setTimeout(() => {
                 localStorage.removeItem("just_logged_in");
@@ -295,6 +337,9 @@ export const cancelWaitingLogin = () => {
 };
 
 
+// 🔥 IMPORTAR AudioManager para desbloquear audio durante login
+import audioManager from './AudioManager.js';
+
 // 🔄 MODIFICAR loginWithoutRedirect - Usuario B entra inmediatamente
 export const loginWithoutRedirect = async (email, password) => {
   try {
@@ -308,6 +353,15 @@ export const loginWithoutRedirect = async (email, password) => {
     if (response.data.access_token) {
       localStorage.setItem('token', response.data.access_token);
       localStorage.setItem("just_logged_in", "true");
+      
+      // 🔥 DESBLOQUEAR AUDIO DURANTE LOGIN (el usuario ya está interactuando)
+      // Esto consume la interacción obligatoria del navegador ANTES de que llegue cualquier llamada
+      try {
+        await audioManager.unlockOnUserInteraction();
+        console.log('✅ [Auth] Audio desbloqueado durante login');
+      } catch (error) {
+        console.warn('⚠️ [Auth] Error desbloqueando audio durante login:', error);
+      }
 
       setTimeout(() => {
         localStorage.removeItem("just_logged_in");
@@ -584,7 +638,8 @@ export const updateHeartbeatRoom = async (roomName) => {
       current_room: roomName,
       activity_type: 'videochat'
     }, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}` },
+      skipInterceptor: true // Evitar que el interceptor borre el token en 401
     });
       } catch (error) {
         
@@ -642,6 +697,14 @@ export const handleGoogleCallback = async (code, state) => {
 
     localStorage.setItem('token', access_token);
     userCache.clearCache();
+    
+    // 🔥 DESBLOQUEAR AUDIO DURANTE LOGIN CON GOOGLE (el usuario ya está interactuando)
+    try {
+      await audioManager.unlockOnUserInteraction();
+      console.log('✅ [Auth] Audio desbloqueado durante login con Google');
+    } catch (error) {
+      console.warn('⚠️ [Auth] Error desbloqueando audio durante login con Google:', error);
+    }
     
     try {
       await axios.post(`${API_BASE_URL}/api/user/mark-online`, {}, {

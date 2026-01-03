@@ -153,7 +153,7 @@ class SessionEarningsController extends Controller
                 ->first();
 
             // Obtener comisión de regalos dinámicamente
-            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 40);
+            $giftCommissionPercentage = PlatformSettingsService::getInteger('gift_commission_percentage', 30);
             $platformCommissionRate = $giftCommissionPercentage / 100;
             $modelRate = 1 - $platformCommissionRate;
             

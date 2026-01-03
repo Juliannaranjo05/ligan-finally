@@ -1,7 +1,7 @@
 // ==========================================
 // ==========================================
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 
 // 🔐 GENERADOR DE TOKENS COMPATIBLE CON TU MIDDLEWARE
 class SessionTokenManager {
