@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from "react-router-dom";
 
@@ -6,7 +6,18 @@ export const AdminCodeVerification = ({ onSuccess }) => {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [emergencyCode, setEmergencyCode] = useState(null);
   const navigate = useNavigate();
+
+  // Verificar si hay código de emergencia guardado
+  useEffect(() => {
+    const savedCode = localStorage.getItem("ligand_emergency_code");
+    if (savedCode) {
+      setEmergencyCode(savedCode);
+      setCode(savedCode); // Pre-llenar el código
+      localStorage.removeItem("ligand_emergency_code"); // Limpiar después de usar
+    }
+  }, []);
 
   const handleVerify = async (e) => {
     e.preventDefault();
@@ -66,6 +77,15 @@ export const AdminCodeVerification = ({ onSuccess }) => {
               placeholder="123456"
             />
           </div>
+
+          {emergencyCode && (
+            <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg p-3 mb-4">
+              <p className="text-yellow-400 text-xs font-semibold mb-1">⚠️ Código de emergencia</p>
+              <p className="text-yellow-300 text-xs">
+                El correo no pudo enviarse. Usa este código para acceder: <span className="font-mono font-bold">{emergencyCode}</span>
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="text-red-500 text-sm text-center">{error}</div>

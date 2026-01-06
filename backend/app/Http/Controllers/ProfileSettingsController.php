@@ -57,16 +57,29 @@ class ProfileSettingsController extends Controller
                 Storage::disk('public')->delete($user->avatar);
             }
             
-            // Generar nombre único
-            $path = $file->storeAs('avatars', $user->id . '_' . time() . '.' . $file->getClientOriginalExtension(), 'public');
+            // Generar nombre único y PERMANENTE
+            $extension = $file->getClientOriginalExtension();
+            $fileName = $user->id . '_' . time() . '_' . uniqid() . '.' . $extension;
+            $path = 'avatars/' . $fileName;
             
-            Log::info('Archivo guardado correctamente', [
+            // Guardar archivo en storage público (PERMANENTE)
+            $file->storeAs('avatars', $fileName, 'public');
+            
+            // Asegurar permisos correctos para que el archivo sea accesible
+            $fullPath = storage_path('app/public/' . $path);
+            if (file_exists($fullPath)) {
+                chmod($fullPath, 0644); // Permisos de lectura para todos
+            }
+            
+            Log::info('Archivo guardado correctamente (PERMANENTE)', [
                 'path' => $path,
+                'full_path' => $fullPath,
                 'user_id' => $user->id,
-                'user_current_avatar' => $user->avatar
+                'user_current_avatar' => $user->avatar,
+                'file_size' => $file->getSize()
             ]);
             
-            // Actualizar usuario
+            // Actualizar usuario con la ruta PERMANENTE
             try {
                 $updateResult = $user->update([
                     'avatar' => $path,
@@ -184,13 +197,19 @@ class ProfileSettingsController extends Controller
                 Storage::disk('public')->delete($user->avatar);
             }
             
-            // Generar nombre único
-            $fileName = 'avatars/' . $user->id . '_camera_' . time() . '.jpg';
+            // Generar nombre único y PERMANENTE
+            $fileName = 'avatars/' . $user->id . '_camera_' . time() . '_' . uniqid() . '.jpg';
             
-            // Guardar imagen directamente
+            // Guardar imagen directamente en storage público (PERMANENTE)
             Storage::disk('public')->put($fileName, $photoData);
             
-            // Actualizar usuario
+            // Asegurar permisos correctos para que el archivo sea accesible
+            $fullPath = storage_path('app/public/' . $fileName);
+            if (file_exists($fullPath)) {
+                chmod($fullPath, 0644); // Permisos de lectura para todos
+            }
+            
+            // Actualizar usuario con la ruta PERMANENTE
             $user->update([
                 'avatar' => $fileName,
                 'updated_at' => now()

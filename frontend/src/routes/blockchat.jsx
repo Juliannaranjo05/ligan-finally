@@ -71,28 +71,26 @@ const RouteGuard = ({ children }) => {
           userRole = 'modelo';
         }
         
-        // Rutas bloqueadas (aplican para ambos roles)
-        const rutasBloqueadas = [
-          '/homellamadas',
-          '/esperando', 
-          '/mensajes',
-          '/favorites',
-          '/historysu',
-          '/esperandocall',
-          '/esperarcall',
-          '/configuracion',
-          '/confiperfil',
-          '/home',
-          '/homecliente',
-          '/'
-        ];
+        // 🔥 BLOQUEAR TODAS LAS RUTAS EXCEPTO VIDEOCHAT SI HAY SALA ACTIVA
+        // Verificar que NO estemos ya en videochat
+        const isVideoChatRoute = currentPath === '/videochatclient' || 
+                                  currentPath === '/videochat' ||
+                                  currentPath.startsWith('/videochatclient?') ||
+                                  currentPath.startsWith('/videochat?');
         
-        if (rutasBloqueadas.includes(currentPath)) {
+        if (!isVideoChatRoute) {
           console.log('🚫 RUTA BLOQUEADA POR GUARD (session active):', currentPath, 'role:', userRole);
           
           // 🔥 REDIRIGIR A LA RUTA CORRECTA SEGÚN EL ROL
           const videochatRoute = userRole === 'cliente' ? '/videochatclient' : '/videochat';
-          navigate(videochatRoute, { replace: true });
+          const roomName = localStorage.getItem('roomName');
+          const userName = localStorage.getItem('userName');
+          
+          if (roomName && userName) {
+            navigate(`${videochatRoute}?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, { replace: true });
+          } else {
+            navigate(videochatRoute, { replace: true });
+          }
         }
       }
     };

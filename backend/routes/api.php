@@ -594,6 +594,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/calls/check-incoming', [CallController::class, 'checkIncomingCalls']);
     Route::post('/calls/cleanup', [CallController::class, 'cleanupExpiredCalls']);
     Route::get('/calls/history', [CallController::class, 'getCallHistory']);
+    Route::post('/calls/{call_id}/invite-second-model', [CallController::class, 'inviteSecondModel']);
+    Route::post('/calls/{call_id}/reject-second-model', [CallController::class, 'rejectSecondModelInvitation']);
     Route::prefix('videochat/coins')->group(function () {
         Route::get('/balance', [App\Http\Controllers\VideoChatCoinController::class, 'getBalance']);
         Route::get('/detailed-balance', [App\Http\Controllers\VideoChatCoinController::class, 'getDetailedBalance']);

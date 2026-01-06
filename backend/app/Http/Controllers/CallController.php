@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\ProfileSettingsController;
 use App\Helpers\VideoChatLogger;
+use Firebase\JWT\JWT;
 
 class CallController extends Controller
 {
@@ -22,14 +23,306 @@ class CallController extends Controller
     {
         try {
             $request->validate([
-                'receiver_id' => 'required|integer|exists:users,id',
+                'receiver_id' => 'nullable|integer|exists:users,id',
+                'modelo_ids' => 'nullable|array|size:2',
+                'modelo_ids.*' => 'integer|exists:users,id',
                 'call_type' => 'required|string|in:video,audio'
             ]);
 
+            // 🔥 BLOQUEAR LLAMADAS 2VS1 EN PRODUCCIÓN
+            if ($request->has('modelo_ids') && is_array($request->modelo_ids) && count($request->modelo_ids) === 2) {
+                $appEnv = config('app.env');
+                if ($appEnv === 'production') {
+                    Log::warning('🚫 [CALL] Intento de llamada 2vs1 bloqueada en producción', [
+                        'caller_id' => auth()->id(),
+                        'modelo_ids' => $request->modelo_ids
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'La función 2vs1 no está disponible temporalmente',
+                        'message' => 'Esta función está deshabilitada por mantenimiento'
+                    ], 503);
+                }
+            }
+
+            // Validar que al menos uno de los dos parámetros esté presente
+            if (!$request->has('receiver_id') && !$request->has('modelo_ids')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Debe proporcionar receiver_id o modelo_ids'
+                ], 400);
+            }
+
             $caller = auth()->user();
             $receiverId = $request->receiver_id;
+            $modeloIds = $request->modelo_ids;
             $callType = $request->call_type;
 
+            // Determinar si es llamada con 2 modelos
+            $isDualModelCall = !is_null($modeloIds) && count($modeloIds) === 2;
+
+            // 🔥 LÓGICA PARA LLAMADAS CON 2 MODELOS
+            if ($isDualModelCall) {
+                Log::info('📞 [CALL] Iniciando llamada con 2 modelos', [
+                    'caller_id' => $caller->id,
+                    'modelo1_id' => $modeloIds[0],
+                    'modelo2_id' => $modeloIds[1],
+                    'call_type' => $callType
+                ]);
+
+                // Validar que el caller sea cliente
+                if ($caller->rol !== 'cliente') {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Solo clientes pueden iniciar llamadas con 2 modelos'
+                    ], 403);
+                }
+
+                // Validar que ambos modelos existen y son modelos
+                $modelo1 = User::find($modeloIds[0]);
+                $modelo2 = User::find($modeloIds[1]);
+
+                if (!$modelo1 || !$modelo2) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Uno o ambos modelos no encontrados'
+                    ], 404);
+                }
+
+                if ($modelo1->rol !== 'modelo' || $modelo2->rol !== 'modelo') {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Ambos participantes deben ser modelos'
+                    ], 400);
+                }
+
+                // Validar que los modelos sean diferentes
+                if ($modeloIds[0] === $modeloIds[1]) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Los modelos deben ser diferentes'
+                    ], 400);
+                }
+
+                // Validar disponibilidad de ambos modelos
+                $activeCall1 = ChatSession::where(function($query) use ($modeloIds) {
+                    $query->where('cliente_id', $modeloIds[0])
+                          ->orWhere('modelo_id', $modeloIds[0])
+                          ->orWhere('modelo_id_2', $modeloIds[0]);
+                })
+                ->whereIn('status', ['calling', 'active'])
+                ->where('session_type', 'call')
+                ->first();
+
+                $activeCall2 = ChatSession::where(function($query) use ($modeloIds) {
+                    $query->where('cliente_id', $modeloIds[1])
+                          ->orWhere('modelo_id', $modeloIds[1])
+                          ->orWhere('modelo_id_2', $modeloIds[1]);
+                })
+                ->whereIn('status', ['calling', 'active'])
+                ->where('session_type', 'call')
+                ->first();
+
+                if ($activeCall1 || $activeCall2) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Uno o ambos modelos no están disponibles'
+                    ], 400);
+                }
+
+                // Validar bloqueos mutuos con ambos modelos
+                $bloqueadoConModelo1 = DB::table('user_blocks')
+                    ->where(function($query) use ($caller, $modeloIds) {
+                        $query->where('user_id', $caller->id)->where('blocked_user_id', $modeloIds[0])
+                              ->orWhere('user_id', $modeloIds[0])->where('blocked_user_id', $caller->id);
+                    })
+                    ->where('is_active', true)
+                    ->exists();
+
+                $bloqueadoConModelo2 = DB::table('user_blocks')
+                    ->where(function($query) use ($caller, $modeloIds) {
+                        $query->where('user_id', $caller->id)->where('blocked_user_id', $modeloIds[1])
+                              ->orWhere('user_id', $modeloIds[1])->where('blocked_user_id', $caller->id);
+                    })
+                    ->where('is_active', true)
+                    ->exists();
+
+                if ($bloqueadoConModelo1 || $bloqueadoConModelo2) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'No puedes iniciar una llamada con uno o ambos modelos'
+                    ], 403);
+                }
+
+                // Validar saldo suficiente para doble costo
+                $minimumBalance = 60; // 60 monedas = 6 minutos (doble costo)
+                $userCoins = UserCoins::firstOrCreate(
+                    ['user_id' => $caller->id],
+                    ['purchased_balance' => 0, 'gift_balance' => 0]
+                );
+
+                if ($userCoins->purchased_balance < $minimumBalance) {
+                    $deficit = $minimumBalance - $userCoins->purchased_balance;
+                    Log::warning('💰 [CALL] Cliente sin saldo suficiente para llamada con 2 modelos', [
+                        'caller_id' => $caller->id,
+                        'purchased_balance' => $userCoins->purchased_balance,
+                        'minimum_required' => $minimumBalance,
+                        'deficit' => $deficit
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Saldo insuficiente para llamada con 2 modelos',
+                        'current_balance' => $userCoins->purchased_balance,
+                        'minimum_required' => $minimumBalance,
+                        'deficit' => $deficit,
+                        'deficit_minutes' => ceil($deficit / 10),
+                        'action_required' => 'recharge'
+                    ], 402);
+                }
+
+                // Cancelar llamadas activas previas del caller
+                $callerActiveCalls = ChatSession::where(function($query) use ($caller) {
+                    $query->where('cliente_id', $caller->id)
+                          ->orWhere('modelo_id', $caller->id);
+                })
+                ->whereIn('status', ['calling', 'active'])
+                ->where('session_type', 'call')
+                ->get();
+
+                foreach ($callerActiveCalls as $activeCall) {
+                    $activeCall->update([
+                        'status' => 'cancelled',
+                        'ended_at' => now(),
+                        'end_reason' => 'replaced_by_new_call'
+                    ]);
+
+                    Log::info('🔄 [CALL] Llamada previa cancelada automáticamente', [
+                        'old_call_id' => $activeCall->id,
+                        'caller_id' => $caller->id
+                    ]);
+                }
+
+                // Crear room_name único con ambos modelos
+                $roomName = "call_" . $caller->id . "_" . $modeloIds[0] . "_" . $modeloIds[1] . "_" . time();
+
+                // Crear ChatSession para llamada con 2 modelos
+                DB::beginTransaction();
+                try {
+                    $sessionData = [
+                        'room_name' => $roomName,
+                        'session_type' => 'call',
+                        'call_type' => $callType,
+                        'status' => 'calling',
+                        'started_at' => now(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                        'caller_id' => $caller->id,
+                        'cliente_id' => $caller->id,
+                        'modelo_id' => $modeloIds[0],
+                        'modelo_id_2' => $modeloIds[1],
+                        'modelo_2_invited_at' => now(),
+                        'modelo_2_status' => 'pending'
+                    ];
+
+                    $call = ChatSession::create($sessionData);
+
+                    DB::commit();
+
+                    Log::info('✅ [CALL] Llamada con 2 modelos creada', [
+                        'call_id' => $call->id,
+                        'room_name' => $roomName,
+                        'caller' => $caller->name,
+                        'modelo1' => $modelo1->name,
+                        'modelo2' => $modelo2->name,
+                        'started_at' => $call->started_at ? $call->started_at->toDateTimeString() : 'NULL',
+                        'status' => $call->status
+                    ]);
+
+                } catch (\Exception $e) {
+                    DB::rollback();
+                    throw $e;
+                }
+
+                // Enviar notificaciones a AMBOS modelos
+                // Notificación para modelo1
+                DB::table('notifications')->insert([
+                    'user_id' => $modeloIds[0],
+                    'type' => 'call_incoming',
+                    'data' => json_encode([
+                        'message' => 'Tienes una llamada entrante',
+                        'call_id' => $call->id,
+                        'room_name' => $roomName,
+                        'caller' => [
+                            'id' => $caller->id,
+                            'name' => $caller->name,
+                            'avatar' => $caller->avatar ?? null
+                        ],
+                        'call_type' => $callType,
+                        'is_dual_model_call' => true,
+                        'other_model' => [
+                            'id' => $modelo2->id,
+                            'name' => $modelo2->name,
+                            'avatar' => $modelo2->avatar ?? null
+                        ]
+                    ]),
+                    'read' => false,
+                    'expires_at' => now()->addMinutes(5),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+
+                // Notificación para modelo2
+                DB::table('notifications')->insert([
+                    'user_id' => $modeloIds[1],
+                    'type' => 'second_model_invitation',
+                    'data' => json_encode([
+                        'call_id' => $call->id,
+                        'cliente' => [
+                            'id' => $caller->id,
+                            'name' => $caller->name,
+                            'avatar' => $caller->avatar ?? null
+                        ],
+                        'modelo1' => [
+                            'id' => $modelo1->id,
+                            'name' => $modelo1->name,
+                            'avatar' => $modelo1->avatar ?? null
+                        ],
+                        'room_name' => $roomName,
+                        'message' => 'Tienes una invitación para unirte a una llamada existente'
+                    ]),
+                    'read' => false,
+                    'expires_at' => now()->addMinutes(5),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'call_id' => $call->id,
+                    'room_name' => $roomName,
+                    'status' => 'calling',
+                    'modelos' => [
+                        [
+                            'id' => $modelo1->id,
+                            'name' => $modelo1->name,
+                            'avatar' => $modelo1->avatar ?? null,
+                            'status' => 'pending'
+                        ],
+                        [
+                            'id' => $modelo2->id,
+                            'name' => $modelo2->name,
+                            'avatar' => $modelo2->avatar ?? null,
+                            'status' => 'pending'
+                        ]
+                    ],
+                    'message' => 'Llamada con 2 modelos iniciada, esperando respuestas...'
+                ]);
+
+            }
+
+            // 🔥 LÓGICA PARA LLAMADAS NORMALES (1vs1) - CONTINÚA ABAJO
             // ❌ VALIDAR BLOQUEOS MUTUOS - CORREGIDO
             $bloqueadoPorCaller = DB::table('user_blocks')
                 ->where('user_id', $caller->id)
@@ -307,44 +600,273 @@ class CallController extends Controller
                 ], 404);
             }
 
-            // Verificar que el usuario sea el receiver (esté en cliente_id o modelo_id)
+            // Verificar que el usuario sea un receiver válido (cliente_id, modelo_id o modelo_id_2)
             $isReceiver = ($call->cliente_id === $user->id) || ($call->modelo_id === $user->id);
-            
+            $isSecondModel = $call->modelo_id_2 === $user->id;
+
             VideoChatLogger::log('ANSWER_CALL', 'Verificación de receiver', [
                 'user_id' => $user->id,
                 'call_cliente_id' => $call->cliente_id,
                 'call_modelo_id' => $call->modelo_id,
+                'call_modelo_id_2' => $call->modelo_id_2,
                 'is_receiver' => $isReceiver,
+                'is_second_model' => $isSecondModel,
                 'user_is_cliente' => $call->cliente_id === $user->id,
                 'user_is_modelo' => $call->modelo_id === $user->id,
+                'user_is_second_model' => $call->modelo_id_2 === $user->id,
             ]);
-            
-            if (!$isReceiver) {
+
+            if (!$isReceiver && !$isSecondModel) {
                 VideoChatLogger::error('ANSWER_CALL', 'Usuario no autorizado para responder', [
                     'user_id' => $user->id,
                     'call_cliente_id' => $call->cliente_id,
                     'call_modelo_id' => $call->modelo_id,
+                    'call_modelo_id_2' => $call->modelo_id_2,
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'error' => 'No autorizado para responder esta llamada'
                 ], 403);
             }
 
+            // 🔥 LÓGICA ESPECIAL PARA SEGUNDO MODELO
+            if ($isSecondModel) {
+                VideoChatLogger::log('ANSWER_CALL', 'Procesando respuesta de segundo modelo', [
+                    'user_id' => $user->id,
+                    'call_id' => $call->id,
+                    'modelo_2_status' => $call->modelo_2_status,
+                    'action' => $action
+                ]);
+
+                // Validar que la invitación esté pendiente
+                if ($call->modelo_2_status !== 'pending') {
+                    VideoChatLogger::error('ANSWER_CALL', 'Invitación de segundo modelo no está pendiente', [
+                        'call_id' => $call->id,
+                        'modelo_2_status' => $call->modelo_2_status,
+                        'expected' => 'pending'
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Esta invitación ya no está disponible'
+                    ], 409);
+                }
+
+                if ($action === 'accept') {
+                    // Aceptar invitación de segundo modelo
+                    $call->update([
+                        'modelo_2_status' => 'accepted',
+                        'modelo_2_answered_at' => now()
+                    ]);
+
+                    VideoChatLogger::log('ANSWER_CALL', 'Segundo modelo aceptó invitación', [
+                        'call_id' => $call->id,
+                        'modelo2_id' => $user->id,
+                        'modelo2_name' => $user->name
+                    ]);
+
+                    // Generar token LiveKit para unirse a la room existente
+                    try {
+                        // 🔥 GENERAR TOKEN DIRECTAMENTE sin usar generateToken (evita problemas de validación)
+                        $roomName = preg_replace('/\s+/', '', trim($call->room_name));
+                        $participantName = "user_{$user->id}_{$user->rol}";
+                        
+                        // Obtener credenciales LiveKit
+                        $apiKey = config('livekit.api_key');
+                        $apiSecret = config('livekit.api_secret');
+                        $serverUrl = config('livekit.ws_url');
+                        
+                        if (!$apiKey || !$apiSecret || !$serverUrl) {
+                            throw new \Exception('Faltan credenciales de LiveKit en .env');
+                        }
+                        
+                        // Crear payload del JWT
+                        $now = time();
+                        $payload = [
+                            'iss' => $apiKey,
+                            'sub' => $participantName,
+                            'iat' => $now,
+                            'exp' => $now + 3600,
+                            'video' => [
+                                'room' => $roomName,
+                                'roomJoin' => true,
+                                'canPublish' => true,
+                                'canSubscribe' => true,
+                                'canPublishData' => true
+                            ]
+                        ];
+                        
+                        // Generar token JWT
+                        $liveKitToken = \Firebase\JWT\JWT::encode($payload, $apiSecret, 'HS256');
+                        
+                        Log::info('✅ [CALL] Token LiveKit generado exitosamente para segundo modelo', [
+                            'call_id' => $call->id,
+                            'modelo2_id' => $user->id,
+                            'room_name' => $call->room_name
+                        ]);
+
+                    } catch (\Exception $e) {
+                        Log::error('❌ [CALL] Error generando token LiveKit para segundo modelo', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                            'call_id' => $call->id,
+                            'modelo2_id' => $user->id,
+                            'room_name' => $call->room_name ?? 'N/A'
+                        ]);
+                        
+                        VideoChatLogger::error('ANSWER_CALL', 'Error generando token LiveKit para segundo modelo', [
+                            'error' => $e->getMessage(),
+                            'call_id' => $call->id,
+                            'modelo2_id' => $user->id
+                        ]);
+
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Error generando token de acceso: ' . $e->getMessage()
+                        ], 500);
+                    }
+
+                    // Notificar al cliente y modelo1 que el segundo modelo se unió
+                    $cliente = User::find($call->cliente_id);
+                    $modelo1 = User::find($call->modelo_id);
+
+                    if ($cliente) {
+                        DB::table('notifications')->insert([
+                            'user_id' => $cliente->id,
+                            'type' => 'second_model_joined',
+                            'data' => json_encode([
+                                'message' => $user->name . ' se ha unido a la llamada',
+                                'call_id' => $call->id,
+                                'room_name' => $call->room_name,
+                                'modelo2' => [
+                                    'id' => $user->id,
+                                    'name' => $user->name,
+                                    'avatar' => $user->avatar ?? null
+                                ]
+                            ]),
+                            'read' => false,
+                            'expires_at' => now()->addMinutes(5),
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
+
+                    if ($modelo1) {
+                        DB::table('notifications')->insert([
+                            'user_id' => $modelo1->id,
+                            'type' => 'second_model_joined',
+                            'data' => json_encode([
+                                'message' => $user->name . ' se ha unido a la llamada',
+                                'call_id' => $call->id,
+                                'room_name' => $call->room_name,
+                                'modelo2' => [
+                                    'id' => $user->id,
+                                    'name' => $user->name,
+                                    'avatar' => $user->avatar ?? null
+                                ]
+                            ]),
+                            'read' => false,
+                            'expires_at' => now()->addMinutes(5),
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
+
+                    VideoChatLogger::log('ANSWER_CALL', 'Segundo modelo se unió exitosamente', [
+                        'call_id' => $call->id,
+                        'modelo2_id' => $user->id,
+                        'cliente_notificado' => $cliente ? true : false,
+                        'modelo1_notificado' => $modelo1 ? true : false
+                    ]);
+
+                    $responseData = [
+                        'success' => true,
+                        'action' => 'accepted',
+                        'call_id' => $call->id,
+                        'room_name' => $call->room_name,
+                        'token' => $liveKitToken,
+                        'is_second_model' => true,
+                        'otros_participantes' => [
+                            'cliente' => $cliente ? [
+                                'id' => $cliente->id,
+                                'name' => $cliente->name,
+                                'avatar' => $cliente->avatar ?? null
+                            ] : null,
+                            'modelo1' => $modelo1 ? [
+                                'id' => $modelo1->id,
+                                'name' => $modelo1->name,
+                                'avatar' => $modelo1->avatar ?? null
+                            ] : null
+                        ],
+                        'message' => 'Te has unido a la llamada'
+                    ];
+
+                    VideoChatLogger::end('ANSWER_CALL', 'Segundo modelo aceptó invitación exitosamente', [
+                        'call_id' => $call->id,
+                        'modelo2' => $user->name,
+                        'response_data' => $responseData,
+                    ]);
+
+                    return response()->json($responseData);
+
+                } else {
+                    // Rechazar invitación de segundo modelo
+                    $call->update([
+                        'modelo_2_status' => 'rejected'
+                    ]);
+
+                    VideoChatLogger::log('ANSWER_CALL', 'Segundo modelo rechazó invitación', [
+                        'call_id' => $call->id,
+                        'modelo2_id' => $user->id,
+                        'modelo2_name' => $user->name
+                    ]);
+
+                    // Notificar al cliente que el segundo modelo rechazó
+                    $cliente = User::find($call->cliente_id);
+                    if ($cliente) {
+                        DB::table('notifications')->insert([
+                            'user_id' => $cliente->id,
+                            'type' => 'second_model_rejected',
+                            'data' => json_encode([
+                                'message' => $user->name . ' rechazó la invitación',
+                                'call_id' => $call->id,
+                                'modelo2' => [
+                                    'id' => $user->id,
+                                    'name' => $user->name,
+                                    'avatar' => $user->avatar ?? null
+                                ]
+                            ]),
+                            'read' => false,
+                            'expires_at' => now()->addMinutes(5),
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
+
+                    return response()->json([
+                        'success' => true,
+                        'action' => 'rejected',
+                        'is_second_model' => true,
+                        'message' => 'Invitación rechazada'
+                    ]);
+                }
+            }
+
+            // 🔥 LÓGICA NORMAL PARA PRIMER MODELO (continúa como antes)
             // Verificar que la llamada esté en estado 'calling'
-            VideoChatLogger::log('ANSWER_CALL', 'Verificación de estado de llamada', [
+            VideoChatLogger::log('ANSWER_CALL', 'Verificación de estado de llamada para primer modelo', [
                 'call_status' => $call->status,
                 'expected_status' => 'calling',
                 'status_match' => $call->status === 'calling',
             ]);
-            
+
             if ($call->status !== 'calling') {
                 VideoChatLogger::warning('ANSWER_CALL', 'Llamada no está en estado calling', [
                     'call_status' => $call->status,
                     'call_id' => $call->id,
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'error' => 'Esta llamada ya no está disponible'
@@ -600,11 +1122,21 @@ class CallController extends Controller
                     ]);
                 }
 
+                // 🔥 DETECTAR SI ES LLAMADA 2VS1
+                $isDualCall = !empty($call->modelo_id_2);
+                $modelo2 = null;
+                if ($isDualCall) {
+                    $modelo2 = User::find($call->modelo_id_2);
+                }
+                
                 $responseData = [
                     'success' => true,
                     'action' => 'accepted',
                     'call_id' => $call->id,
                     'room_name' => $call->room_name,
+                    'is_dual_call' => $isDualCall,
+                    'modelo_id_2' => $call->modelo_id_2,
+                    'modelo_2_status' => $call->modelo_2_status,
                     'caller' => [
                         'id' => $caller->id,
                         'name' => $caller->name,
@@ -615,6 +1147,11 @@ class CallController extends Controller
                         'name' => $user->name,
                         'avatar' => $user->avatar ?? null
                     ],
+                    'modelo2' => $modelo2 ? [
+                        'id' => $modelo2->id,
+                        'name' => $modelo2->name,
+                        'avatar' => $modelo2->avatar ?? null
+                    ] : null,
                     'message' => 'Llamada aceptada'
                 ];
                 
@@ -686,6 +1223,308 @@ class CallController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Error respondiendo llamada: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ➕ INVITAR SEGUNDO MODELO DURANTE LLAMADA ACTIVA
+     */
+    public function inviteSecondModel(Request $request, $callId)
+    {
+        try {
+            $request->validate([
+                'modelo_id' => 'required|integer|exists:users,id'
+            ]);
+
+            $user = auth()->user();
+            $modeloId = $request->modelo_id;
+
+            Log::info('➕ [CALL] Invitando segundo modelo', [
+                'user_id' => $user->id,
+                'user_rol' => $user->rol,
+                'call_id' => $callId,
+                'modelo_id' => $modeloId
+            ]);
+
+            // 1. Buscar la llamada
+            $call = ChatSession::find($callId);
+            if (!$call || $call->session_type !== 'call') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Llamada no encontrada'
+                ], 404);
+            }
+
+            // 2. Validar que la llamada esté activa
+            if ($call->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'La llamada debe estar activa para invitar un segundo modelo'
+                ], 400);
+            }
+
+            // 3. Validar que el usuario sea el caller (cliente)
+            if ($call->caller_id !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Solo el cliente puede invitar un segundo modelo'
+                ], 403);
+            }
+
+            // 4. Validar que el caller sea cliente
+            if ($user->rol !== 'cliente') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Solo clientes pueden invitar segundos modelos'
+                ], 403);
+            }
+
+            // 5. Validar que no haya segundo modelo ya
+            if (!is_null($call->modelo_id_2)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Ya hay un segundo modelo en esta llamada'
+                ], 400);
+            }
+
+            // 6. Validar que el segundo modelo sea diferente al primero
+            if ($modeloId === $call->modelo_id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El segundo modelo debe ser diferente al primero'
+                ], 400);
+            }
+
+            // 7. Validar que el segundo modelo exista
+            $segundoModelo = User::find($modeloId);
+            if (!$segundoModelo) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Segundo modelo no encontrado'
+                ], 404);
+            }
+
+            // 8. Validar que el segundo modelo sea modelo
+            if ($segundoModelo->rol !== 'modelo') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El segundo modelo debe ser un modelo'
+                ], 400);
+            }
+
+            // 9. Validar que el segundo modelo esté disponible (no en llamada activa)
+            $activeCall = ChatSession::where(function($query) use ($modeloId) {
+                $query->where('cliente_id', $modeloId)
+                      ->orWhere('modelo_id', $modeloId)
+                      ->orWhere('modelo_id_2', $modeloId);
+            })
+            ->whereIn('status', ['calling', 'active'])
+            ->where('session_type', 'call')
+            ->first();
+
+            if ($activeCall) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El modelo seleccionado no está disponible'
+                ], 400);
+            }
+
+            // 10. Validar bloqueos mutuos entre cliente y segundo modelo
+            $bloqueadoPorCliente = DB::table('user_blocks')
+                ->where('user_id', $user->id)
+                ->where('blocked_user_id', $modeloId)
+                ->where('is_active', true)
+                ->exists();
+
+            $bloqueadoPorModelo = DB::table('user_blocks')
+                ->where('user_id', $modeloId)
+                ->where('blocked_user_id', $user->id)
+                ->where('is_active', true)
+                ->exists();
+
+            if ($bloqueadoPorCliente || $bloqueadoPorModelo) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No puedes invitar a este modelo'
+                ], 403);
+            }
+
+            // 11. Validar saldo suficiente para doble costo
+            $minimumBalance = 60; // 60 monedas = 6 minutos (doble costo: 30 monedas * 2)
+            $userCoins = UserCoins::firstOrCreate(
+                ['user_id' => $user->id],
+                ['purchased_balance' => 0, 'gift_balance' => 0]
+            );
+
+            if ($userCoins->purchased_balance < $minimumBalance) {
+                $deficit = $minimumBalance - $userCoins->purchased_balance;
+                Log::warning('💰 [CALL] Cliente sin saldo suficiente para invitar segundo modelo', [
+                    'caller_id' => $user->id,
+                    'purchased_balance' => $userCoins->purchased_balance,
+                    'minimum_required' => $minimumBalance,
+                    'deficit' => $deficit
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Saldo insuficiente para invitar un segundo modelo',
+                    'current_balance' => $userCoins->purchased_balance,
+                    'minimum_required' => $minimumBalance,
+                    'deficit' => $deficit,
+                    'deficit_minutes' => ceil($deficit / 10),
+                    'action_required' => 'recharge'
+                ], 402);
+            }
+
+            // Actualizar ChatSession
+            $call->update([
+                'modelo_id_2' => $modeloId,
+                'modelo_2_invited_at' => now(),
+                'modelo_2_status' => 'pending'
+            ]);
+
+            // Enviar notificación al segundo modelo
+            DB::table('notifications')->insert([
+                'user_id' => $modeloId,
+                'type' => 'second_model_invitation',
+                'data' => json_encode([
+                    'call_id' => $call->id,
+                    'cliente' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'avatar' => $user->avatar ?? null
+                    ],
+                    'modelo1' => [
+                        'id' => $call->modelo->id,
+                        'name' => $call->modelo->name,
+                        'avatar' => $call->modelo->avatar ?? null
+                    ],
+                    'room_name' => $call->room_name,
+                    'message' => 'Tienes una invitación para unirte a una llamada existente'
+                ]),
+                'read' => false,
+                'expires_at' => now()->addMinutes(5),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            Log::info('✅ [CALL] Segundo modelo invitado exitosamente', [
+                'call_id' => $call->id,
+                'cliente_id' => $user->id,
+                'modelo1_id' => $call->modelo_id,
+                'modelo2_id' => $modeloId
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invitación enviada',
+                'call' => $call->load(['modelo', 'modelo2'])
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [CALL] Error invitando segundo modelo', [
+                'error' => $e->getMessage(),
+                'call_id' => $callId,
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error invitando segundo modelo: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ❌ RECHAZAR INVITACIÓN DE SEGUNDO MODELO
+     */
+    public function rejectSecondModelInvitation(Request $request, $callId)
+    {
+        try {
+            $user = auth()->user();
+
+            Log::info('❌ [CALL] Rechazando invitación de segundo modelo', [
+                'user_id' => $user->id,
+                'user_rol' => $user->rol,
+                'call_id' => $callId
+            ]);
+
+            // 1. Buscar la llamada
+            $call = ChatSession::find($callId);
+            if (!$call || $call->session_type !== 'call') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Llamada no encontrada'
+                ], 404);
+            }
+
+            // 2. Validar que el usuario sea el segundo modelo
+            if ($call->modelo_id_2 !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autorizado para rechazar esta invitación'
+                ], 403);
+            }
+
+            // 3. Validar que la invitación esté pendiente
+            if ($call->modelo_2_status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Esta invitación ya no está disponible'
+                ], 409);
+            }
+
+            // Actualizar estado de la invitación
+            $call->update([
+                'modelo_2_status' => 'rejected'
+                // Opcional: mantener modelo_id_2 para historial
+            ]);
+
+            // Notificar al cliente que el segundo modelo rechazó
+            $cliente = User::find($call->cliente_id);
+            if ($cliente) {
+                DB::table('notifications')->insert([
+                    'user_id' => $cliente->id,
+                    'type' => 'second_model_rejected',
+                    'data' => json_encode([
+                        'message' => $user->name . ' rechazó la invitación para unirse a la llamada',
+                        'call_id' => $call->id,
+                        'modelo2' => [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'avatar' => $user->avatar ?? null
+                        ]
+                    ]),
+                    'read' => false,
+                    'expires_at' => now()->addMinutes(5),
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+
+            Log::info('✅ [CALL] Invitación de segundo modelo rechazada', [
+                'call_id' => $call->id,
+                'modelo2_id' => $user->id,
+                'cliente_notificado' => $cliente ? true : false
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invitación rechazada',
+                'call' => $call->load(['modelo', 'modelo2'])
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ [CALL] Error rechazando invitación de segundo modelo', [
+                'error' => $e->getMessage(),
+                'call_id' => $callId,
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error rechazando invitación: ' . $e->getMessage()
             ], 500);
         }
     }

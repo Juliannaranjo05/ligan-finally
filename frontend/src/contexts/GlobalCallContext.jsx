@@ -550,7 +550,8 @@ export const GlobalCallProvider = ({ children }) => {
   }, [verificarLlamadasEntrantes, isInVideoChat, isInAuthRoute]); // 🔥 REMOVIDO incomingCallPollingInterval DE DEPENDENCIAS
 
   // 🔥 INICIAR LLAMADA (GLOBAL)
-  const startCall = useCallback(async (receiverId, receiverName, userRole = null) => {
+  // Soporta: startCall(receiverId, receiverName) o startCall(null, null, null, modeloIds)
+  const startCall = useCallback(async (receiverId, receiverName, userRole = null, modeloIds = null) => {
     try {
       // Si hay una llamada activa, cancelarla primero
       if (isCallActive && currentCall) {
@@ -568,9 +569,11 @@ export const GlobalCallProvider = ({ children }) => {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
+      // Determinar si es llamada con 2 modelos
+      const isDualModelCall = Array.isArray(modeloIds) && modeloIds.length === 2;
 
-      // Si el usuario es modelo, verificar saldo del cliente antes de iniciar
-      if (userRole === 'modelo') {
+      // Si el usuario es modelo, verificar saldo del cliente antes de iniciar (solo para llamadas normales)
+      if (userRole === 'modelo' && !isDualModelCall) {
         try {
           const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/check-client-balance`, {
             method: 'POST',
@@ -597,16 +600,25 @@ export const GlobalCallProvider = ({ children }) => {
         }
       }
 
-      setCurrentCall({ id: receiverId, name: receiverName, status: 'initiating' });
+      if (isDualModelCall) {
+        setCurrentCall({ modeloIds, status: 'initiating' });
+      } else {
+        setCurrentCall({ id: receiverId, name: receiverName, status: 'initiating' });
+      }
       setIsCallActive(true);
 
       // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
       await playOutgoingCallSound();
 
+      // Preparar body según el tipo de llamada
+      const requestBody = isDualModelCall
+        ? { modelo_ids: modeloIds, call_type: 'video' }
+        : { receiver_id: receiverId, call_type: 'video' };
+
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ receiver_id: receiverId, call_type: 'video' })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -616,13 +628,25 @@ export const GlobalCallProvider = ({ children }) => {
       const data = await response.json();
       
       if (data.success) {
-        setCurrentCall({
-          id: receiverId,
-          name: receiverName,
-          callId: data.call_id,
-          roomName: data.room_name,
-          status: 'calling'
-        });
+        if (isDualModelCall && data.modelos) {
+          // Llamada con 2 modelos
+          setCurrentCall({
+            modeloIds: modeloIds,
+            modelos: data.modelos,
+            callId: data.call_id,
+            roomName: data.room_name,
+            status: 'calling'
+          });
+        } else {
+          // Llamada normal
+          setCurrentCall({
+            id: receiverId,
+            name: receiverName,
+            callId: data.call_id,
+            roomName: data.room_name,
+            status: 'calling'
+          });
+        }
 
         // Iniciar polling para verificar estado de la llamada
         const pollInterval = setInterval(async () => {
@@ -1172,6 +1196,45 @@ export const GlobalCallProvider = ({ children }) => {
     stopIncomingCallSound();
   }, [incomingCall]);
 
+  // 🔥 INVITAR SEGUNDO MODELO DURANTE LLAMADA ACTIVA
+  const inviteSecondModel = useCallback(async (callId, modeloId) => {
+    try {
+      console.log('➕ [CALL] Invitando segundo modelo', { callId, modeloId });
+
+      const response = await fetch(`${API_BASE_URL}/api/calls/${callId}/invite-second-model`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ modelo_id: modeloId })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Actualizar estado de la llamada actual
+        setCurrentCall(prev => ({
+          ...prev,
+          modelo2: {
+            id: data.call?.modelo_id_2,
+            status: 'pending'
+          }
+        }));
+
+        console.log('✅ [CALL] Invitación enviada exitosamente');
+        return data;
+      } else {
+        throw new Error(data.error || 'Error al enviar invitación');
+      }
+    } catch (error) {
+      console.error('❌ [CALL] Error invitando segundo modelo:', error);
+      throw error;
+    }
+  }, []);
+
   // 🔥 ELIMINADO: El AudioManager maneja todo el desbloqueo y reproducción de audio pendiente
 
   // Cleanup al desmontar
@@ -1199,10 +1262,11 @@ export const GlobalCallProvider = ({ children }) => {
       cancelCall,
       answerCall,
       declineCall,
+      inviteSecondModel,
       playOutgoingCallSound,
       stopOutgoingCallSound
     };
-  }, [isCallActive, currentCall, isReceivingCall, incomingCall, startCall, cancelCall, answerCall, declineCall, playOutgoingCallSound, stopOutgoingCallSound]);
+  }, [isCallActive, currentCall, isReceivingCall, incomingCall, startCall, cancelCall, answerCall, declineCall, inviteSecondModel, playOutgoingCallSound, stopOutgoingCallSound]);
 
   return (
     <GlobalCallContext.Provider value={value}>

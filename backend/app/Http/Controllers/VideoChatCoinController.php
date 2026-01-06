@@ -21,7 +21,8 @@ use Carbon\Carbon;
 class VideoChatCoinController extends Controller
 {
     // 🔥 CONFIGURACIÓN
-    const COST_PER_MINUTE = 10; // 10 monedas por minuto
+    const COST_PER_MINUTE = 10; // 10 monedas por minuto (1vs1)
+    const COST_PER_MINUTE_2VS1 = 20; // 20 monedas por minuto (2vs1 - doble)
     const MINIMUM_BALANCE = 30; // Mínimo 30 monedas (3 minutos) para iniciar - más de 2 minutos requerido
     
     /**
@@ -175,14 +176,47 @@ class VideoChatCoinController extends Controller
             $user = Auth::user();
             $minutesConsumed = $request->minutes_consumed;
             
-            // 🔥 REDONDEO: Solo redondear hacia arriba si pasó la mitad del minuto (1.5 minutos = 90 segundos)
-            // Si es menos de 1.5 minutos, redondear hacia abajo (floor)
-            // Si es 1.5 minutos o más, redondear hacia arriba (ceil)
-            // Ejemplo: 1.4 minutos = 1 minuto (10 monedas), 1.5 minutos = 2 minutos (20 monedas)
-            if ($minutesConsumed >= 1.5) {
-                $coinsToConsume = ceil($minutesConsumed * self::COST_PER_MINUTE);
+            // 🔥 CALCULAR COSTO DINÁMICO: Verificar si hay segundo modelo
+            $call = \App\Models\ChatSession::where('room_name', $request->room_name)
+                ->where('session_type', 'call')
+                ->first();
+            
+            $hasSecondModel = $call && $call->modelo_id_2 && $call->modelo_2_status === 'accepted';
+            $secondModelJoinedAt = $hasSecondModel && $call->modelo_2_answered_at 
+                ? \Carbon\Carbon::parse($call->modelo_2_answered_at) 
+                : null;
+            
+            // Calcular costo basado en períodos
+            $coinsToConsume = 0;
+            if ($hasSecondModel && $secondModelJoinedAt && $call->started_at) {
+                // Llamada con segundo modelo: calcular períodos
+                $callStart = \Carbon\Carbon::parse($call->started_at);
+                $now = now();
+                $totalMinutes = $callStart->diffInSeconds($now) / 60;
+                
+                // Tiempo antes de que se uniera el segundo modelo
+                $minutesBeforeSecondModel = max(0, $secondModelJoinedAt->diffInSeconds($callStart) / 60);
+                // Tiempo después de que se unió el segundo modelo
+                $minutesAfterSecondModel = max(0, $secondModelJoinedAt->diffInSeconds($now) / 60);
+                
+                // Aplicar costo proporcional
+                $costBefore = $minutesBeforeSecondModel * self::COST_PER_MINUTE;
+                $costAfter = $minutesAfterSecondModel * self::COST_PER_MINUTE_2VS1;
+                $coinsToConsume = $costBefore + $costAfter;
+                
+                // Redondear según la lógica original
+                if ($minutesConsumed >= 1.5) {
+                    $coinsToConsume = ceil($coinsToConsume);
+                } else {
+                    $coinsToConsume = floor($coinsToConsume);
+                }
             } else {
-                $coinsToConsume = floor($minutesConsumed * self::COST_PER_MINUTE);
+                // Llamada normal 1vs1
+                if ($minutesConsumed >= 1.5) {
+                    $coinsToConsume = ceil($minutesConsumed * self::COST_PER_MINUTE);
+                } else {
+                    $coinsToConsume = floor($minutesConsumed * self::COST_PER_MINUTE);
+                }
             }
             
             Log::info('💳 [DEBUG] Iniciando consumo de monedas', [
@@ -539,9 +573,10 @@ class VideoChatCoinController extends Controller
 
             DB::commit();
 
-            // 🔥 VERIFICAR SI EL SALDO DESPUÉS DEL CONSUMO ES <= 20 MONEDAS (2 MINUTOS)
+            // 🔥 DESACTIVADO: Ya no forzamos desconexión automática por saldo bajo
+            // La llamada solo se corta cuando el usuario lo decide manualmente
             $remainingMinutes = floor($userCoins->purchased_balance / self::COST_PER_MINUTE);
-            $shouldEndCall = $userCoins->purchased_balance <= 20; // 20 monedas = 2 minutos o menos
+            $shouldEndCall = false; // 🔥 SIEMPRE false - NO se corta automáticamente
 
             Log::info('✅ [DEBUG] processConsumption EXITOSO', [
                 'user_id' => $userId,

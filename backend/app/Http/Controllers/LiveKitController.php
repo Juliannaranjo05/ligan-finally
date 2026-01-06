@@ -1117,42 +1117,75 @@ public function nextRoom(Request $request)
         $previousUserId = null;
         $previousUserName = null;
         
-        try {
-            $previousSession = DB::table('video_sessions')
-                ->where(function($query) use ($user) {
-                    $query->where('cliente_id', $user->id)
-                          ->orWhere('modelo_id', $user->id);
-                })
-                ->whereIn('status', ['active', 'waiting']) // 🔥 INCLUIR WAITING TAMBIÉN
-                ->orderBy('updated_at', 'desc')
-                ->first();
-                
-            if ($previousSession) {
-                $previousUserId = ($previousSession->cliente_id == $user->id) 
-                    ? $previousSession->modelo_id 
-                    : $previousSession->cliente_id;
+        // 🔥 PRIORIDAD 1: Usar excludeUserId del request (si viene del frontend)
+        $requestExcludeUserId = $request->get('excludeUserId');
+        if ($requestExcludeUserId) {
+            $previousUserId = $requestExcludeUserId;
+            $previousUser = User::find($previousUserId);
+            $previousUserName = $previousUser ? ($previousUser->alias ?? $previousUser->name) : 'Unknown';
+            
+            Log::info("🔍 [EXCLUSION] Usuario a excluir desde request", [
+                'current_user_id' => $user->id,
+                'current_user_name' => $user->alias ?? $user->name,
+                'exclude_user_id' => $previousUserId,
+                'exclude_user_name' => $previousUserName,
+                'source' => 'request_parameter'
+            ]);
+        }
+        
+        // 🔥 PRIORIDAD 2: Si no viene en el request, buscar en sesiones anteriores
+        if (!$previousUserId) {
+            try {
+                $previousSession = DB::table('video_sessions')
+                    ->where(function($query) use ($user) {
+                        $query->where('cliente_id', $user->id)
+                              ->orWhere('modelo_id', $user->id);
+                    })
+                    ->whereIn('status', ['active', 'waiting']) // 🔥 INCLUIR WAITING TAMBIÉN
+                    ->orderBy('updated_at', 'desc')
+                    ->first();
                     
-                if ($previousUserId) {
-                    $previousUser = User::find($previousUserId);
-                    $previousUserName = $previousUser ? ($previousUser->alias ?? $previousUser->name) : 'Unknown';
-                    
-                    Log::info("🔍 [EXCLUSION] Usuario anterior identificado para excluir", [
-                        'current_user_id' => $user->id,
-                        'current_user_name' => $user->alias ?? $user->name,
-                        'previous_user_id' => $previousUserId,
-                        'previous_user_name' => $previousUserName,
-                        'session_anterior_id' => $previousSession->id,
-                        'session_room_name' => $previousSession->room_name,
-                        'exclusion_reason' => 'user_went_next'
-                    ]);
-                    
-                    // 🔥 MARCAR PARA EXCLUSIÓN EN SESIÓN (2 MINUTOS)
-                    session(["exclude_user_{$user->id}" => $previousUserId]);
-                    session(["exclude_expires_{$user->id}" => now()->addMinutes(2)->timestamp]);
+                if ($previousSession) {
+                    $previousUserId = ($previousSession->cliente_id == $user->id) 
+                        ? $previousSession->modelo_id 
+                        : $previousSession->cliente_id;
+                        
+                    if ($previousUserId) {
+                        $previousUser = User::find($previousUserId);
+                        $previousUserName = $previousUser ? ($previousUser->alias ?? $previousUser->name) : 'Unknown';
+                        
+                        Log::info("🔍 [EXCLUSION] Usuario anterior identificado desde sesión", [
+                            'current_user_id' => $user->id,
+                            'current_user_name' => $user->alias ?? $user->name,
+                            'previous_user_id' => $previousUserId,
+                            'previous_user_name' => $previousUserName,
+                            'session_anterior_id' => $previousSession->id,
+                            'session_room_name' => $previousSession->room_name,
+                            'exclusion_reason' => 'user_went_next',
+                            'source' => 'previous_session'
+                        ]);
+                    }
                 }
+            } catch (\Exception $e) {
+                Log::warning("⚠️ Error identificando usuario anterior: " . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::warning("⚠️ Error identificando usuario anterior: " . $e->getMessage());
+        }
+        
+        // 🔥 GUARDAR EXCLUSIÓN EN CACHE Y SESIÓN SI HAY USUARIO A EXCLUIR
+        if ($previousUserId) {
+            // Guardar en cache (2 minutos)
+            Cache::put("exclude_user_{$user->id}", $previousUserId, now()->addMinutes(2));
+            
+            // Guardar en sesión (2 minutos)
+            session(["exclude_user_{$user->id}" => $previousUserId]);
+            session(["exclude_expires_{$user->id}" => now()->addMinutes(2)->timestamp]);
+            
+            Log::info("✅ [EXCLUSION] Exclusión guardada en cache y sesión", [
+                'user_id' => $user->id,
+                'excluded_user_id' => $previousUserId,
+                'excluded_user_name' => $previousUserName,
+                'expires_in_minutes' => 2
+            ]);
         }
 
         // 🔥 PASO 2: LIMPIAR SESIONES ANTERIORES
@@ -1194,23 +1227,35 @@ public function nextRoom(Request $request)
             ->where('video_sessions.status', 'waiting')
             ->where('video_sessions.updated_at', '>=', now()->subMinutes(5));
             
-        // 🔥 EXCLUSIÓN PRINCIPAL - USUARIO ANTERIOR
+        // 🔥 EXCLUSIÓN MÚLTIPLE - RECOPILAR TODOS LOS USUARIOS A EXCLUIR
+        $allExcludedUserIds = [];
+        
+        // 1. Usuario anterior (del request o sesión)
         if ($previousUserId) {
-            $sessionQuery->where('users.id', '!=', $previousUserId);
-            Log::info("🚫 [EXCLUSION] Aplicando exclusión principal", [
+            $allExcludedUserIds[] = $previousUserId;
+            Log::info("🚫 [EXCLUSION] Usuario anterior identificado para excluir", [
                 'excluded_user_id' => $previousUserId,
                 'excluded_user_name' => $previousUserName
             ]);
         }
         
-        // 🔥 EXCLUSIÓN ADICIONAL - VERIFICAR EXCLUSIONES EN SESIÓN
+        // 2. Verificar exclusión en cache
+        $cacheExcludedUser = Cache::get("exclude_user_{$user->id}");
+        if ($cacheExcludedUser && $cacheExcludedUser != $previousUserId && !in_array($cacheExcludedUser, $allExcludedUserIds)) {
+            $allExcludedUserIds[] = $cacheExcludedUser;
+            Log::info("🚫 [EXCLUSION] Usuario excluido desde cache", [
+                'excluded_user_id' => $cacheExcludedUser
+            ]);
+        }
+        
+        // 3. Verificar exclusión en sesión
         $sessionExcludedUser = session("exclude_user_{$user->id}");
         $sessionExcludeExpires = session("exclude_expires_{$user->id}");
         
         if ($sessionExcludedUser && $sessionExcludeExpires && $sessionExcludeExpires > now()->timestamp) {
-            if ($sessionExcludedUser != $previousUserId) { // Si no es el mismo, agregar a exclusión
-                $sessionQuery->where('users.id', '!=', $sessionExcludedUser);
-                Log::info("🚫 [EXCLUSION] Aplicando exclusión de sesión", [
+            if ($sessionExcludedUser != $previousUserId && !in_array($sessionExcludedUser, $allExcludedUserIds)) {
+                $allExcludedUserIds[] = $sessionExcludedUser;
+                Log::info("🚫 [EXCLUSION] Usuario excluido desde sesión", [
                     'excluded_user_id' => $sessionExcludedUser,
                     'expires_at' => date('Y-m-d H:i:s', $sessionExcludeExpires)
                 ]);
@@ -1218,6 +1263,20 @@ public function nextRoom(Request $request)
         } else if ($sessionExcludedUser) {
             // Limpiar exclusión expirada
             session()->forget(["exclude_user_{$user->id}", "exclude_expires_{$user->id}"]);
+        }
+        
+        // 🔥 APLICAR TODAS LAS EXCLUSIONES A LA QUERY
+        if (!empty($allExcludedUserIds)) {
+            $uniqueExcludedIds = array_unique($allExcludedUserIds);
+            $sessionQuery->whereNotIn('users.id', $uniqueExcludedIds);
+            Log::info("🚫 [EXCLUSION] Exclusión múltiple aplicada a query", [
+                'excluded_user_ids' => $uniqueExcludedIds,
+                'total_excluded' => count($uniqueExcludedIds),
+                'excluded_names' => array_map(function($id) {
+                    $u = User::find($id);
+                    return $u ? ($u->alias ?? $u->name) : "User_{$id}";
+                }, $uniqueExcludedIds)
+            ]);
         }
         
         $waitingSession = $sessionQuery->select('video_sessions.*', 'users.alias', 'users.name', 'users.id as matched_user_id')
@@ -1237,21 +1296,50 @@ public function nextRoom(Request $request)
             $matchedUserId = $waitingSession->matched_user_id;
             $matchedUser = User::find($matchedUserId);
             
-            // 🚨 DOBLE VERIFICACIÓN DE SEGURIDAD
-            if ($matchedUserId == $previousUserId) {
-                Log::error("❌ [ERROR] Match con usuario anterior detectado", [
-                    'matched_user_id' => $matchedUserId,
-                    'previous_user_id' => $previousUserId,
-                    'session_id' => $waitingSession->id
+            // 🔥 VERIFICAR QUE LA SALA NO ESTÉ CERRADA O FINALIZADA
+            $sessionStatus = DB::table('video_sessions')
+                ->where('id', $waitingSession->id)
+                ->value('status');
+            
+            if ($sessionStatus !== 'waiting') {
+                Log::warning("⚠️ [SEARCH] Sesión encontrada pero no está en estado 'waiting'", [
+                    'session_id' => $waitingSession->id,
+                    'session_status' => $sessionStatus,
+                    'expected_status' => 'waiting'
                 ]);
                 
-                // Marcar esta sesión como problemática y buscar otra
-                DB::table('video_sessions')
-                    ->where('id', $waitingSession->id)
-                    ->update(['status' => 'error', 'end_reason' => 'exclusion_failed']);
+                // Buscar otra sesión
+                $waitingSession = null;
+            } else {
+                // 🚨 DOBLE VERIFICACIÓN DE SEGURIDAD - Verificar contra TODOS los usuarios excluidos
+                $allExcludedIds = array_unique(array_filter([
+                    $previousUserId,
+                    Cache::get("exclude_user_{$user->id}"),
+                    session("exclude_user_{$user->id}")
+                ]));
                 
-                throw new \Exception('Error de exclusión: match con usuario anterior');
+                if (in_array($matchedUserId, $allExcludedIds)) {
+                    Log::error("❌ [ERROR] Match con usuario excluido detectado", [
+                        'matched_user_id' => $matchedUserId,
+                        'excluded_user_ids' => $allExcludedIds,
+                        'session_id' => $waitingSession->id,
+                        'matched_user_name' => $matchedUser ? ($matchedUser->alias ?? $matchedUser->name) : 'Unknown'
+                    ]);
+                    
+                    // Marcar esta sesión como problemática y buscar otra
+                    DB::table('video_sessions')
+                        ->where('id', $waitingSession->id)
+                        ->update(['status' => 'error', 'end_reason' => 'exclusion_failed']);
+                    
+                    $waitingSession = null; // Continuar buscando otra sesión
+                }
             }
+        }
+        
+        // 🔥 VERIFICAR NUEVAMENTE DESPUÉS DE VALIDACIONES
+        if ($waitingSession) {
+            $matchedUserId = $waitingSession->matched_user_id;
+            $matchedUser = User::find($matchedUserId);
             
             Log::info("✅ [MATCH] Match válido encontrado", [
                 'matched_user_id' => $matchedUserId,
@@ -1670,20 +1758,21 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
                 }
             }
 
-            // 💰 VERIFICAR SALDO DEL CLIENTE AUTOMÁTICAMENTE
+            // 🔥 DESACTIVADO: Ya no verificamos balance para desconectar automáticamente
+            // La llamada solo se corta cuando el usuario lo decide manualmente
             if ($clienteId) {
                 $balanceCheck = $this->checkClientBalance($clienteId);
                 
+                // Solo loguear, NO desconectar automáticamente
                 if (!$balanceCheck['sufficient']) {
-                    $endReason = 'insufficient_balance';
-                    
-                    \Log::warning('🚫 Finalizando sala automáticamente por saldo insuficiente', [
+                    \Log::info('⚠️ Saldo bajo detectado, pero NO se cortará automáticamente', [
                         'cliente_id' => $clienteId,
                         'modelo_id' => $modeloId,
                         'room_name' => $roomName,
                         'remaining_balance' => $balanceCheck['balance'],
                         'remaining_minutes' => $balanceCheck['minutes_left']
                     ]);
+                    // NO cambiar endReason - el usuario decide cuándo finalizar
                 }
             }
 
@@ -1996,6 +2085,7 @@ private function notifyRoomClosure($clienteId, $modeloId, $roomName, $endReason)
         $message = $this->getNotificationMessage($endReason);
         $urgency = ($endReason === 'insufficient_balance') ? 'high' : 'normal';
 
+        // 🔥 NOTIFICACIÓN room_closed (mantener compatibilidad)
         $notificationData = [
             'type' => 'room_closed',
             'room_name' => $roomName,
@@ -2005,7 +2095,17 @@ private function notifyRoomClosure($clienteId, $modeloId, $roomName, $endReason)
             'closed_at' => now()->toISOString()
         ];
 
-        // Notificar al cliente
+        // 🔥 NOTIFICACIÓN partner_left_session (para que el frontend la procese inmediatamente)
+        $partnerLeftData = [
+            'type' => 'partner_left_session',
+            'room_name' => $roomName,
+            'end_reason' => $endReason,
+            'message' => $message,
+            'urgency' => $urgency,
+            'closed_at' => now()->toISOString()
+        ];
+
+        // Notificar al cliente (ambos tipos de notificación)
         if ($clienteId) {
             \DB::table('notifications')->insert([
                 'user_id' => $clienteId,
@@ -2016,9 +2116,20 @@ private function notifyRoomClosure($clienteId, $modeloId, $roomName, $endReason)
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
+            
+            // 🔥 NUEVO: También enviar partner_left_session para detección inmediata
+            \DB::table('notifications')->insert([
+                'user_id' => $clienteId,
+                'type' => 'partner_left_session',
+                'data' => json_encode($partnerLeftData),
+                'read' => false,
+                'expires_at' => now()->addHours(24),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
         }
 
-        // Notificar a la modelo
+        // Notificar a la modelo (ambos tipos de notificación)
         if ($modeloId) {
             \DB::table('notifications')->insert([
                 'user_id' => $modeloId,
@@ -2029,9 +2140,20 @@ private function notifyRoomClosure($clienteId, $modeloId, $roomName, $endReason)
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
+            
+            // 🔥 NUEVO: También enviar partner_left_session para detección inmediata
+            \DB::table('notifications')->insert([
+                'user_id' => $modeloId,
+                'type' => 'partner_left_session',
+                'data' => json_encode($partnerLeftData),
+                'read' => false,
+                'expires_at' => now()->addHours(24),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
         }
 
-        \Log::info('🔔 Notificaciones de cierre enviadas', [
+        \Log::info('🔔 Notificaciones de cierre enviadas (room_closed y partner_left_session)', [
             'cliente_id' => $clienteId,
             'modelo_id' => $modeloId,
             'room_name' => $roomName,
@@ -3274,21 +3396,14 @@ private function getNotificationMessage($endReason)
             'cliente_id' => $partnerId
         ]);
         
-        // 🔥 NOTIFICAR AL CLIENTE que la MODELO se fue
-        if ($partnerId) {
-            NotificationController::sendNotification($partnerId, 'model_left', [
-                'action' => $action,
-                'partner_name' => $modelUserName,
-                'partner_id' => $modeloId,
-                'room' => $roomName,
-                'redirect_params' => [
-                    'role' => 'cliente',
-                    'from' => 'model_disconnect',
-                    'reason' => 'model_stopped',
-                    'currentRoom' => $roomName
-                ]
-            ]);
-        }
+        // 🔥 DESACTIVADO: Ya no notificamos automáticamente cuando un usuario sale
+        // Solo se desconecta cuando el usuario presiona el botón manualmente
+        Log::info('⏸️ [SERVER] Modelo saliendo - NO se enviará notificación automática', [
+            'room' => $roomName,
+            'modelo_id' => $modeloId,
+            'cliente_id' => $partnerId,
+            'note' => 'Desconexiones automáticas desactivadas'
+        ]);
         
         return response()->json(['success' => true]);
     }
@@ -3310,21 +3425,14 @@ private function getNotificationMessage($endReason)
             'modelo_id' => $partnerId
         ]);
         
-        // 🔥 NOTIFICAR A LA MODELO que el CLIENTE se fue
-        if ($partnerId) {
-            NotificationController::sendNotification($partnerId, 'client_left', [
-                'action' => $action,
-                'partner_name' => $clientUserName,
-                'partner_id' => $clienteId,
-                'room' => $roomName,
-                'redirect_params' => [
-                    'role' => 'modelo',
-                    'from' => 'client_disconnect',
-                    'reason' => 'client_stopped',
-                    'currentRoom' => $roomName
-                ]
-            ]);
-        }
+        // 🔥 DESACTIVADO: Ya no notificamos automáticamente cuando un usuario sale
+        // Solo se desconecta cuando el usuario presiona el botón manualmente
+        Log::info('⏸️ [SERVER] Cliente saliendo - NO se enviará notificación automática', [
+            'room' => $roomName,
+            'cliente_id' => $clienteId,
+            'modelo_id' => $partnerId,
+            'note' => 'Desconexiones automáticas desactivadas'
+        ]);
         
         return response()->json(['success' => true]);
     }
@@ -3501,6 +3609,24 @@ private function getNotificationMessage($endReason)
                 'end_reason' => 'user_stopped_session'
             ]);
             
+            // 🔥 GUARDAR EXCLUSIÓN MUTUA EN CACHE (2 MINUTOS) - Para que no vuelvan a la misma sala
+            $excludeExpireMinutes = 2;
+            
+            // Exclusión para el usuario actual (excluir al partner que colgó)
+            Cache::put("exclude_user_{$user->id}", $partnerUserId, now()->addMinutes($excludeExpireMinutes));
+            
+            // Exclusión para el partner (excluir al usuario actual que colgó)
+            Cache::put("exclude_user_{$partnerUserId}", $user->id, now()->addMinutes($excludeExpireMinutes));
+            
+            Log::info('🚫 [STOP] Exclusión mutua guardada al colgar', [
+                'user_id' => $user->id,
+                'user_name' => $user->alias ?? $user->name,
+                'partner_id' => $partnerUserId,
+                'partner_name' => $partner->alias ?? $partner->name,
+                'exclude_expires_at' => now()->addMinutes($excludeExpireMinutes)->toDateTimeString(),
+                'exclusion_duration_minutes' => $excludeExpireMinutes
+            ]);
+            
             // 🔥 4. CAMBIAR ESTA LÓGICA:
             if ($partner->rol === 'modelo') {
                 $partnerRedirect = '/usersearch'; // ✅ CAMBIAR A USERSEARCH
@@ -3523,25 +3649,53 @@ private function getNotificationMessage($endReason)
                 $redirectParams = [];
             }
 
-            // 5. Guardar notificación en BD
+            // 🔥 REACTIVADO: Enviar notificación inmediata al partner cuando alguien cuelga
+            $endReason = $user->rol === 'modelo' ? 'model_ended_session' : 'client_ended_session';
+            $message = $user->rol === 'modelo' 
+                ? 'La modelo finalizó la videollamada'
+                : 'El cliente finalizó la videollamada';
+            
+            // Enviar notificación partner_left_session para detección inmediata
             DB::table('notifications')->insert([
                 'user_id' => $partnerUserId,
                 'type' => 'partner_left_session',
                 'data' => json_encode([
-                    'message' => 'Tu partner terminó la sesión',
+                    'message' => $message,
                     'partner_name' => $user->name,
-                    'redirect_url' => $partnerRedirect,
-                    'redirect_params' => $redirectParams // ✅ USAR PARÁMETROS DINÁMICOS
+                    'room_name' => $roomName,
+                    'end_reason' => $endReason,
+                    'closed_at' => now()->toISOString(),
+                    'urgency' => 'high'
                 ]),
                 'read' => false,
-                'expires_at' => now()->addMinutes(5),
+                'expires_at' => now()->addHours(24),
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
             
-            Log::info('✅ [STOP] Partner notificado via BD', [
+            // También enviar room_closed para compatibilidad
+            DB::table('notifications')->insert([
+                'user_id' => $partnerUserId,
+                'type' => 'room_closed',
+                'data' => json_encode([
+                    'type' => 'room_closed',
+                    'room_name' => $roomName,
+                    'end_reason' => $endReason,
+                    'message' => $message,
+                    'urgency' => 'high',
+                    'closed_at' => now()->toISOString()
+                ]),
+                'read' => false,
+                'expires_at' => now()->addHours(24),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+            
+            Log::info('🔔 [STOP] Notificaciones enviadas al partner', [
+                'user_id' => $user->id,
                 'partner_id' => $partnerUserId,
-                'partner_redirect' => $partnerRedirect // ✅ CORREGIR VARIABLE
+                'room_name' => $roomName,
+                'notifications_sent' => ['partner_left_session', 'room_closed']
             ]);
             
             return response()->json(['success' => true]);
@@ -4894,10 +5048,15 @@ private function getNotificationMessage($endReason)
                 'timestamp' => $event['timestamp'] ?? null
             ]);
 
-            // Procesar según tipo de evento
+            // 🔥 DESACTIVADO: Ya no procesamos desconexiones automáticas desde webhooks
+            // La llamada solo se corta cuando el usuario lo decide manualmente
             switch ($eventType) {
                 case 'participant_left':
-                    return $this->handleParticipantLeft($event, $roomName);
+                    // 🔥 DESACTIVADO: Solo loguear, NO procesar desconexión automática
+                    Log::info('⏸️ [LiveKit Webhook] participant_left detectado pero NO se procesará automáticamente', [
+                        'room_name' => $roomName
+                    ]);
+                    return response('OK - Auto-disconnect disabled', 200);
                     
                 case 'room_finished':
                     return $this->handleRoomFinished($event, $roomName);
@@ -5021,99 +5180,19 @@ private function getNotificationMessage($endReason)
                 return response('OK', 200);
             }
 
-            // 🔥 PERÍODO DE GRACIA PARA RECONEXIONES (evitar notificaciones prematuras por refresh)
-            // Esperar 8 segundos antes de enviar la notificación para permitir reconexiones
-            $gracePeriodSeconds = 8;
-            $disconnectionKey = "disconnect_grace_{$roomName}_{$userId}";
-            
-            // Guardar información de la desconexión en cache con TTL
-            Cache::put($disconnectionKey, [
+            // 🔥 DESACTIVADO: Ya no enviamos notificaciones automáticas de desconexión desde webhooks
+            // Solo se desconecta cuando el usuario presiona el botón manualmente
+            // Solo limpiar la sesión del usuario que se desconectó, pero NO notificar al partner
+            Log::info('⏸️ [LiveKit Webhook] Participante abandonó sala - NO se enviará notificación automática', [
                 'room_name' => $roomName,
                 'user_id' => $userId,
                 'user_role' => $userRole,
                 'partner_id' => $partnerId,
-                'partner_role' => $partnerRole,
-                'chat_session_id' => $chatSession->id,
-                'disconnected_at' => now()->toISOString()
-            ], now()->addSeconds($gracePeriodSeconds + 2));
-            
-            Log::info('⏳ [LiveKit Webhook] Iniciando período de gracia para reconexión', [
-                'room_name' => $roomName,
-                'user_id' => $userId,
-                'grace_period_seconds' => $gracePeriodSeconds,
-                'disconnection_key' => $disconnectionKey
+                'note' => 'Desconexiones automáticas desactivadas - solo desconexión manual'
             ]);
             
-            // Programar la notificación después del período de gracia
-            // Usar un proceso en segundo plano simple con sleep
-            $chatSessionId = $chatSession->id;
-            $roomNameEscaped = addslashes($roomName);
-            $userRoleEscaped = addslashes($userRole);
-            
-            // Crear un script PHP temporal que se ejecutará en segundo plano
-            $script = base_path("storage/app/temp_disconnect_{$userId}_{$chatSessionId}.php");
-            $scriptContent = "<?php
-require '" . base_path("vendor/autoload.php") . "';
-\$app = require_once '" . base_path("bootstrap/app.php") . "';
-\$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
-
-sleep({$gracePeriodSeconds});
-
-\$disconnectionKey = '{$disconnectionKey}';
-\$disconnectionInfo = \\Illuminate\\Support\\Facades\\Cache::get(\$disconnectionKey);
-
-if (!\$disconnectionInfo) {
-    exit(0); // Usuario se reconectó
-}
-
-\$session = \\App\\Models\\ChatSession::find({$chatSessionId});
-if (\$session && \$session->status === 'active') {
-    // Verificar si el usuario se reconectó
-    if ((\$session->cliente_id === {$userId} && '{$userRoleEscaped}' === 'cliente') ||
-        (\$session->modelo_id === {$userId} && '{$userRoleEscaped}' === 'modelo')) {
-        \\Illuminate\\Support\\Facades\\Cache::forget(\$disconnectionKey);
-        exit(0); // Usuario se reconectó
-    }
-    
-    // Finalizar sesión
-    \$session->update([
-        'status' => 'ended',
-        'ended_at' => now(),
-        'end_reason' => 'participant_disconnected'
-    ]);
-}
-
-// Limpiar VideoChatSession
-\$controller = new \\App\\Http\\Controllers\\LiveKitController();
-\$reflection = new ReflectionClass(\$controller);
-\$method = \$reflection->getMethod('cleanupVideoChatSession');
-\$method->setAccessible(true);
-\$method->invoke(\$controller, {$userId}, '{$roomNameEscaped}', 'participant_left');
-
-// Enviar notificación
-\\App\\Http\\Controllers\\NotificationController::sendNotification({$partnerId}, 'partner_left_session', [
-    'room_name' => '{$roomNameEscaped}',
-    'partner_id' => {$userId},
-    'partner_role' => '{$userRoleEscaped}',
-    'disconnection_type' => 'participant_left',
-    'timestamp' => now()->toISOString()
-]);
-
-\\Illuminate\\Support\\Facades\\Cache::forget(\$disconnectionKey);
-unlink(__FILE__); // Eliminar script temporal
-";
-            
-            file_put_contents($script, $scriptContent);
-            exec("php {$script} > /dev/null 2>&1 &");
-
-            Log::info('⏳ [LiveKit Webhook] Período de gracia iniciado - notificación programada', [
-                'room_name' => $roomName,
-                'disconnected_user_id' => $userId,
-                'disconnected_user_role' => $userRole,
-                'partner_id' => $partnerId,
-                'partner_role' => $partnerRole,
-                'grace_period_seconds' => $gracePeriodSeconds
-            ]);
+            // Solo limpiar la sesión del usuario que se desconectó
+            $this->cleanupVideoChatSession($userId, $roomName, 'participant_left');
 
             return response('OK', 200);
 

@@ -41,25 +41,64 @@ class AdminAuthController extends Controller
             ]);
 
             // Enviar correo, pero sin romper si falla el SMTP
+            $emailSent = false;
+            $emailError = null;
             try {
-                Mail::to($user->email)->send(new AdminCodeMail($code));
-            } catch (\Throwable $mailException) {
-                Log::error('Error enviando correo de código admin', [
+                Log::info('📧 [AdminAuth] Intentando enviar código de verificación', [
                     'admin_id' => $user->id,
                     'email' => $user->email,
-                    'error' => $mailException->getMessage(),
+                    'code' => $code,
+                    'mail_host' => config('mail.mailers.smtp.host'),
+                    'mail_from' => config('mail.from.address'),
+                ]);
+                
+                Mail::to($user->email)->send(new AdminCodeMail($code));
+                $emailSent = true;
+                
+                Log::info('✅ [AdminAuth] Correo enviado exitosamente', [
+                    'admin_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+            } catch (\Throwable $mailException) {
+                $emailError = $mailException->getMessage();
+                Log::error('❌ [AdminAuth] Error enviando correo de código admin', [
+                    'admin_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $emailError,
+                    'error_class' => get_class($mailException),
+                    'trace' => $mailException->getTraceAsString(),
+                    'mail_host' => config('mail.mailers.smtp.host'),
+                    'mail_port' => config('mail.mailers.smtp.port'),
+                    'mail_username' => config('mail.mailers.smtp.username') ? '***configured***' : 'NOT SET',
                 ]);
             }
 
             $response = [
-                'message' => 'Código generado. Si el correo está configurado, se ha enviado al email.',
+                'message' => $emailSent 
+                    ? 'Código generado y enviado al correo electrónico.' 
+                    : 'Código generado. Error al enviar correo. Revisa los logs del servidor.',
                 'admin_id' => $user->id,
                 'success' => true,
+                'email_sent' => $emailSent,
             ];
 
-            // En entornos no productivos, exponer el código para facilitar pruebas
+            // Si falla el envío de email, exponer el código para acceso de emergencia
+            // Esto permite acceder mientras se arregla la configuración de SMTP
+            if (!$emailSent) {
+                Log::warning('⚠️ [AdminAuth] Email no enviado, exponiendo código en respuesta para acceso de emergencia', [
+                    'admin_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+                $response['emergency_code'] = $code;
+                $response['email_error'] = $emailError;
+            }
+
+            // En entornos no productivos, siempre exponer el código
             if (!app()->environment('production')) {
                 $response['debug_code'] = $code;
+                if ($emailError) {
+                    $response['debug_email_error'] = $emailError;
+                }
             }
 
             // ✅ Retornar respuesta de éxito

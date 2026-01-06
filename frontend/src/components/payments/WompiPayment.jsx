@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { 
   CreditCard,
   Star, 
@@ -26,6 +27,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function WompiPayment({ onClose, selectedCountry, onCountryChange }) {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [packages, setPackages] = useState([]);
   const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -86,16 +88,121 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
     }
   }, [country]);
 
+  // 🔥 FUNCIÓN PARA VERIFICAR ESTADO DEL PAGO
+  const checkPurchaseStatus = async (purchaseIdToCheck) => {
+    if (checkingStatus && !purchaseIdToCheck) return false;
+    
+    setCheckingStatus(true);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseIdToCheck}`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+
+      if (!data.success) {
+        console.error('Error en respuesta del servidor:', data.error);
+        return false;
+      }
+
+      // 🔥 VERIFICAR SI SE PROCESÓ EN ESTA VERIFICACIÓN
+      if (data.processed) {
+        console.log('✅ Pago procesado en esta verificación');
+      }
+
+      if (data.purchase.status === 'completed') {
+        // Pago completado
+        showNotification(
+          t('wompi.notifications.paymentCompleted', { coins: data.purchase.total_coins }) || 
+          `¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`,
+          'success'
+        );
+        
+        // Actualizar balance e historial
+        await Promise.all([
+          fetchBalance(),
+          fetchPurchaseHistory()
+        ]);
+        
+        // Marcar como completado para mostrar botón de finalizar
+        setPaymentCompleted(true);
+        
+        // Limpiar purchaseId para detener el polling
+        setPurchaseId(null);
+        
+        // Limpiar parámetros de URL si existen
+        const newParams = new URLSearchParams(searchParams);
+        if (newParams.get('payment') === 'wompi') {
+          newParams.delete('payment');
+          newParams.delete('purchase_id');
+          setSearchParams(newParams, { replace: true });
+        }
+        
+        return true; // Indica que el pago se completó
+      }
+      
+      // Si sigue pendiente, mostrar mensaje informativo
+      if (data.purchase.status === 'pending') {
+        console.log('⏳ Pago aún pendiente, continuando verificación...');
+      }
+      
+      return false; // Pago aún pendiente
+
+    } catch (error) {
+      console.error('❌ Error verificando estado del pago:', error);
+      showNotification('Error al verificar el estado del pago. Intenta nuevamente.', 'error');
+      return false;
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  // 🔥 VERIFICAR PAGO CUANDO EL USUARIO REGRESA DE WOMPI
+  useEffect(() => {
+    const urlPurchaseId = searchParams.get('purchase_id');
+    const payment = searchParams.get('payment');
+    
+    if (payment === 'wompi' && urlPurchaseId) {
+      // Usuario regresó de Wompi - verificar estado inmediatamente
+      console.log('🔄 Usuario regresó de Wompi, verificando pago...', { purchase_id: urlPurchaseId });
+      
+      // Establecer purchaseId para activar el polling
+      setPurchaseId(urlPurchaseId);
+      
+      // Verificar estado inmediatamente
+      checkPurchaseStatus(urlPurchaseId).then((completed) => {
+        if (!completed) {
+          // Si sigue pendiente, iniciar polling agresivo
+          console.log('⏳ Pago aún pendiente, iniciando polling...');
+        } else {
+          // Limpiar parámetros de URL
+          searchParams.delete('payment');
+          searchParams.delete('purchase_id');
+          setSearchParams(searchParams, { replace: true });
+        }
+      });
+    }
+  }, [searchParams, setSearchParams]);
+
   // Polling para verificar estado de compras pendientes - MÁS AGRESIVO
   useEffect(() => {
-    if (purchaseId && showPaymentWindow) {
+    if (purchaseId) {
+      // Verificar inmediatamente
+      checkPurchaseStatus(purchaseId);
+      
+      // Luego verificar cada 3 segundos
       const interval = setInterval(() => {
         checkPurchaseStatus(purchaseId);
       }, 3000); // ⚡ Verificar cada 3 segundos para respuesta más rápida
 
       return () => clearInterval(interval);
     }
-  }, [purchaseId, showPaymentWindow]);
+  }, [purchaseId]);
 
   // Countdown para redirección automática
   useEffect(() => {
@@ -352,39 +459,6 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
     }
   };
 
-  const checkPurchaseStatus = async (purchaseId) => {
-    if (checkingStatus) return;
-    
-    setCheckingStatus(true);
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseId}`, {
-        headers: getAuthHeaders()
-      });
-      const data = await response.json();
-
-      if (data.success && data.purchase.status === 'completed') {
-        // Pago completado
-        showNotification(
-          t('wompi.notifications.paymentCompleted', { coins: data.purchase.total_coins }),
-          'success'
-        );
-        
-        // Actualizar balance e historial
-        await Promise.all([
-          fetchBalance(),
-          fetchPurchaseHistory()
-        ]);
-        
-        // Marcar como completado para mostrar botón de finalizar
-        setPaymentCompleted(true);
-      }
-
-    } catch (error) {
-    } finally {
-      setCheckingStatus(false);
-    }
-  };
 
   const handleCancel = () => {
     setShowPaymentWindow(false);

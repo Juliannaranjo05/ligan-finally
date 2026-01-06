@@ -32,7 +32,10 @@ const VideoDisplayImprovedClient = ({
   // 🔥 PROPS PARA ACEPTAR REGALOS
   handleAcceptGift = null,
   giftBalance = 0,
-  userBalance = 0
+  userBalance = 0,
+  // 🔥 PROPS PARA SEGUNDO MODELO
+  modelo2 = null, // { id, name, avatar, status }
+  callData = null // Información completa de la llamada
 }) => {
   
   // 🔥 FALLBACK A TEXTO EN ESPAÑOL SI NO HAY hardcodedTexts
@@ -42,10 +45,35 @@ const VideoDisplayImprovedClient = ({
   const participants = useParticipants();
   const remoteParticipants = useRemoteParticipants();
   const localParticipant = participants.find(p => p.isLocal);
-  const remoteParticipant = remoteParticipants.length > 0 
-    ? remoteParticipants[0] 
-    : participants.find(p => !p.isLocal);
   const room = useRoomContext();
+  
+  // 🔥 DETECTAR SI HAY 2 MODELOS (2VS1)
+  // Verificar desde callData, location.state, o sessionStorage
+  const isDualCall = callData?.is_dual_call || 
+                       callData?.modelo_id_2 || 
+                       sessionStorage.getItem('isDualCall') === 'true';
+  
+  const hasSecondModel = isDualCall && (
+    (callData?.modelo_id_2 && (callData?.modelo_2_status === 'accepted' || callData?.modelo_2_status === 'pending')) ||
+    (callData?.modelo_2_status === 'accepted' || callData?.modelo_2_status === 'pending') ||
+    remoteParticipants.length >= 2 ||
+    participants.length >= 3 // Cliente + 2 modelos = 3 participantes
+  );
+  
+  // 🔥 OBTENER PARTICIPANTES REMOTOS (2 modelos en llamada 2vs1)
+  // En una llamada 2vs1, hay 2 modelos remotos + el cliente local
+  const remoteParticipant1 = remoteParticipants.length > 0 
+    ? remoteParticipants[0] 
+    : participants.find(p => !p.isLocal && p.identity !== localParticipant?.identity);
+  
+  const remoteParticipant2 = hasSecondModel && remoteParticipants.length > 1
+    ? remoteParticipants[1]
+    : (hasSecondModel && remoteParticipants.length === 1 && participants.length > 2)
+      ? participants.find(p => !p.isLocal && p.identity !== remoteParticipant1?.identity && p.identity !== localParticipant?.identity)
+      : null;
+  
+  // Para compatibilidad, mantener remoteParticipant como el primero
+  const remoteParticipant = remoteParticipant1;
   
   // 🔥 OBTENER CONTEXTO GLOBAL DE TRADUCCIÓN
   const { 
@@ -393,6 +421,47 @@ const VideoDisplayImprovedClient = ({
     }
     return null;
   }, [remoteParticipant, remoteVideoTrack]);
+  
+  // 🔥 OBTENER TRACKS DE VIDEO DE LOS DOS PARTICIPANTES REMOTOS (PARA 2VS1)
+  const remoteVideoTrack1 = useMemo(() => {
+    if (!tracks || tracks.length === 0 || !remoteParticipant1) return null;
+    
+    for (const trackRef of tracks) {
+      if (trackRef.participant?.sid === remoteParticipant1.sid && 
+          trackRef.source === Track.Source.Camera) {
+        if (trackRef.track) {
+          return trackRef;
+        }
+        if (trackRef.publication?.track) {
+          return {
+            ...trackRef,
+            track: trackRef.publication.track
+          };
+        }
+      }
+    }
+    return null;
+  }, [tracks, remoteParticipant1?.sid]);
+  
+  const remoteVideoTrack2 = useMemo(() => {
+    if (!tracks || tracks.length === 0 || !remoteParticipant2) return null;
+    
+    for (const trackRef of tracks) {
+      if (trackRef.participant?.sid === remoteParticipant2.sid && 
+          trackRef.source === Track.Source.Camera) {
+        if (trackRef.track) {
+          return trackRef;
+        }
+        if (trackRef.publication?.track) {
+          return {
+            ...trackRef,
+            track: trackRef.publication.track
+          };
+        }
+      }
+    }
+    return null;
+  }, [tracks, remoteParticipant2?.sid]);
 
   // 🔥 USAR TRACKS DISPONIBLES (priorizar useTracks, luego publicaciones)
   const finalLocalTrack = localVideoTrack || localTrackFromPublication;
@@ -706,6 +775,158 @@ const VideoDisplayImprovedClient = ({
   // 🔥 RENDERIZAR VIDEO PRINCIPAL (SIMPLE Y DIRECTÓ)
   const getMainVideo = () => {
     try {
+      // 🔥 LAYOUT PARA 2 MODELOS (2vs1) - CLIENTE ARRIBA, 2 MODELOS ABAJO
+      // Mostrar layout 2vs1 si es llamada dual O si hay 2+ participantes remotos
+      const shouldShow2vs1Layout = isDualCall || remoteParticipants.length >= 2 || participants.length >= 3;
+      
+      if (shouldShow2vs1Layout && (hasSecondModel || remoteParticipants.length >= 2)) {
+        const modelo1Name = otherUser?.name || remoteParticipant1?.name || 'Modelo 1';
+        const modelo2Name = modelo2?.name || remoteParticipant2?.name || 'Modelo 2';
+        
+        console.log('🎥 [VideoDisplay] Renderizando layout 2vs1:', {
+          hasSecondModel,
+          isDualCall,
+          remoteParticipantsCount: remoteParticipants.length,
+          participantsCount: participants.length,
+          modelo1Name,
+          modelo2Name,
+          remoteParticipant1: remoteParticipant1?.identity,
+          remoteParticipant2: remoteParticipant2?.identity,
+          hasRemoteTrack1: !!remoteVideoTrack1,
+          hasRemoteTrack2: !!remoteVideoTrack2,
+          allTracksCount: tracks.length
+        });
+        
+        return (
+          <div className="w-full h-full flex flex-col gap-3 p-3 bg-gradient-to-b from-[#0a0d10] to-[#131418]">
+            {/* 🔥 CLIENTE ARRIBA (PANTALLA GRANDE - 2/3 DEL ESPACIO) */}
+            {finalLocalTrack && (
+              <div className="relative h-2/3 rounded-xl overflow-hidden border-3 border-[#ff007a] shadow-lg shadow-[#ff007a]/20 bg-gray-900 min-h-0">
+                <VideoTrack
+                  trackRef={finalLocalTrack}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg z-10 border border-[#ff007a]/30">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 bg-[#ff007a] rounded-full animate-pulse shadow-lg shadow-[#ff007a]/50"></div>
+                    <span className="text-sm font-bold text-white">Tú</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* 🔥 2 MODELOS ABAJO (LADO A LADO - 1/3 DEL ESPACIO CADA UNO) */}
+            <div className="grid grid-cols-2 gap-3 h-1/3 min-h-[180px]">
+              {/* Modelo 1 - Borde Verde */}
+              <div className="relative rounded-xl overflow-hidden border-3 border-green-400 shadow-lg shadow-green-400/20 bg-gray-900">
+                {remoteVideoTrack1 ? (
+                  <VideoTrack
+                    trackRef={remoteVideoTrack1}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="animate-spin text-green-400" size={40} />
+                      <span className="text-xs text-green-400 font-medium">Conectando...</span>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-lg z-10 border border-green-400/30">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                    <span className="text-xs font-semibold text-white truncate max-w-[120px]">{modelo1Name}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Modelo 2 - Borde Azul */}
+              <div className="relative rounded-xl overflow-hidden border-3 border-blue-400 shadow-lg shadow-blue-400/20 bg-gray-900">
+                {remoteVideoTrack2 ? (
+                  <VideoTrack
+                    trackRef={remoteVideoTrack2}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="animate-spin text-blue-400" size={40} />
+                      <span className="text-xs text-blue-400 font-medium">Conectando...</span>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-lg z-10 border border-blue-400/30">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full shadow-lg shadow-blue-400/50"></div>
+                    <span className="text-xs font-semibold text-white truncate max-w-[120px]">{modelo2Name}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
+      // 🔥 LAYOUT ALTERNATIVO: Si solo hay 1 modelo pero se espera el segundo
+      if (isDualCall && remoteParticipant1 && !remoteParticipant2) {
+        const modelo1Name = otherUser?.name || remoteParticipant1?.name || 'Modelo 1';
+        
+        return (
+          <div className="w-full h-full flex flex-col gap-3 p-3 bg-gradient-to-b from-[#0a0d10] to-[#131418]">
+            {/* Cliente arriba (2/3 del espacio) */}
+            {finalLocalTrack && (
+              <div className="relative h-2/3 rounded-xl overflow-hidden border-3 border-[#ff007a] shadow-lg shadow-[#ff007a]/20 bg-gray-900 min-h-0">
+                <VideoTrack
+                  trackRef={finalLocalTrack}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg z-10 border border-[#ff007a]/30">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 bg-[#ff007a] rounded-full animate-pulse shadow-lg shadow-[#ff007a]/50"></div>
+                    <span className="text-sm font-bold text-white">Tú</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Modelo 1 y espacio para modelo 2 (1/3 del espacio) */}
+            <div className="grid grid-cols-2 gap-3 h-1/3 min-h-[180px]">
+              {/* Modelo 1 - Borde Verde */}
+              <div className="relative rounded-xl overflow-hidden border-3 border-green-400 shadow-lg shadow-green-400/20 bg-gray-900">
+                {remoteVideoTrack1 ? (
+                  <VideoTrack
+                    trackRef={remoteVideoTrack1}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="animate-spin text-green-400" size={40} />
+                      <span className="text-xs text-green-400 font-medium">Conectando...</span>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-lg z-10 border border-green-400/30">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full shadow-lg shadow-green-400/50"></div>
+                    <span className="text-xs font-semibold text-white truncate max-w-[120px]">{modelo1Name}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Espacio para modelo 2 (pendiente) - Borde Azul con estilo */}
+              <div className="relative rounded-xl overflow-hidden border-3 border-blue-400/30 border-dashed shadow-lg shadow-blue-400/10 bg-gray-900/50 flex items-center justify-center">
+                <div className="text-center p-4">
+                  <Loader2 className="animate-spin text-blue-400 mx-auto mb-3" size={40} />
+                  <p className="text-xs text-blue-400 font-medium">Esperando modelo 2...</p>
+                  <p className="text-xs text-gray-500 mt-1">Invitación pendiente</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
       // Si mainCamera es "local", mostrar cámara del cliente
       if (mainCamera === "local" && localParticipant) {
         if (finalLocalTrack) {
@@ -1321,26 +1542,28 @@ const VideoDisplayImprovedClient = ({
         </div>
       )}
 
-      {/* Mini video con borde fucsia */}
-      <div
-        className="absolute bottom-4 left-4
-                   w-16 h-20
-                   sm:w-20 sm:h-24
-                   md:w-24 md:h-28
-                   lg:w-28 lg:h-32
-                   xl:w-32 xl:h-36
-                   rounded-xl overflow-hidden border-2 border-[#ff007a]/50 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-[#ff007a] group backdrop-blur-sm"
-        onClick={onCameraSwitch}
-      >
-        {getMiniVideo()}
+      {/* Mini video con borde fucsia - OCULTO EN MODO 2VS1 */}
+      {!(callData?.is_dual_call || callData?.modelo_id_2 || sessionStorage.getItem('isDualCall') === 'true') && (
+        <div
+          className="absolute bottom-4 left-4
+                     w-16 h-20
+                     sm:w-20 sm:h-24
+                     md:w-24 md:h-28
+                     lg:w-28 lg:h-32
+                     xl:w-32 xl:h-36
+                     rounded-xl overflow-hidden border-2 border-[#ff007a]/50 shadow-2xl cursor-pointer transition-all duration-300 hover:scale-105 hover:border-[#ff007a] group backdrop-blur-sm"
+          onClick={onCameraSwitch}
+        >
+          {getMiniVideo()}
 
-        {/* Overlay de intercambio */}
-        <div className="absolute inset-0 bg-[#ff007a]/20 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-xl">
-          <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
-            <Camera size={14} className="text-white" />
+          {/* Overlay de intercambio */}
+          <div className="absolute inset-0 bg-[#ff007a]/20 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center rounded-xl">
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+              <Camera size={14} className="text-white" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 };

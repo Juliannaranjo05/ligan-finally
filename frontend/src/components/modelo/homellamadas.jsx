@@ -9,8 +9,11 @@ import { getUser } from "../../utils/auth";
 import axios from "../../api/axios";
 import CallingSystem from '../CallingOverlay';
 import IncomingCallOverlay from '../IncomingCallOverlay';
+import SecondModelInvitationOverlay from '../SecondModelInvitationOverlay';
+import DualCallIncomingOverlay from '../DualCallIncomingOverlay';
 import StoryModal from '../StoryModal';
 import { useAppNotifications } from '../../contexts/NotificationContext';
+import audioManager from '../../utils/AudioManager';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -42,9 +45,13 @@ export default function InterfazCliente() {
   const [currentCall, setCurrentCall] = useState(null);
   const [isReceivingCall, setIsReceivingCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [isDualCall, setIsDualCall] = useState(false); // 🔥 Estado para detectar llamada 2vs1
   const [callPollingInterval, setCallPollingInterval] = useState(null);
   const [incomingCallPollingInterval, setIncomingCallPollingInterval] = useState(null);
   const [incomingCallAudio, setIncomingCallAudio] = useState(null);
+  // 🔥 ESTADOS PARA INVITACIÓN DE SEGUNDO MODELO
+  const [secondModelInvitation, setSecondModelInvitation] = useState(null);
+  const [isReceivingSecondModelInvitation, setIsReceivingSecondModelInvitation] = useState(false);
   const audioRef = useRef(null);
   
   // Estados para historial de llamadas
@@ -383,17 +390,96 @@ export default function InterfazCliente() {
     fetchUser();
   }, []);
 
-  // 🧹 CLEANUP: Evitar redirección no deseada desde RouteGuard
-  // Limpiar claves residuales de videochat que pueden forzar redirección
+  // 🔥 VERIFICAR SI HAY LLAMADA ACTIVA Y RECONECTAR AUTOMÁTICAMENTE
   useEffect(() => {
-    try {
-      const keysToRemove = ['roomName', 'currentRoom', 'inCall', 'videochatActive'];
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-      sessionStorage.removeItem('roomName');
-    } catch (e) {
-      // Silenciar cualquier error de storage
-    }
-  }, []);
+    const checkAndReconnect = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        // 🔥 VERIFICAR SI HAY UNA LLAMADA ACTIVA Y RECONECTAR AUTOMÁTICAMENTE
+        // Solo si NO se finalizó manualmente
+        const callEndedManually = localStorage.getItem('call_ended_manually');
+        if (callEndedManually === 'true') {
+          // Si el usuario finalizó manualmente, limpiar todo y no reconectar
+          localStorage.removeItem('call_ended_manually');
+          localStorage.removeItem('roomName');
+          localStorage.removeItem('userName');
+          localStorage.removeItem('currentRoom');
+          localStorage.removeItem('inCall');
+          localStorage.removeItem('videochatActive');
+          return; // Salir sin reconectar
+        }
+        
+        const roomName = localStorage.getItem('roomName');
+        const userName = localStorage.getItem('userName');
+        const videochatActive = localStorage.getItem('videochatActive');
+        const inCall = localStorage.getItem('inCall');
+        
+        // Si hay datos de llamada activa, verificar con el backend
+        if ((videochatActive === 'true' || inCall === 'true') && roomName && userName) {
+          try {
+            const statusResponse = await fetch(`${API_BASE_URL}/api/heartbeat/check-user-status`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              
+              // Verificar si hay una sesión activa con este roomName
+              const activeSession = statusData.sessions?.find(
+                session => session.room_name === roomName && 
+                          (session.status === 'active' || session.status === 'waiting')
+              );
+              
+              if (activeSession) {
+                console.log('🔄 [HomeLlamadas] Llamada activa detectada - Reconectando automáticamente', {
+                  roomName,
+                  userName,
+                  sessionStatus: activeSession.status
+                });
+                
+                // Redirigir de vuelta a la sala de videochat
+                navigate(`/videochatclient?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, {
+                  replace: true,
+                  state: {
+                    roomName: roomName,
+                    userName: userName,
+                    reconnect: true
+                  }
+                });
+                return; // Salir para evitar limpiar datos
+              } else {
+                // No hay sesión activa, limpiar datos
+                console.log('🧹 [HomeLlamadas] No hay sesión activa - Limpiando datos de llamada');
+                const keysToRemove = ['roomName', 'userName', 'currentRoom', 'inCall', 'videochatActive'];
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                sessionStorage.removeItem('roomName');
+              }
+            }
+          } catch (error) {
+            console.warn('⚠️ [HomeLlamadas] Error verificando sesión activa:', error);
+            // En caso de error, limpiar datos por seguridad
+            const keysToRemove = ['roomName', 'userName', 'currentRoom', 'inCall', 'videochatActive'];
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+            sessionStorage.removeItem('roomName');
+          }
+        } else {
+          // No hay datos de llamada activa, limpiar claves residuales
+          const keysToRemove = ['roomName', 'currentRoom', 'inCall', 'videochatActive'];
+          keysToRemove.forEach(k => localStorage.removeItem(k));
+          sessionStorage.removeItem('roomName');
+        }
+      } catch (e) {
+        // Silenciar cualquier error de storage
+      }
+    };
+
+    checkAndReconnect();
+  }, [navigate, API_BASE_URL]);
 
   // 🆕 USEEFFECT ACTUALIZADO PARA CARGAR DATOS DE HISTORIA
   useEffect(() => {
@@ -898,14 +984,63 @@ const verificarLlamadasEntrantes = async () => {
           if (isCallActive) {
           }
           
-          playIncomingCallSound();
-          setIncomingCall(data.incoming_call);
-          setIsReceivingCall(true);
+          // 🔥 DETECTAR SI ES LLAMADA 2VS1
+          const callData = typeof data.incoming_call.data === 'string' 
+            ? JSON.parse(data.incoming_call.data) 
+            : data.incoming_call.data;
+          const isDualModelCall = callData?.is_dual_model_call === true;
+          
+          console.log('🔔 [MODELO] Llamada entrante detectada:', {
+            isDualModelCall,
+            callData,
+            incoming_call: data.incoming_call,
+            room_name: data.incoming_call.room_name || callData?.room_name
+          });
+          
+          // 🔥 SI ES LLAMADA 2VS1, USAR OVERLAY DE INVITACIÓN EN LUGAR DE LLAMADA NORMAL
+          if (isDualModelCall) {
+            const invitationData = {
+              call_id: data.incoming_call.id,
+              room_name: data.incoming_call.room_name || callData?.room_name,
+              cliente: callData?.caller || {
+                id: data.incoming_call.caller_id,
+                name: data.incoming_call.caller_name,
+                avatar: null
+              },
+              modelo1: callData?.other_model || null,
+              message: 'Tienes una invitación para unirte a una llamada 2vs1'
+            };
+            
+            console.log('🔔 [MODELO] Convirtiendo llamada 2vs1 a invitación:', invitationData);
+            
+            setSecondModelInvitation(invitationData);
+            setIsReceivingSecondModelInvitation(true);
+            
+            // Reproducir sonido de invitación
+            try {
+              await audioManager.playRingtone();
+            } catch (err) {
+              console.warn('Error reproduciendo sonido de invitación:', err);
+            }
+          } else {
+            // 🔥 GUARDAR ROOM_NAME EN EL INCOMING CALL SI ESTÁ DISPONIBLE
+            const incomingCallData = {
+              ...data.incoming_call,
+              room_name: data.incoming_call.room_name || callData?.room_name,
+              data: callData
+            };
+            
+            setIsDualCall(false);
+            playIncomingCallSound();
+            setIncomingCall(incomingCallData);
+            setIsReceivingCall(true);
+          }
         }
       } else if (isReceivingCall && !data.has_incoming) {
                 stopIncomingCallSound();
         setIsReceivingCall(false);
         setIncomingCall(null);
+        setIsDualCall(false); // 🔥 Resetear estado de llamada dual
       }
     }
   } catch (error) {
@@ -917,6 +1052,11 @@ const responderLlamada = async (accion) => {
   if (!incomingCall) return;
   
   try {
+    console.log('📞 [MODELO] Respondiendo llamada:', {
+      call_id: incomingCall.id,
+      action: accion,
+      isDualCall
+    });
         
     stopIncomingCallSound();
     
@@ -933,35 +1073,118 @@ const responderLlamada = async (accion) => {
       })
     });
     
+    // 🔥 VERIFICAR SI LA RESPUESTA ES OK ANTES DE PARSEAR JSON
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [MODELO] Error HTTP en respuesta:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      setIsReceivingCall(false);
+      setIncomingCall(null);
+      setIsDualCall(false);
+      notifications.error('Error al procesar la respuesta del servidor');
+      return;
+    }
+    
     const data = await response.json();
     
-    if (response.ok && data.success) {
+    console.log('📞 [MODELO] Respuesta del backend:', {
+      success: data.success,
+      room_name: data.room_name || data.call?.room_name,
+      action: data.action,
+      full_data: data
+    });
+    
+    if (data.success) {
       if (accion === 'accept') {
-                setIsReceivingCall(false);
+        // 🔥 OBTENER ROOM_NAME DE DIFERENTES UBICACIONES
+        const roomName = data.room_name || data.call?.room_name || incomingCall.room_name || incomingCall.data?.room_name;
+        
+        console.log('🔍 [MODELO] Buscando room_name:', {
+          data_room_name: data.room_name,
+          data_call_room_name: data.call?.room_name,
+          incomingCall_room_name: incomingCall.room_name,
+          incomingCall_data_room_name: incomingCall.data?.room_name,
+          final_room_name: roomName
+        });
+        
+        if (!roomName) {
+          console.error('❌ [MODELO] No se pudo obtener room_name de la respuesta');
+          console.error('❌ [MODELO] Datos disponibles:', {
+            data,
+            incomingCall
+          });
+          setIsReceivingCall(false);
+          setIncomingCall(null);
+          setIsDualCall(false);
+          notifications.error('Error: No se pudo obtener información de la sala');
+          return;
+        }
+        
+        console.log('✅ [MODELO] Redirigiendo a videochat con room_name:', roomName);
+        
+        setIsReceivingCall(false);
         setIncomingCall(null);
-        redirigirAVideochat(data);
+        setIsDualCall(false); // 🔥 Resetear estado de llamada dual
+        
+        // 🔥 PREPARAR DATOS PARA REDIRIGIR
+        const callDataToPass = {
+          room_name: roomName,
+          call_id: incomingCall.id || data.call_id,
+          is_dual_call: data.is_dual_call || isDualCall,
+          modelo_id_2: data.modelo_id_2,
+          modelo2: data.modelo2,
+          ...data
+        };
+        
+        console.log('🚀 [MODELO] Datos para redirigir:', callDataToPass);
+        
+        redirigirAVideochat(callDataToPass);
       } else {
-                setIsReceivingCall(false);
+        setIsReceivingCall(false);
         setIncomingCall(null);
+        setIsDualCall(false); // 🔥 Resetear estado de llamada dual
       }
     } else {
-            setIsReceivingCall(false);
+      console.error('❌ [MODELO] Error en respuesta del backend:', data);
+      setIsReceivingCall(false);
       setIncomingCall(null);
+      setIsDualCall(false);
+      notifications.error(data.error || data.message || 'Error al procesar la respuesta');
     }
   } catch (error) {
-        setIsReceivingCall(false);
+    console.error('❌ [MODELO] Error aceptando llamada:', error);
+    console.error('❌ [MODELO] Stack trace:', error.stack);
+    setIsReceivingCall(false);
     setIncomingCall(null);
+    setIsDualCall(false);
+    notifications.error('Error de conexión al procesar la llamada');
   }
 };
 
 // 🔥 FUNCIÓN: REDIRIGIR AL VIDEOCHAT MODELO
 const redirigirAVideochat = (callData) => {
+  console.log('🚀 [MODELO] redirigirAVideochat llamado con:', callData);
+  
   // 🔥 Obtener room_name de diferentes posibles ubicaciones en la respuesta
   const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
   
+  console.log('🔍 [MODELO] Buscando room_name en callData:', {
+    callData_room_name: callData.room_name,
+    incoming_call_room_name: callData.incoming_call?.room_name,
+    call_room_name: callData.call?.room_name,
+    final_room_name: roomName
+  });
+  
   if (!roomName) {
+    console.error('❌ [MODELO] No se encontró room_name en callData');
+    console.error('❌ [MODELO] callData completo:', JSON.stringify(callData, null, 2));
     return;
   }
+  
+  console.log('✅ [MODELO] room_name encontrado:', roomName);
   
   
   // 🔥 DESCONECTAR CONEXIÓN LIVEKIT ANTERIOR SI EXISTE
@@ -993,6 +1216,20 @@ const redirigirAVideochat = (callData) => {
   // Guardar datos de la nueva llamada
   sessionStorage.setItem('roomName', roomName);
   sessionStorage.setItem('userName', user?.name || 'Modelo');
+  
+  // 🔥 DETECTAR SI ES LLAMADA 2VS1 Y GUARDAR INFORMACIÓN
+  const isDualCall = callData?.is_dual_call || callData?.is_dual_model_call || callData?.modelo_id_2 || (callData?.call && callData.call.modelo_id_2);
+  if (isDualCall) {
+    sessionStorage.setItem('isDualCall', 'true');
+    if (callData?.modelo_id_2) {
+      sessionStorage.setItem('modeloId2', callData.modelo_id_2);
+    }
+    console.log('✅ [MODELO] Llamada 2vs1 detectada, guardando información:', {
+      isDualCall,
+      modelo_id_2: callData?.modelo_id_2,
+      modelo2: callData?.modelo2
+    });
+  }
   sessionStorage.setItem('currentRoom', roomName);
   sessionStorage.setItem('inCall', 'true');
   sessionStorage.setItem('videochatActive', 'true');
@@ -1015,21 +1252,91 @@ const redirigirAVideochat = (callData) => {
   
   // Pequeño delay para asegurar que la desconexión anterior se complete
   setTimeout(() => {
+    // 🔥 PREPARAR DATOS PARA VIDEOCHAT 2VS1
+    const videoChatState = {
+      roomName: roomName,
+      userName: user?.name || 'Modelo',
+      callId: callData.call_id || callData.id || callData.incoming_call?.id,
+      from: 'call',
+      callData: callData,
+      isDualCall: isDualCall,
+      modeloId2: callData?.modelo_id_2,
+      modelo2: callData?.modelo2
+    };
+    
+    console.log('🚀 [MODELO] Redirigiendo a videochat con estado:', videoChatState);
+    console.log('🚀 [MODELO] isDualCall:', isDualCall);
+    
     // Redirigir al videochat modelo (no cliente)
-    navigate('/videochat', {
-      state: {
-        roomName: roomName,
-        userName: user?.name || 'Modelo',
-        callId: callData.call_id || callData.id || callData.incoming_call?.id,
-        from: 'call',
-        callData: callData
-      },
-      replace: true // Usar replace para evitar problemas de navegación
-    });
+    try {
+      console.log('🚀 [MODELO] Intentando navegar a /videochat...');
+      navigate('/videochat', {
+        state: videoChatState,
+        replace: true // Usar replace para evitar problemas de navegación
+      });
+      console.log('✅ [MODELO] Navegación iniciada correctamente');
+    } catch (navError) {
+      console.error('❌ [MODELO] Error en navigate:', navError);
+      // Fallback: usar window.location
+      console.log('🔄 [MODELO] Usando fallback con window.location');
+      window.location.href = `/videochat?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(user?.name || 'Modelo')}`;
+    }
   }, 500); // Delay de 500ms para asegurar desconexión
 };
 
 // 🔥 USEEFFECTS NECESARIOS:
+
+// 🔥 POLLING PARA NOTIFICACIONES DE INVITACIÓN DE SEGUNDO MODELO
+useEffect(() => {
+  if (!user?.id || user?.rol !== 'modelo') return;
+
+  const checkSecondModelInvitations = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/status/updates`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.has_notifications) {
+          const notification = data.notification;
+          
+          if (notification.type === 'second_model_invitation') {
+            const invitationData = typeof notification.data === 'string'
+              ? JSON.parse(notification.data)
+              : notification.data;
+            
+            console.log('🔔 [MODELO] Invitación de segundo modelo recibida:', invitationData);
+            
+            setSecondModelInvitation(invitationData);
+            setIsReceivingSecondModelInvitation(true);
+            
+            // Reproducir sonido de invitación
+            try {
+              await audioManager.playRingtone();
+            } catch (err) {
+              console.warn('Error reproduciendo sonido de invitación:', err);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error verificando invitaciones de segundo modelo:', error);
+    }
+  };
+
+  // Verificar cada 3 segundos
+  const interval = setInterval(checkSecondModelInvitations, 3000);
+  checkSecondModelInvitations(); // Verificar inmediatamente
+
+  return () => clearInterval(interval);
+}, [user?.id, user?.rol]);
 
 // 1. POLLING PARA LLAMADAS ENTRANTES
 useEffect(() => {
@@ -1492,11 +1799,115 @@ useEffect(() => {
         callStatus={currentCall?.status || 'initiating'}
       />
 
-      <IncomingCallOverlay
-        isVisible={isReceivingCall}
-        callData={incomingCall}
-        onAnswer={() => responderLlamada('accept')}
-        onDecline={() => responderLlamada('reject')}
+      {/* 🔥 OVERLAY PARA LLAMADA NORMAL (NO 2VS1) */}
+      {!isDualCall && (
+        <IncomingCallOverlay
+          isVisible={isReceivingCall}
+          callData={incomingCall}
+          onAnswer={() => responderLlamada('accept')}
+          onDecline={() => responderLlamada('reject')}
+        />
+      )}
+
+      {/* 🔥 OVERLAY PARA INVITACIÓN DE SEGUNDO MODELO */}
+      <SecondModelInvitationOverlay
+        isVisible={isReceivingSecondModelInvitation}
+        invitationData={secondModelInvitation}
+        onAccept={async () => {
+          if (!secondModelInvitation?.call_id) {
+            console.error('❌ [MODELO] No hay call_id en la invitación');
+            return;
+          }
+          
+          console.log('📞 [MODELO] Aceptando invitación de segundo modelo:', {
+            call_id: secondModelInvitation.call_id,
+            room_name: secondModelInvitation.room_name
+          });
+          
+          try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/api/calls/answer`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                call_id: secondModelInvitation.call_id,
+                action: 'accept'
+              })
+            });
+            
+            console.log('📞 [MODELO] Respuesta de aceptar invitación:', {
+              status: response.status,
+              ok: response.ok
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ [MODELO] Error HTTP:', {
+                status: response.status,
+                error: errorText
+              });
+              return;
+            }
+            
+            const data = await response.json();
+            console.log('📞 [MODELO] Datos de respuesta:', data);
+            
+            if (data.success) {
+              setIsReceivingSecondModelInvitation(false);
+              setSecondModelInvitation(null);
+              audioManager.stopRingtone();
+              
+              // 🔥 PREPARAR DATOS PARA REDIRIGIR
+              const roomName = data.room_name || secondModelInvitation.room_name;
+              
+              if (!roomName) {
+                console.error('❌ [MODELO] No se encontró room_name en la respuesta');
+                return;
+              }
+              
+              const callDataToPass = {
+                room_name: roomName,
+                call_id: secondModelInvitation.call_id,
+                is_dual_call: true,
+                modelo_id_2: data.modelo_id_2 || secondModelInvitation.call_id,
+                modelo2: data.modelo2,
+                ...data
+              };
+              
+              console.log('🚀 [MODELO] Redirigiendo segundo modelo a videochat:', callDataToPass);
+              
+              // Redirigir al videochat
+              redirigirAVideochat(callDataToPass);
+            } else {
+              console.error('❌ [MODELO] Error en respuesta:', data);
+            }
+          } catch (error) {
+            console.error('❌ [MODELO] Error aceptando invitación:', error);
+            console.error('❌ [MODELO] Stack:', error.stack);
+          }
+        }}
+        onReject={async () => {
+          if (!secondModelInvitation?.call_id) return;
+          try {
+            const token = localStorage.getItem('token');
+            await fetch(`${API_BASE_URL}/api/calls/${secondModelInvitation.call_id}/reject-second-model`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            setIsReceivingSecondModelInvitation(false);
+            setSecondModelInvitation(null);
+            audioManager.stopRingtone();
+          } catch (error) {
+            console.error('Error rechazando invitación:', error);
+          }
+        }}
       />
     </ProtectedPage>
   );

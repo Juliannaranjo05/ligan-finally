@@ -22,7 +22,11 @@ class ChatSession extends Model
         'modelo_data',
         'started_at',
         'answered_at',
-        'ended_at'
+        'ended_at',
+        'modelo_id_2',
+        'modelo_2_invited_at',
+        'modelo_2_answered_at',
+        'modelo_2_status'
     ];
 
     protected $casts = [
@@ -30,6 +34,8 @@ class ChatSession extends Model
         'started_at' => 'datetime',
         'answered_at' => 'datetime',
         'ended_at' => 'datetime',
+        'modelo_2_invited_at' => 'datetime',
+        'modelo_2_answered_at' => 'datetime',
     ];
 
     // Relaciones
@@ -41,6 +47,11 @@ class ChatSession extends Model
     public function modelo()
     {
         return $this->belongsTo(User::class, 'modelo_id');
+    }
+
+    public function modelo2()
+    {
+        return $this->belongsTo(User::class, 'modelo_id_2');
     }
 
     // Relación explícita para el caller
@@ -159,6 +170,34 @@ class ChatSession extends Model
         return in_array($this->status, ['ended', 'rejected', 'cancelled']);
     }
 
+    // Métodos para segundo modelo
+    public function hasSecondModel()
+    {
+        return !is_null($this->modelo_id_2);
+    }
+
+    public function getAllModelos()
+    {
+        $modelos = [];
+        if ($this->modelo_id) {
+            $modelos[] = $this->modelo;
+        }
+        if ($this->modelo_id_2 && $this->modelo_2_status === 'accepted') {
+            $modelos[] = $this->modelo2;
+        }
+        return array_filter($modelos);
+    }
+
+    public function isSecondModelPending()
+    {
+        return $this->modelo_2_status === 'pending';
+    }
+
+    public function isSecondModelAccepted()
+    {
+        return $this->modelo_2_status === 'accepted';
+    }
+
     // Calcular duración
     public function getDurationAttribute()
     {
@@ -232,7 +271,24 @@ class ChatSession extends Model
     {
         return $query->where(function($q) use ($userId) {
             $q->where('cliente_id', $userId)
-              ->orWhere('modelo_id', $userId);
+              ->orWhere('modelo_id', $userId)
+              ->orWhere('modelo_id_2', $userId);
         });
+    }
+
+    // Scopes para segundo modelo
+    public function scopeForModelo2($query, $modeloId)
+    {
+        return $query->where('modelo_id_2', $modeloId);
+    }
+
+    public function scopeWithSecondModel($query)
+    {
+        return $query->whereNotNull('modelo_id_2');
+    }
+
+    public function scopeSecondModelPending($query)
+    {
+        return $query->where('modelo_2_status', 'pending');
     }
 }

@@ -77,12 +77,6 @@ export const GiftsModal = ({
   }, [isOpen]);
 
   const handleGiftSelect = async (gift) => {
-    // 🔥 Prevenir múltiples clics mientras se procesa
-    if (isLoading) {
-      console.warn('⚠️ [GIFTMODAL] Ya se está procesando un regalo, ignorando clic');
-      return;
-    }
-    
     setIsLoading(true);
     
     try {
@@ -169,45 +163,27 @@ export const GiftsModal = ({
           message || `¡${translatedGiftName} para ti! 💝`
         );
 
-        // 🔥 Asegurar que siempre se resetee el loading, incluso si result es undefined
-        if (!result) {
-          console.warn('⚠️ [GIFTMODAL] onSendGift no retornó resultado');
-          setIsLoading(false);
-          onClose();
-          return;
-        }
-
         if (result.success) {
           // 🔥 Si es un error de red pero el regalo se envió, no mostrar alert
           if (result.networkError || result.timeout) {
             // El regalo se envió pero hubo error de conexión - cerrar modal sin alert
             setIsLoading(false);
-            // 🔥 Pequeño delay para asegurar que el estado se actualice antes de cerrar
-            setTimeout(() => {
-              onClose();
-            }, 100);
+            onClose();
           } else {
             // Regalo enviado normalmente - mostrar confirmación
+            alert(t('gifts.giftSent', { giftName: translatedGiftName, recipientName: recipientName }));
             setIsLoading(false);
-            // 🔥 Resetear loading primero, luego mostrar alert y cerrar
-            setTimeout(() => {
-              alert(t('gifts.giftSent', { giftName: translatedGiftName, recipientName: recipientName }));
-              onClose();
-            }, 100);
+            onClose();
           }
         } else {
           // 🔥 Solo mostrar error si NO es un error de red/timeout
           if (!result.networkError && !result.timeout) {
+            alert(`${t('error')}: ${result.error}`);
             setIsLoading(false);
-            setTimeout(() => {
-              alert(`${t('error')}: ${result.error || 'Error desconocido'}`);
-            }, 100);
           } else {
             // Error de red pero puede haberse enviado - cerrar modal sin mostrar error
             setIsLoading(false);
-            setTimeout(() => {
-              onClose();
-            }, 100);
+            onClose();
           }
         }
       }
@@ -215,13 +191,9 @@ export const GiftsModal = ({
     } catch (error) {
       // 🔥 No mostrar error si es un error de red - el regalo puede haberse enviado
       console.error('🎁 [GIFTMODAL] Error procesando regalo:', error);
-      // 🔥 SIEMPRE resetear loading y cerrar modal, incluso si hay error
       setIsLoading(false);
       // Cerrar modal sin mostrar error - el regalo puede haberse enviado
       onClose();
-    } finally {
-      // 🔥 GARANTIZAR que el loading se resetee siempre, incluso si hay un error inesperado
-      setIsLoading(false);
     }
   };
 

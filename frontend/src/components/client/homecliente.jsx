@@ -11,6 +11,8 @@ import { useTranslation } from 'react-i18next';
 import { createLogger } from '../../utils/logger';
 import { useBrowsingHeartbeat } from '../../utils/heartbeat';
 import { useGlobalCall } from '../../contexts/GlobalCallContext';
+import CallModeSelector from './CallModeSelector';
+import DualCallConfigModal from './DualCallConfigModal';
 
 const logger = createLogger('HomeCliente');
 
@@ -113,7 +115,7 @@ export default function InterfazCliente() {
 
   // 🔥 VALIDACIÓN ADICIONAL DE SEGURIDAD: Verificar token y rol al montar
   useEffect(() => {
-    const validateAccess = () => {
+    const validateAccess = async () => {
       // Verificar flag de sesión cerrada primero
       const sessionClosedFlag = localStorage.getItem('session_closed_by_other_device');
       if (sessionClosedFlag === 'true') {
@@ -134,6 +136,82 @@ export default function InterfazCliente() {
         }
         window.location.href = '/home';
         return;
+      }
+
+      // 🔥 VERIFICAR SI HAY UNA LLAMADA ACTIVA Y RECONECTAR AUTOMÁTICAMENTE
+      // Solo si NO se finalizó manualmente
+      const callEndedManually = localStorage.getItem('call_ended_manually');
+      if (callEndedManually === 'true') {
+        // Si el usuario finalizó manualmente, limpiar todo y no reconectar
+        localStorage.removeItem('call_ended_manually');
+        localStorage.removeItem('roomName');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('currentRoom');
+        localStorage.removeItem('inCall');
+        localStorage.removeItem('videochatActive');
+        return; // Salir sin reconectar
+      }
+      
+      const roomName = localStorage.getItem('roomName');
+      const userName = localStorage.getItem('userName');
+      const videochatActive = localStorage.getItem('videochatActive');
+      const inCall = localStorage.getItem('inCall');
+      
+      // Si hay datos de llamada activa, verificar con el backend
+      if ((videochatActive === 'true' || inCall === 'true') && roomName && userName) {
+        try {
+          const statusResponse = await fetch(`${API_BASE_URL}/api/heartbeat/check-user-status`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            
+            // Verificar si hay una sesión activa con este roomName
+            const activeSession = statusData.sessions?.find(
+              session => session.room_name === roomName && 
+                        (session.status === 'active' || session.status === 'waiting')
+            );
+            
+            if (activeSession) {
+              console.log('🔄 [HomeCliente] Llamada activa detectada - Reconectando automáticamente', {
+                roomName,
+                userName,
+                sessionStatus: activeSession.status
+              });
+              
+              // Redirigir de vuelta a la sala de videochat
+              navigate(`/videochatclient?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, {
+                replace: true,
+                state: {
+                  roomName: roomName,
+                  userName: userName,
+                  reconnect: true
+                }
+              });
+              return; // Salir para evitar otras validaciones
+            } else {
+              // No hay sesión activa, limpiar datos
+              console.log('🧹 [HomeCliente] No hay sesión activa - Limpiando datos de llamada');
+              localStorage.removeItem('roomName');
+              localStorage.removeItem('userName');
+              localStorage.removeItem('currentRoom');
+              localStorage.removeItem('inCall');
+              localStorage.removeItem('videochatActive');
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [HomeCliente] Error verificando sesión activa:', error);
+          // En caso de error, limpiar datos por seguridad
+          localStorage.removeItem('roomName');
+          localStorage.removeItem('userName');
+          localStorage.removeItem('currentRoom');
+          localStorage.removeItem('inCall');
+          localStorage.removeItem('videochatActive');
+        }
       }
 
       // Verificar rol del usuario desde localStorage (caché)
@@ -177,7 +255,7 @@ export default function InterfazCliente() {
     };
 
     validateAccess();
-  }, [navigate]);
+  }, [navigate, API_BASE_URL]);
 
   // Estados
   const [user, setUser] = useState(null);
@@ -530,6 +608,32 @@ export default function InterfazCliente() {
   const [isCallActive, setIsCallActive] = useState(false);
   const [currentCall, setCurrentCall] = useState(null);
   const [callPollingInterval, setCallPollingInterval] = useState(null);
+  // 🔥 ESTADOS PARA MODO DE LLAMADA 2VS1
+  const [callMode, setCallMode] = useState('normal'); // 'normal' | 'dual'
+  const [selectedModelos, setSelectedModelos] = useState([]); // Array de IDs de chicas seleccionadas
+  const [availableModelos, setAvailableModelos] = useState([]); // Lista de chicas disponibles
+  const [showDualCallModal, setShowDualCallModal] = useState(false); // Modal para configurar 2vs1
+
+  // 🔥 ACTUALIZAR MODELOS DISPONIBLES CUANDO CAMBIEN LAS CHICAS ACTIVAS
+  useEffect(() => {
+    if (chicasActivas && chicasActivas.length > 0) {
+      const modelosDisponibles = chicasActivas.map(chica => ({
+        id: chica.id,
+        name: chica.name || chica.display_name || chica.alias || chica.user_name || `Modelo ${chica.id}`,
+        avatar: chica.avatar_url || chica.avatar
+      }));
+      
+      console.log('🔄 [HOME] Actualizando modelos disponibles para selector:', {
+        count: modelosDisponibles.length,
+        modelos: modelosDisponibles
+      });
+      
+      setAvailableModelos(modelosDisponibles);
+    } else {
+      console.log('⚠️ [HOME] No hay chicas activas para el selector');
+      setAvailableModelos([]);
+    }
+  }, [chicasActivas]);
   
   // 🔥 USAR CONTEXTO GLOBAL PARA LLAMADAS ENTRANTES
   const { isReceivingCall, playOutgoingCallSound, stopOutgoingCallSound } = useGlobalCall();
@@ -695,6 +799,12 @@ export default function InterfazCliente() {
               newCount: chicasOnline.length,
               newIds: newChicaIds
             });
+            // 🔥 ACTUALIZAR MODELOS DISPONIBLES PARA EL SELECTOR
+            setAvailableModelos(chicasOnline.map(chica => ({
+              id: chica.id,
+              name: chica.name || chica.display_name || chica.alias || chica.user_name || `Modelo ${chica.id}`,
+              avatar: chica.avatar_url || chica.avatar
+            })));
             return chicasOnline;
           }
           
@@ -760,6 +870,12 @@ export default function InterfazCliente() {
           })).filter(u => u.is_online);
         
         setChicasActivas(uniqueChicas);
+        // 🔥 ACTUALIZAR MODELOS DISPONIBLES PARA EL SELECTOR
+        setAvailableModelos(uniqueChicas.map(chica => ({
+          id: chica.id,
+          name: chica.name || chica.display_name || chica.alias || chica.user_name || `Modelo ${chica.id}`,
+          avatar: chica.avatar_url || chica.avatar
+        })));
       } else {
         throw new Error('No se pudieron cargar conversaciones');
       }
@@ -980,15 +1096,19 @@ export default function InterfazCliente() {
     navigate(navigationState);
   };
 
-  // 🔥 NUEVA FUNCIÓN: INICIAR LLAMADA A CHICA
-  const iniciarLlamadaAChica = async (chica) => {
+  // 🔥 NUEVA FUNCIÓN: INICIAR LLAMADA A CHICA (SOPORTA 1VS1 Y 2VS1)
+  const iniciarLlamadaAChica = async (chica, modeloIds = null) => {
     try {
+      // 🔥 DETERMINAR SI ES LLAMADA CON 2 MODELOS
+      const isDualCall = Array.isArray(modeloIds) && modeloIds.length === 2;
+      const modeloIdsToUse = modeloIds || (chica?.id ? [chica.id] : null);
       
       // 🔥 VARIABLES CORRECTAS PARA LA VALIDACIÓN
-      const otherUserId = chica.id;
-      const otherUserName = chica.name || chica.alias;
+      const otherUserId = chica?.id;
+      const otherUserName = chica?.name || chica?.alias;
       
-      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA
+      // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA (doble si es 2vs1)
+      const minimumBalance = isDualCall ? 60 : 30; // 60 para 2vs1, 30 para 1vs1
       const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
         method: 'GET',
         headers: getAuthHeaders()
@@ -998,10 +1118,10 @@ export default function InterfazCliente() {
         const balanceData = await balanceResponse.json();
         logger.debug('Respuesta de balance', balanceData);
         
-        // 🔥 VERIFICAR SI PUEDE INICIAR LLAMADA (puede venir como success.can_start_call o directamente can_start_call)
-        const canStartCall = balanceData.success?.can_start_call ?? balanceData.can_start_call ?? true;
+        const purchasedBalance = balanceData.balance?.purchased_coins || balanceData.balance?.purchased_balance || 0;
+        const canStartCall = purchasedBalance >= minimumBalance;
         
-        logger.debug('can_start_call', { canStartCall });
+        logger.debug('can_start_call', { canStartCall, purchasedBalance, minimumBalance });
         
         if (!canStartCall) {
           // ❌ NO TIENE SALDO SUFICIENTE - MOSTRAR MODAL DE COMPRA
@@ -1015,54 +1135,62 @@ export default function InterfazCliente() {
         logger.warn('No se pudo verificar el saldo, continuando con la llamada');
       }
       
-      // 🚫 VERIFICAR SI YO LA BLOQUEÉ
-      const yoLaBloquee = usuariosBloqueados.some((user) => user.id === otherUserId);
-      if (yoLaBloquee) {
-        setConfirmAction({
-          type: 'blocked',
-          title: t('clientInterface.notAvailable'),
-          message: t('clientInterface.youBlockedUser', { name: 'nombre' }),
-          confirmText: t('clientInterface.understood'),
-          action: () => setShowConfirmModal(false)
-        });
-        setShowConfirmModal(true);
-        return;
-      }
-
-      // 🚫 VERIFICAR SI ELLA ME BLOQUEÓ
-      try {
-        const blockCheckResponse = await fetch(`${API_BASE_URL}/api/blocks/check-if-blocked-by`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            user_id: otherUserId
-          })
-        });
-
-        if (blockCheckResponse.ok) {
-          const blockData = await blockCheckResponse.json();
-          if (blockData.success && blockData.is_blocked_by_them) {
-            setConfirmAction({
-              type: 'blocked',
-              title: t('clientInterface.notAvailable'),
-              message: t('clientInterface.userBlockedYou', { name: 'nombre' }),
-              confirmText: t('clientInterface.understood'),
-              action: () => setShowConfirmModal(false)
-            });
-            setShowConfirmModal(true);
-            return;
-          }
+      // 🚫 VERIFICAR BLOQUEOS (solo si es llamada 1vs1)
+      if (!isDualCall && otherUserId) {
+        const yoLaBloquee = usuariosBloqueados.some((user) => user.id === otherUserId);
+        if (yoLaBloquee) {
+          setConfirmAction({
+            type: 'blocked',
+            title: t('clientInterface.notAvailable'),
+            message: t('clientInterface.youBlockedUser', { name: 'nombre' }),
+            confirmText: t('clientInterface.understood'),
+            action: () => setShowConfirmModal(false)
+          });
+          setShowConfirmModal(true);
+          return;
         }
-        // Si el endpoint no está disponible (404) o hay error, continuar normalmente
-      } catch (error) {
-        // Silenciar errores de red o del endpoint (endpoint puede no estar disponible)
+
+        // 🚫 VERIFICAR SI ELLA ME BLOQUEÓ
+        try {
+          const blockCheckResponse = await fetch(`${API_BASE_URL}/api/blocks/check-if-blocked-by`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              user_id: otherUserId
+            })
+          });
+
+          if (blockCheckResponse.ok) {
+            const blockData = await blockCheckResponse.json();
+            if (blockData.success && blockData.is_blocked_by_them) {
+              setConfirmAction({
+                type: 'blocked',
+                title: t('clientInterface.notAvailable'),
+                message: t('clientInterface.userBlockedYou', { name: 'nombre' }),
+                confirmText: t('clientInterface.understood'),
+                action: () => setShowConfirmModal(false)
+              });
+              setShowConfirmModal(true);
+              return;
+            }
+          }
+        } catch (error) {
+          // Silenciar errores de red o del endpoint
+        }
       }
 
       // ✅ SIN BLOQUEOS Y CON SALDO - PROCEDER CON LA LLAMADA
-      setCurrentCall({
-        ...chica,
-        status: 'initiating'
-      });
+      if (isDualCall) {
+        setCurrentCall({
+          modeloIds: modeloIdsToUse,
+          status: 'initiating'
+        });
+      } else {
+        setCurrentCall({
+          ...chica,
+          status: 'initiating'
+        });
+      }
       setIsCallActive(true);
       
       // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
@@ -1074,27 +1202,40 @@ export default function InterfazCliente() {
       }
       
       const token = localStorage.getItem('token');
+      
+      // 🔥 PREPARAR BODY SEGÚN TIPO DE LLAMADA
+      const requestBody = isDualCall
+        ? { modelo_ids: modeloIdsToUse, call_type: 'video' }
+        : { receiver_id: chica.id, call_type: 'video' };
+      
       const response = await fetch(`${API_BASE_URL}/api/calls/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          receiver_id: chica.id,
-          call_type: 'video'
-        })
+        body: JSON.stringify(requestBody)
       });
       
       const data = await response.json();
       
       if (data.success) {
-        setCurrentCall({
-          ...chica,
-          callId: data.call_id,
-          roomName: data.room_name,
-          status: 'calling'
-        });
+        if (isDualCall && data.modelos) {
+          setCurrentCall({
+            modeloIds: modeloIdsToUse,
+            modelos: data.modelos,
+            callId: data.call_id,
+            roomName: data.room_name,
+            status: 'calling'
+          });
+        } else {
+          setCurrentCall({
+            ...chica,
+            callId: data.call_id,
+            roomName: data.room_name,
+            status: 'calling'
+          });
+        }
         iniciarPollingLlamada(data.call_id);
       } else {
         stopOutgoingCallSound();
@@ -1916,11 +2057,81 @@ export default function InterfazCliente() {
                 {t('clientInterface.mainDescription')}
               </p>
 
+              {/* 🔥 SELECTOR DE MODO DE LLAMADA */}
+              <div className="w-full max-w-xs px-2 mb-2">
+                <CallModeSelector
+                  onModeChange={(mode, selectedIds) => {
+                    setCallMode(mode);
+                    if (mode === 'dual') {
+                      // Abrir modal para configurar 2vs1
+                      setShowDualCallModal(true);
+                    } else {
+                      // Modo normal, limpiar selección
+                      setSelectedModelos([]);
+                    }
+                  }}
+                  disabled={loadingBalance}
+                  initialMode={callMode}
+                  availableModelos={availableModelos}
+                />
+              </div>
+
+              {/* 🔥 MODAL PARA CONFIGURAR LLAMADA 2VS1 */}
+              <DualCallConfigModal
+                isOpen={showDualCallModal}
+                onClose={() => {
+                  setShowDualCallModal(false);
+                  // Si se cancela, volver a modo normal
+                  setCallMode('normal');
+                  setSelectedModelos([]);
+                }}
+                availableModelos={availableModelos}
+                onConfirm={async (modeloIds) => {
+                  console.log('✅ [HOME] Modelos seleccionados para 2vs1:', modeloIds);
+                  setSelectedModelos(modeloIds);
+                  setCallMode('dual');
+                  setShowDualCallModal(false);
+                  
+                  // 🔥 INICIAR LLAMADA 2VS1 INMEDIATAMENTE
+                  try {
+                    await iniciarLlamadaAChica(null, modeloIds);
+                  } catch (error) {
+                    console.error('❌ [HOME] Error iniciando llamada 2vs1:', error);
+                    // Resetear estado en caso de error
+                    setSelectedModelos([]);
+                    setCallMode('normal');
+                  }
+                }}
+                userBalance={userBalance?.purchased_coins || userBalance?.purchased_balance || 0}
+              />
+
               {/* Botones verticales */}
               <div className="flex flex-col items-center gap-3 sm:gap-4 lg:gap-5 w-full max-w-xs px-2 pb-2 sm:pb-3">
               <button
                 className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                onClick={validarSaldoYRedireccionarConLoading} // ✅ Usar la función con loading
+                onClick={() => {
+                  // 🔥 BLOQUEAR 2VS1 EN PRODUCCIÓN
+                  const isProd = API_BASE_URL?.includes('ligandome.com') || API_BASE_URL?.includes('https://');
+                  if (callMode === 'dual' && isProd) {
+                    alert('La función 2vs1 no está disponible temporalmente. Por favor, usa el modo 1vs1.');
+                    setCallMode('normal');
+                    setSelectedModelos([]);
+                    return;
+                  }
+
+                  if (callMode === 'dual') {
+                    // Si está en modo dual pero no hay modelos seleccionados, abrir modal
+                    if (selectedModelos.length !== 2) {
+                      setShowDualCallModal(true);
+                    } else {
+                      // Ya hay modelos seleccionados, iniciar llamada
+                      iniciarLlamadaAChica(null, selectedModelos);
+                    }
+                  } else {
+                    // Modo normal, usar flujo original
+                    validarSaldoYRedireccionarConLoading();
+                  }
+                }}
                 disabled={loadingBalance}
               >
                 {loadingBalance ? (
@@ -1933,7 +2144,10 @@ export default function InterfazCliente() {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    {t('clientInterface.startCall')}
+                    {callMode === 'dual' 
+                      ? (selectedModelos.length === 2 ? 'Iniciar Llamada 2vs1' : 'Configurar Llamada 2vs1')
+                      : t('clientInterface.startCall')
+                    }
                   </div>
                 )}
               </button>

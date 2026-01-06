@@ -7,6 +7,7 @@ use App\Models\SessionEarning;
 use App\Models\VideoChatSession;
 use App\Models\WeeklyPayment;
 use App\Models\User;
+use App\Models\ChatSession;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -81,27 +82,93 @@ class SessionEarningsController extends Controller
                 return false;
             }
             
-            // 💰 CALCULAR GANANCIAS POR TIEMPO
-            $timeEarnings = $this->calculateTimeEarnings($durationSeconds);
+            // 🔥 VERIFICAR SI HAY SEGUNDO MODELO EN LA LLAMADA
+            $call = \App\Models\ChatSession::where('room_name', $roomName)
+                ->where('session_type', 'call')
+                ->first();
             
-            // 🔒 VALIDAR GANANCIAS CALCULADAS
-            if (!isset($timeEarnings['model_earnings']) || !isset($timeEarnings['platform_earnings'])) {
-                DB::rollBack();
-                Log::error('❌ [UNIFICADO] Error calculando ganancias', [
-                    'time_earnings' => $timeEarnings
+            $hasSecondModel = $call && $call->modelo_id_2 && $call->modelo_2_status === 'accepted';
+            $secondModelId = $hasSecondModel ? $call->modelo_id_2 : null;
+            $secondModelJoinedAt = $hasSecondModel && $call->modelo_2_answered_at 
+                ? \Carbon\Carbon::parse($call->modelo_2_answered_at) 
+                : null;
+            
+            if ($hasSecondModel && $secondModelJoinedAt && $call->started_at) {
+                // 🔥 LLAMADA 2VS1: Calcular earnings proporcionales
+                $callStart = \Carbon\Carbon::parse($call->started_at);
+                $callEnd = $call->ended_at ? \Carbon\Carbon::parse($call->ended_at) : now();
+                
+                // Tiempo total de la llamada
+                $totalDurationSeconds = $callStart->diffInSeconds($callEnd);
+                
+                // Tiempo antes de que se uniera el segundo modelo (solo modelo 1)
+                $durationBeforeSecondModel = max(0, $callStart->diffInSeconds($secondModelJoinedAt));
+                // Tiempo después de que se unió el segundo modelo (ambos modelos)
+                $durationAfterSecondModel = max(0, $secondModelJoinedAt->diffInSeconds($callEnd));
+                
+                // Calcular earnings para modelo 1 (tiempo completo)
+                $model1DurationSeconds = $totalDurationSeconds;
+                $model1Earnings = $this->calculateTimeEarnings($model1DurationSeconds);
+                
+                // Calcular earnings para modelo 2 (solo tiempo después de unirse)
+                $model2DurationSeconds = $durationAfterSecondModel;
+                $model2Earnings = $this->calculateTimeEarnings($model2DurationSeconds);
+                
+                // Procesar earnings para modelo 1
+                if ($modelUserId === $call->modelo_id) {
+                    $this->createOrUpdateSessionEarning(
+                        $session,
+                        $modelUserId,
+                        $clientUserId,
+                        $roomName,
+                        $model1DurationSeconds,
+                        $model1Earnings
+                    );
+                }
+                
+                // Procesar earnings para modelo 2
+                if ($secondModelId && $modelUserId === $secondModelId) {
+                    $this->createOrUpdateSessionEarning(
+                        $session,
+                        $secondModelId,
+                        $clientUserId,
+                        $roomName,
+                        $model2DurationSeconds,
+                        $model2Earnings
+                    );
+                }
+                
+                Log::info('💰 [2VS1] Earnings calculados proporcionalmente', [
+                    'model1_id' => $call->modelo_id,
+                    'model2_id' => $secondModelId,
+                    'model1_duration' => $model1DurationSeconds,
+                    'model2_duration' => $model2DurationSeconds,
+                    'model1_earnings' => $model1Earnings['model_earnings'],
+                    'model2_earnings' => $model2Earnings['model_earnings']
                 ]);
-                return false;
+            } else {
+                // 🔥 LLAMADA NORMAL 1VS1
+                $timeEarnings = $this->calculateTimeEarnings($durationSeconds);
+                
+                // 🔒 VALIDAR GANANCIAS CALCULADAS
+                if (!isset($timeEarnings['model_earnings']) || !isset($timeEarnings['platform_earnings'])) {
+                    DB::rollBack();
+                    Log::error('❌ [UNIFICADO] Error calculando ganancias', [
+                        'time_earnings' => $timeEarnings
+                    ]);
+                    return false;
+                }
+                
+                // 🔄 CREAR O ACTUALIZAR SESSION_EARNINGS
+                $this->createOrUpdateSessionEarning(
+                    $session,
+                    $modelUserId,
+                    $clientUserId,
+                    $roomName,
+                    $durationSeconds,
+                    $timeEarnings
+                );
             }
-            
-            // 🔄 CREAR O ACTUALIZAR SESSION_EARNINGS
-            $this->createOrUpdateSessionEarning(
-                $session,
-                $modelUserId,
-                $clientUserId,
-                $roomName,
-                $durationSeconds,
-                $timeEarnings
-            );
 
             // 🔒 COMMIT TRANSACCIÓN (la actualización de billetera se hace dentro de createOrUpdateSessionEarning)
             DB::commit();

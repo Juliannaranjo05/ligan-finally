@@ -23,16 +23,45 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
     return localStorage.getItem('selectedLanguage') || globalCurrentLanguage || 'es';
   });
 
-  // 🔥 ESTADO LOCAL PARA TRADUCCIÓN - HABILITAR POR DEFECTO PARA TESTING
+  // 🔥 CORRECCIÓN: Inicializar localTranslationEnabled basándose en el idioma actual, no solo en localStorage
   const [localTranslationEnabled, setLocalTranslationEnabled] = useState(() => {
-    const saved = localStorage.getItem('translationEnabled');
-    // 🔥 HABILITAR POR DEFECTO PARA TESTING
-    return saved === 'true' || saved === null;
+    // Primero verificar si hay un valor explícito en localStorage
+    const storedValue = localStorage.getItem('translationEnabled');
+    if (storedValue !== null) {
+      return storedValue === 'true';
+    }
+    // Si no hay valor en localStorage, habilitar traducción si el idioma no es español
+    const initialLang = localStorage.getItem('selectedLanguage') || globalCurrentLanguage || 'es';
+    return initialLang !== 'es';
   });
 
   // 🔥 ESTADOS PARA EL SISTEMA DE TRADUCCIÓN
   const [translations, setTranslations] = useState(new Map());
   const [translatingIds, setTranslatingIds] = useState(new Set());
+
+  // 🔥 SINCRONIZAR localTranslationEnabled CON EL IDIOMA INICIAL Y CAMBIOS
+  useEffect(() => {
+    // Verificar y actualizar localTranslationEnabled basándose en el idioma actual
+    // Esto asegura que si el idioma es inglés (u otro idioma diferente de español), la traducción esté habilitada
+    const initialLang = currentLanguage || globalCurrentLanguage || localStorage.getItem('selectedLanguage') || 'es';
+    const shouldEnableForInitialLang = initialLang !== 'es';
+    const storedTranslationEnabled = localStorage.getItem('translationEnabled');
+    
+    // 🔥 CORRECCIÓN: Verificar si hay un valor explícito en localStorage primero
+    // Si NO hay valor explícito, habilitar/deshabilitar según el idioma
+    if (storedTranslationEnabled === null) {
+      // No hay valor explícito, usar el idioma para decidir
+      if (shouldEnableForInitialLang) {
+        // Idioma no es español, habilitar traducción
+        setLocalTranslationEnabled(true);
+        localStorage.setItem('translationEnabled', 'true');
+      } else {
+        // Idioma es español, deshabilitar traducción
+        setLocalTranslationEnabled(false);
+        localStorage.setItem('translationEnabled', 'false');
+      }
+    }
+  }, [currentLanguage, globalCurrentLanguage]); // Ejecutar cuando cambie el idioma (sin localTranslationEnabled para evitar loops)
 
   // 🔥 FUNCIÓN PARA DETECTAR IDIOMA DEL TEXTO
   const detectLanguage = useCallback((text) => {
@@ -384,12 +413,22 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
       if (typeof translateGlobalText === 'function') {
         try {
           result = await translateGlobalText(originalText, message.id);
+          console.log('🌍 [FloatingMessages] translateGlobalText result:', {
+            originalText,
+            result,
+            resultType: typeof result,
+            isDifferent: result !== originalText,
+            messageId: message.id
+          });
           if (result && result !== originalText && result.trim() !== '') {
             // Contexto global funcionó
+            console.log('✅ [FloatingMessages] Usando traducción del contexto global:', result);
           } else {
+            console.log('⚠️ [FloatingMessages] Resultado del contexto global no válido, intentando otras fuentes');
             result = null;
           }
         } catch (error) {
+          console.error('❌ [FloatingMessages] Error en translateGlobalText:', error);
           result = null;
         }
       }
@@ -455,8 +494,10 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
       
       // Guardar resultado
       if (result && result !== originalText && result.trim() !== '') {
+        console.log('💾 [FloatingMessages] Guardando traducción:', { messageId: message.id, originalText, result });
         setTranslations(prev => new Map(prev).set(message.id, result));
       } else {
+        console.log('⚠️ [FloatingMessages] No se guardó traducción:', { messageId: message.id, originalText, result, reason: !result ? 'no result' : result === originalText ? 'same as original' : 'empty' });
         setTranslations(prev => new Map(prev).set(message.id, null));
       }
       
@@ -473,6 +514,18 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
 
   // 🌐 EFECTO PARA TRADUCIR MENSAJES AUTOMÁTICAMENTE - CLEAN VERSION
   useEffect(() => {
+    // 🔥 DEBUG: Log para verificar estado de traducción en móvil
+    if (messages.length > 0) {
+      console.log('🌍 [FloatingMessages] Translation state:', {
+        localTranslationEnabled,
+        currentLanguage,
+        globalCurrentLanguage,
+        messagesCount: messages.length,
+        storedTranslationEnabled: localStorage.getItem('translationEnabled'),
+        selectedLanguage: localStorage.getItem('selectedLanguage')
+      });
+    }
+    
     if (!localTranslationEnabled || messages.length === 0) return;
 
     messages.forEach((message) => {

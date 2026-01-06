@@ -2360,8 +2360,8 @@ const cargarMensajes = useCallback(async (roomName) => {
     {/* 🔥 DEBUG: Verificar que el contenido se renderiza */}
     {console.log('🟢 [MENSAJES] Renderizando contenido principal')}
     
-    {/* 🔥 AGREGAR META VIEWPORT SI NO EXISTE */}
-    <div className="relative" style={{ zIndex: 1, position: 'relative' }}>
+    {/* 🔥 HEADER CON Z-INDEX ALTO PARA QUE NO SE SUPERPONGA */}
+    <div className="relative" style={{ zIndex: 100, position: 'relative' }}>
       <Header />
       
       {/* Botón chat móvil - ARREGLADO */}
@@ -2386,7 +2386,8 @@ const cargarMensajes = useCallback(async (roomName) => {
       zIndex: 1,
       width: '100%',
       height: isMobile ? 'calc(100vh - 80px)' : 'auto',
-      minHeight: isMobile ? 'calc(100vh - 80px)' : 'auto'
+      minHeight: isMobile ? 'calc(100vh - 80px)' : 'auto',
+      marginTop: isMobile ? '0' : '0' // Asegurar que no se superponga
     }}>
       <div className={`flex rounded-xl overflow-hidden shadow-lg border border-[#ff007a]/10 relative ${
         isMobile 

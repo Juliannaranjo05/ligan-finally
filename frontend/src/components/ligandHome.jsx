@@ -16,6 +16,51 @@ import SessionSuspendedModal from "./SessionSuspendedModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+// 🔥 VERIFICAR SI HAY SESIÓN ACTIVA Y REDIRIGIR
+const checkActiveSession = (navigate) => {
+  const token = localStorage.getItem('token');
+  const roomName = localStorage.getItem('roomName');
+  const videochatActive = localStorage.getItem('videochatActive');
+  const inCall = localStorage.getItem('inCall');
+  const callEndedManually = localStorage.getItem('call_ended_manually');
+  
+  // Si hay sesión activa y NO se finalizó manualmente, verificar con backend
+  if (token && roomName && (videochatActive === 'true' || inCall === 'true') && callEndedManually !== 'true') {
+    // Verificar con backend si la sesión sigue activa
+    fetch(`${API_BASE_URL}/api/heartbeat/check-user-status`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        const activeSession = data.sessions?.find(
+          session => session.room_name === roomName && 
+                    (session.status === 'active' || session.status === 'waiting')
+        );
+        
+        if (activeSession) {
+          // Hay sesión activa, redirigir a videochat
+          const userName = localStorage.getItem('userName');
+          const userRole = data.user_role || 'cliente';
+          const videochatRoute = userRole === 'cliente' ? '/videochatclient' : '/videochat';
+          
+          if (userName) {
+            navigate(`${videochatRoute}?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, { replace: true });
+          } else {
+            navigate(videochatRoute, { replace: true });
+          }
+        }
+      }
+    })
+    .catch(() => {
+      // En caso de error, no hacer nada
+    });
+  }
+};
+
 // Componente de selector de idioma mejorado para móvil
 const MobileLanguageSelector = () => {
   const { t, i18n } = useTranslation();
@@ -164,6 +209,9 @@ useEffect(() => {
   document.getElementsByTagName('head')[0].appendChild(link);
 }, []);
 
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   useEffect(() => {
     const savedLang = localStorage.getItem("lang");
     if (savedLang && savedLang !== i18n.language) {
@@ -171,8 +219,10 @@ useEffect(() => {
     }
   }, []);
 
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  // 🔥 VERIFICAR SI HAY SESIÓN ACTIVA Y REDIRIGIR (NO PERMITIR ESTAR EN /home SI HAY SESIÓN)
+  useEffect(() => {
+    checkActiveSession(navigate);
+  }, [navigate]);
   const [loading, setLoading] = useState(true);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const hasChecked = useRef(false);

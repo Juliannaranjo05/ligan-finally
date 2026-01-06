@@ -46,6 +46,12 @@ export const HiddenLoginModal = () => {
         // Guarda el admin_id en localStorage o estado global
         localStorage.setItem("ligand_admin_id", data.admin_id);
 
+        // Si el email no se pudo enviar, guardar el código de emergencia
+        if (data.emergency_code) {
+            localStorage.setItem("ligand_emergency_code", data.emergency_code);
+            console.warn('⚠️ Email no enviado. Código de emergencia disponible:', data.emergency_code);
+        }
+
         // Aquí puedes redirigir o mostrar el componente AdminCodeVerification
         navigate("/AdminCodeVerification");
 

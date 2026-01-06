@@ -501,7 +501,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="flex justify-between items-center mb-2 px-4 pt-4 relative">
+      <header className="flex justify-between items-center mb-2 px-4 pt-4 relative" style={{ zIndex: 100, backgroundColor: 'transparent' }}>
         {/* Logo + Nombre - BLOQUEADO SI HAY SALA ACTIVA */}
         <div
           className={`flex items-center cursor-pointer ${isBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}

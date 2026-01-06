@@ -44,6 +44,46 @@ class WompiController extends Controller
     }
 
     /**
+     * 🔥 CONSTRUIR URL DE REDIRECCIÓN VÁLIDA
+     * Asegura que la URL sea absoluta y válida para Wompi
+     */
+    private function buildRedirectUrl($purchaseId = null, $type = 'success')
+    {
+        // Obtener URL base del frontend
+        $frontendUrl = config('app.frontend_url', env('APP_FRONTEND_URL', env('APP_URL', 'https://ligando.online')));
+        
+        // Asegurar que la URL tenga protocolo
+        if (!preg_match('/^https?:\/\//', $frontendUrl)) {
+            $frontendUrl = 'https://' . ltrim($frontendUrl, '/');
+        }
+        
+        // Construir URL según el tipo
+        if ($type === 'success') {
+            $baseUrl = env('WOMPI_PAYMENT_SUCCESS_URL', rtrim($frontendUrl, '/') . '/homecliente');
+            if ($purchaseId) {
+                $baseUrl .= '?payment=wompi&purchase_id=' . $purchaseId;
+            }
+        } else {
+            $baseUrl = env('WOMPI_PAYMENT_CANCEL_URL', rtrim($frontendUrl, '/') . '/homecliente');
+            if ($purchaseId) {
+                $baseUrl .= '?payment=cancelled&purchase_id=' . $purchaseId;
+            }
+        }
+        
+        // Validar que la URL sea absoluta y válida
+        if (!filter_var($baseUrl, FILTER_VALIDATE_URL)) {
+            Log::error('❌ URL de redirección inválida', [
+                'url' => $baseUrl,
+                'type' => $type,
+                'frontend_url' => $frontendUrl
+            ]);
+            throw new \Exception('URL de redirección inválida. Verifica la configuración de APP_FRONTEND_URL o WOMPI_PAYMENT_' . strtoupper($type) . '_URL');
+        }
+        
+        return $baseUrl;
+    }
+
+    /**
      * ⚙️ Obtener configuración de Wompi
      */
     public function getWompiConfig()
@@ -353,8 +393,8 @@ class WompiController extends Controller
                         'reference' => $recentPendingPurchase->transaction_id,
                         'signature_integrity' => $signature,
                         'checkout_url' => $this->wompiConfig['checkout_url'],
-                        'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $recentPendingPurchase->id),
-                        'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $recentPendingPurchase->id),
+                        'redirect_url' => $this->buildRedirectUrl($recentPendingPurchase->id, 'success'),
+                        'cancel_url' => $this->buildRedirectUrl($recentPendingPurchase->id, 'cancel'),
                         'customer_email' => $user->email,
                         'customer_full_name' => $user->name,
                     ],
@@ -440,6 +480,10 @@ class WompiController extends Controller
                 'signature_preview' => substr($signature, 0, 20) . '...'
             ]);
 
+            // 🔥 CONSTRUIR URLs DE REDIRECCIÓN VÁLIDAS (absolutas con protocolo)
+            $redirectUrl = $this->buildRedirectUrl(null, 'success');
+            $cancelUrl = $this->buildRedirectUrl(null, 'cancel');
+            
             // Construir URL completa de checkout (para registrar en logs y en payment_data)
             $paymentParams = http_build_query([
                 'public-key' => $this->wompiConfig['public_key'],
@@ -447,8 +491,8 @@ class WompiController extends Controller
                 'amount-in-cents' => $amountInCents,
                 'reference' => $reference,
                 'signature:integrity' => $signature,
-                'redirect-url' => env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente'),
-                'cancel-url' => env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente')
+                'redirect-url' => $redirectUrl,
+                'cancel-url' => $cancelUrl
             ]);
 
             $fullPaymentUrl = rtrim($this->wompiConfig['checkout_url'], '/') . '/p/?' . $paymentParams;
@@ -488,8 +532,8 @@ class WompiController extends Controller
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],
-                    'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $purchase->id),
-                    'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $purchase->id),
+                    'redirect_url' => $this->buildRedirectUrl($purchase->id, 'success'),
+                    'cancel_url' => $this->buildRedirectUrl($purchase->id, 'cancel'),
                     'customer_email' => $user->email,
                     'customer_full_name' => $user->name,
                 ],
@@ -791,15 +835,15 @@ class WompiController extends Controller
      */
     private function handleTransactionApproved($purchase, $transactionData)
     {
+        // Evitar procesamiento duplicado
+        if ($purchase->status === 'completed') {
+            Log::info('✅ Compra ya procesada', ['purchase_id' => $purchase->id]);
+            return; // No retornar response, solo salir
+        }
+
+        DB::beginTransaction();
+
         try {
-            // Evitar procesamiento duplicado
-            if ($purchase->status === 'completed') {
-                Log::info('✅ Compra ya procesada', ['purchase_id' => $purchase->id]);
-                return response('OK', 200);
-            }
-
-            DB::beginTransaction();
-
             // Actualizar payment_data con información de Wompi
             $currentPaymentData = json_decode($purchase->payment_data, true) ?? [];
             $updatedPaymentData = array_merge($currentPaymentData, [
@@ -818,26 +862,31 @@ class WompiController extends Controller
                 'payment_data' => json_encode($updatedPaymentData)
             ]);
 
+            // 🔥 RECARGAR EL PURCHASE ANTES DE AGREGAR MONEDAS
+            $purchase->refresh();
+
             // Agregar monedas al usuario
             $this->addCoinsToUser($purchase);
 
             DB::commit();
 
-            Log::info("✅ Pago Wompi completado y monedas agregadas", [
+            // 🔥 RECARGAR NUEVAMENTE DESPUÉS DE AGREGAR MONEDAS
+            $purchase->refresh();
+
+            Log::info("✅✅✅ Pago Wompi completado y monedas agregadas", [
                 'purchase_id' => $purchase->id,
                 'user_id' => $purchase->user_id,
                 'reference' => $purchase->transaction_id,
                 'wompi_transaction_id' => $transactionData['id'] ?? null,
                 'coins_added' => $purchase->total_coins,
                 'purchased_coins' => $purchase->coins,
-                'bonus_coins' => $purchase->bonus_coins
+                'bonus_coins' => $purchase->bonus_coins,
+                'final_status' => $purchase->status
             ]);
-
-            return response('OK', 200);
 
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error('❌ Error procesando pago aprobado: ' . $e->getMessage(), [
+            Log::error('❌❌❌ ERROR CRÍTICO procesando pago aprobado: ' . $e->getMessage(), [
                 'purchase_id' => $purchase->id,
                 'trace' => $e->getTraceAsString()
             ]);
@@ -1220,12 +1269,20 @@ class WompiController extends Controller
                                     'completed_at' => $purchase->completed_at
                                 ]);
                             } catch (Exception $e) {
-                                Log::error('❌ ERROR CRÍTICO al procesar pago aprobado automáticamente: ' . $e->getMessage(), [
+                                Log::error('❌❌❌ ERROR CRÍTICO al procesar pago aprobado automáticamente: ' . $e->getMessage(), [
                                     'purchase_id' => $purchase->id,
                                     'trace' => $e->getTraceAsString(),
                                     'wompi_status' => $wompiStatus,
                                     'transaction_data' => $transactionData
                                 ]);
+                                
+                                // 🔥 RECARGAR EL PURCHASE AUNQUE HAYA ERROR PARA VER EL ESTADO ACTUAL
+                                try {
+                                    $purchase->refresh();
+                                } catch (\Exception $refreshError) {
+                                    Log::error('Error recargando purchase después de error: ' . $refreshError->getMessage());
+                                }
+                                
                                 // No lanzar excepción, solo loguear para que el usuario pueda ver el estado
                             }
                         } else {
@@ -1273,6 +1330,19 @@ class WompiController extends Controller
                 }
             }
 
+            // 🔥 RECARGAR EL PURCHASE PARA OBTENER EL ESTADO ACTUALIZADO
+            $purchase->refresh();
+            
+            // Si el estado cambió a completed durante la verificación, asegurarse de que se refleje
+            if ($purchase->status === 'completed') {
+                Log::info('✅✅✅ PAGO COMPLETADO - Retornando estado actualizado', [
+                    'purchase_id' => $purchase->id,
+                    'status' => $purchase->status,
+                    'coins_added' => $purchase->total_coins,
+                    'completed_at' => $purchase->completed_at
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'purchase' => [
@@ -1287,7 +1357,8 @@ class WompiController extends Controller
                     'created_at' => $purchase->created_at->toISOString(),
                     'completed_at' => $purchase->completed_at ? $purchase->completed_at->toISOString() : null,
                 ],
-                'environment' => config('app.env')
+                'environment' => config('app.env'),
+                'processed' => $purchase->status === 'completed' // 🔥 Indicar si se procesó en esta verificación
             ]);
         } catch (Exception $e) {
             Log::error('❌ Error verificando estado Wompi: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -1781,8 +1852,8 @@ class WompiController extends Controller
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],
-                    'redirect_url' => (env('WOMPI_PAYMENT_SUCCESS_URL', env('APP_URL') . '/homecliente') . '?payment=wompi&purchase_id=' . $purchase->id),
-                    'cancel_url' => (env('WOMPI_PAYMENT_CANCEL_URL', env('APP_URL') . '/homecliente') . '?payment=cancelled&purchase_id=' . $purchase->id),
+                    'redirect_url' => $this->buildRedirectUrl($purchase->id, 'success'),
+                    'cancel_url' => $this->buildRedirectUrl($purchase->id, 'cancel'),
                     'customer_email' => $user->email,
                     'customer_full_name' => $user->name,
                     'sandbox' => true
@@ -1806,6 +1877,200 @@ class WompiController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Error creando el pago sandbox: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ Verificar y procesar todos los pagos pendientes del usuario
+     * Este método verifica con Wompi todos los pagos pendientes del usuario autenticado
+     */
+    public function checkAllPendingPayments(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Usuario no autenticado'
+                ], 401);
+            }
+
+            // Obtener todos los pagos pendientes del usuario
+            $pendingPurchases = CoinPurchase::where('user_id', $user->id)
+                ->where('payment_method', 'wompi')
+                ->whereIn('status', ['pending', 'pending_confirmation'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            if ($pendingPurchases->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No hay pagos pendientes por verificar',
+                    'processed' => 0,
+                    'still_pending' => 0,
+                    'failed' => 0
+                ]);
+            }
+
+            $processed = 0;
+            $stillPending = 0;
+            $failed = 0;
+
+            Log::info('🔍 Verificando pagos pendientes del usuario', [
+                'user_id' => $user->id,
+                'total_pending' => $pendingPurchases->count()
+            ]);
+
+            foreach ($pendingPurchases as $purchase) {
+                try {
+                    // Obtener el ID de transacción de Wompi
+                    $paymentData = json_decode($purchase->payment_data, true) ?? [];
+                    $reference = $purchase->transaction_id;
+                    $wompiTransactionId = $paymentData['wompi_transaction_id'] ?? null;
+                    $searchId = $wompiTransactionId ?: $reference;
+
+                    if (!$searchId) {
+                        Log::warning('⚠️ Compra sin transaction_id ni reference', [
+                            'purchase_id' => $purchase->id
+                        ]);
+                        $stillPending++;
+                        continue;
+                    }
+
+                    // Verificar con Wompi
+                    $transactionData = null;
+                    
+                    // Intentar buscar por transaction_id primero
+                    if ($wompiTransactionId) {
+                        try {
+                            $response = Http::timeout(10)
+                                ->withHeaders([
+                                    'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                                    'Accept' => 'application/json'
+                                ])
+                                ->get($this->wompiConfig['api_url'] . '/transactions/' . $wompiTransactionId);
+                            
+                            if ($response->successful()) {
+                                $responseData = $response->json();
+                                $transactionData = $responseData['data'] ?? $responseData;
+                            }
+                        } catch (Exception $e) {
+                            Log::warning('⚠️ Error buscando por transaction_id: ' . $e->getMessage());
+                        }
+                    }
+                    
+                    // Si no se encontró, buscar por reference
+                    if (!$transactionData && $reference) {
+                        try {
+                            $response = Http::timeout(10)
+                                ->withHeaders([
+                                    'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                                    'Accept' => 'application/json'
+                                ])
+                                ->get($this->wompiConfig['api_url'] . '/transactions?reference=' . urlencode($reference));
+                            
+                            if ($response->successful()) {
+                                $responseData = $response->json();
+                                if (isset($responseData['data']) && is_array($responseData['data'])) {
+                                    foreach ($responseData['data'] as $tx) {
+                                        if (($tx['reference'] ?? null) === $reference) {
+                                            $transactionData = $tx;
+                                            break;
+                                        }
+                                    }
+                                    if (!$transactionData && count($responseData['data']) > 0) {
+                                        $transactionData = $responseData['data'][0];
+                                    }
+                                } else {
+                                    $transactionData = $responseData['data'] ?? $responseData;
+                                }
+                            }
+                        } catch (Exception $e) {
+                            Log::warning('⚠️ Error buscando por reference: ' . $e->getMessage());
+                        }
+                    }
+
+                    if (!$transactionData) {
+                        Log::info('ℹ️ No se encontró transacción en Wompi', [
+                            'purchase_id' => $purchase->id,
+                            'reference' => $reference
+                        ]);
+                        $stillPending++;
+                        continue;
+                    }
+
+                    $wompiStatus = $transactionData['status'] ?? null;
+
+                    Log::info('📊 Estado de transacción Wompi', [
+                        'purchase_id' => $purchase->id,
+                        'wompi_status' => $wompiStatus,
+                        'local_status' => $purchase->status
+                    ]);
+
+                    // Si está aprobado, procesarlo
+                    if (in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL'])) {
+                        try {
+                            $this->handleTransactionApproved($purchase, $transactionData);
+                            $purchase->refresh();
+                            
+                            if ($purchase->status === 'completed') {
+                                $processed++;
+                                Log::info('✅ Pago procesado exitosamente', [
+                                    'purchase_id' => $purchase->id,
+                                    'coins_added' => $purchase->total_coins
+                                ]);
+                            } else {
+                                $stillPending++;
+                            }
+                        } catch (Exception $e) {
+                            Log::error('❌ Error procesando pago aprobado: ' . $e->getMessage(), [
+                                'purchase_id' => $purchase->id
+                            ]);
+                            $failed++;
+                        }
+                    } else if (in_array($wompiStatus, ['DECLINED', 'ERROR', 'VOIDED'])) {
+                        // Marcar como fallido
+                        try {
+                            $this->handleTransactionFailed($purchase, $transactionData);
+                            $failed++;
+                        } catch (Exception $e) {
+                            Log::error('❌ Error marcando pago como fallido: ' . $e->getMessage());
+                            $failed++;
+                        }
+                    } else {
+                        // Sigue pendiente
+                        $stillPending++;
+                    }
+
+                } catch (Exception $e) {
+                    Log::error('❌ Error verificando pago individual: ' . $e->getMessage(), [
+                        'purchase_id' => $purchase->id
+                    ]);
+                    $stillPending++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $processed > 0 
+                    ? "Se procesaron {$processed} pago(s) exitosamente" 
+                    : "Verificación completada",
+                'processed' => $processed,
+                'still_pending' => $stillPending,
+                'failed' => $failed,
+                'total_checked' => $pendingPurchases->count()
+            ]);
+
+        } catch (Exception $e) {
+            Log::error('❌ Error verificando pagos pendientes: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al verificar los pagos pendientes: ' . $e->getMessage()
             ], 500);
         }
     }

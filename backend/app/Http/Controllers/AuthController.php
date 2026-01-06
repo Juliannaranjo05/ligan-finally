@@ -848,9 +848,31 @@ class AuthController extends Controller
                 Log::info("🔄 Actualizando usuario existente: {$user->email}");
                 
                 try {
+                    // 🔥 PRESERVAR AVATAR LOCAL: Solo actualizar avatar de Google si el usuario NO tiene avatar local
+                    $avatarToSet = $user->avatar; // Mantener avatar actual por defecto
+                    
+                    // Verificar si el avatar actual es de Google o es un archivo local
+                    $isCurrentAvatarGoogle = $this->isGoogleAvatar($user->avatar);
+                    
+                    // Solo actualizar avatar si:
+                    // 1. No tiene avatar (null), O
+                    // 2. El avatar actual es de Google (puede actualizarse)
+                    if (!$user->avatar || $isCurrentAvatarGoogle) {
+                        $avatarToSet = $googleUser->avatar;
+                        Log::info("🔄 Actualizando avatar con el de Google", [
+                            'avatar_anterior' => $user->avatar,
+                            'avatar_nuevo' => $googleUser->avatar,
+                            'razon' => !$user->avatar ? 'no_tenia_avatar' : 'avatar_era_de_google'
+                        ]);
+                    } else {
+                        Log::info("✅ Preservando avatar local del usuario (no se sobrescribe con Google)", [
+                            'avatar_actual' => $user->avatar
+                        ]);
+                    }
+                    
                     $user->update([
                         'google_id' => $googleUser->id,
-                        'avatar' => $googleUser->avatar,
+                        'avatar' => $avatarToSet, // 🔥 Usar avatar preservado o de Google
                         'email_verified_at' => $user->email_verified_at ?: now(),
                     ]);
                     
@@ -1014,6 +1036,18 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Cuenta de Google desvinculada correctamente'
         ]);
+    }
+
+    /**
+     * Verificar si el avatar es de Google
+     */
+    private function isGoogleAvatar($filename)
+    {
+        if (!$filename) return false;
+        
+        return str_contains($filename, 'googleusercontent.com') || 
+               str_contains($filename, 'googleapis.com') ||
+               str_contains($filename, 'google.com');
     }
 }
 

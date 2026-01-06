@@ -44,14 +44,8 @@ const TimeDisplayImprovedClient = ({
     system: getVideoChatText('system', currentLanguage, hardcodedTexts.system || "Sistema")
   };
   
-  // 🔥 DEBUG: Log cuando se reciben los props de balance
-  useEffect(() => {
-    console.log('💰 [TimeDisplayImprovedClient] PROPS recibidas:', {
-      userBalance,
-      giftBalance,
-      remainingMinutes
-    });
-  }, [userBalance, giftBalance, remainingMinutes]);
+  // 🔥 DEBUG: Logs removidos para reducir ruido en consola
+  // Los logs de debug se pueden habilitar temporalmente si es necesario para debugging
   
   // 🔥 USAR LOS PROPS DIRECTAMENTE EN LUGAR DE ESTADOS LOCALES PARA MOSTRAR VALORES REALES
   

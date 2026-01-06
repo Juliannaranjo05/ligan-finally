@@ -60,8 +60,8 @@ const UserSearch = () => {
   const from = searchParams.get('from');
   const excludeUser = searchParams.get('excludeUser');
   const excludeUserName = searchParams.get('excludeUserName');
+  const autoSearch = searchParams.get('autoSearch') !== 'false'; // 🔥 Por defecto true, pero puede ser false
   
-
   // 🌐 FUNCIÓN: VERIFICAR CALIDAD DE RED
   const checkNetworkQuality = async () => {
     try {
@@ -571,11 +571,45 @@ const UserSearch = () => {
     // 🌐 VERIFICAR RED AL INICIO
     checkNetworkQuality();
     
-    const initTimeout = setTimeout(() => {
-      if (isMountedRef.current && window.__USERSEARCH_ACTIVE === mountKey) {
-        createRoomSafe();
-      }
-    }, 300);
+    // 🔥 SOLO INICIAR BÚSQUEDA AUTOMÁTICAMENTE SI autoSearch NO ES 'false'
+    if (autoSearch) {
+      const initTimeout = setTimeout(() => {
+        if (isMountedRef.current && window.__USERSEARCH_ACTIVE === mountKey) {
+          createRoomSafe();
+        }
+      }, 300);
+      
+      return () => {
+        clearTimeout(initTimeout);
+        
+        if (window.__USERSEARCH_ACTIVE === mountKey) {
+          window.__USERSEARCH_ACTIVE = null;
+        }
+        
+        isMountedRef.current = false;
+        clearAllIntervals();
+
+        setIsCreatingRoom(false);
+        setIsRedirecting(false);
+        setHasProcessedResponse(false);
+      };
+    } else {
+      // 🔥 NO INICIAR BÚSQUEDA AUTOMÁTICA - El usuario debe hacer clic manualmente
+      console.log('⏸️ [USERSEARCH] Búsqueda automática desactivada - esperando acción del usuario');
+      
+      return () => {
+        if (window.__USERSEARCH_ACTIVE === mountKey) {
+          window.__USERSEARCH_ACTIVE = null;
+        }
+        
+        isMountedRef.current = false;
+        clearAllIntervals();
+
+        setIsCreatingRoom(false);
+        setIsRedirecting(false);
+        setHasProcessedResponse(false);
+      };
+    }
 
     return () => {
       clearTimeout(initTimeout);
@@ -640,14 +674,8 @@ const UserSearch = () => {
   }, []);
 
   // 🚨 FUNCIÓN PARA VOLVER (MEJORADA)
-  const handleGoBack = async () => {
+  const handleGoBack = () => {
     
-    // 🔥 PREVENIR MÚLTIPLES CLICKS
-    if (isRedirecting) {
-      return;
-    }
-    
-    setIsRedirecting(true);
     clearAllIntervals();
     isMountedRef.current = false;
     window.__USERSEARCH_ACTIVE = null;
@@ -656,79 +684,23 @@ const UserSearch = () => {
     // Detectar si viene de partner_left_session o client_stopped_session
     const fromPartnerDisconnect = from === 'partner_left_session' || 
                                   from === 'client_stopped_session' ||
-                                  from === 'previous_client_left' ||
-                                  from === 'videochat_siguiente'; // También cuando viene de videochat siguiente
+                                  from === 'previous_client_left';
     
-    console.log('🔄 [UserSearch] handleGoBack llamado', { 
-      from, 
-      role, 
-      fromPartnerDisconnect,
-      action 
-    });
-    
-    // 🔥 PARA MODELOS: SIEMPRE ir a homellamadas cuando presionan "Volver"
-    // NO limpiar datos de sesión para evitar cerrar la sesión
-    if (role === 'modelo') {
-      console.log('🔄 [UserSearch] Modelo presionó Volver - Navegando a homellamadas sin limpiar sesión');
-      // 🔥 DISPARAR EVENTO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ (solo para desbloquear navegación)
-      window.dispatchEvent(new CustomEvent('videochatCleaned', { detail: { cleaned: true } }));
+    if (fromPartnerDisconnect && role === 'modelo') {
+      // 🔥 NO LIMPIAR DATOS DE SESIÓN - Solo ir a homellamadas
       navigate('/homellamadas', { replace: true });
       return;
     }
     
-    // 🔥 SI HAY UNA SALA ACTIVA, CANCELARLA EN EL SERVIDOR ANTES DE LIMPIAR
-    // Esto previene que se cierre la sesión incorrectamente
-    if (roomData?.roomName) {
-      try {
-        const authToken = localStorage.getItem('token');
-        if (authToken) {
-          // Notificar al servidor que se está cancelando la búsqueda
-          // No esperamos la respuesta para no bloquear la navegación
-          fetch(`${API_BASE_URL}/api/livekit/notify-partner-stop`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authToken}`,
-            },
-            body: JSON.stringify({
-              roomName: roomData.roomName,
-              reason: 'user_cancelled_search'
-            }),
-          }).catch(() => {
-            // Ignorar errores, no es crítico
-          });
-        }
-      } catch (error) {
-        // Ignorar errores, continuar con la limpieza
-      }
-    }
-    
-    // 🔥 LIMPIAR DATOS DE SESIÓN COMPLETAMENTE
-    // Cuando se presiona "Volver" desde la búsqueda, siempre limpiar datos de videollamada
-    // para desbloquear la navegación en esperandocallcliente
-    const currentRoomName = localStorage.getItem('roomName');
-    
-    // Limpiar datos de videollamada para desbloquear navegación
+    // 🔥 LIMPIAR DATOS DE SESIÓN COMPLETAMENTE (solo si no es desde desconexión)
+    localStorage.removeItem('inCall');
+    localStorage.removeItem('videochatActive');
     localStorage.removeItem('roomName');
     localStorage.removeItem('userName');
     localStorage.removeItem('currentRoom');
-    localStorage.removeItem('inCall');
-    localStorage.removeItem('videochatActive');
-    localStorage.removeItem('callToken');
-    localStorage.removeItem('sessionTime');
-    localStorage.removeItem('sessionStartTime');
     
-    // También limpiar sessionStorage
-    sessionStorage.removeItem('roomName');
-    sessionStorage.removeItem('userName');
-    sessionStorage.removeItem('currentRoom');
-    sessionStorage.removeItem('inCall');
-    sessionStorage.removeItem('videochatActive');
-    sessionStorage.removeItem('callToken');
-    
-    // 🔥 Para clientes, ir a esperandocallcliente
-    // (Los modelos ya fueron manejados arriba y retornaron antes de llegar aquí)
-    const esperarRoute = '/esperandocallcliente';
+    // 🔥 CORREGIDO: Siempre ir a esperarcall/esperarcallcliente
+    const esperarRoute = role === 'modelo' ? '/esperandocall' : '/esperandocallcliente';
     navigate(esperarRoute, { replace: true });
   };
 

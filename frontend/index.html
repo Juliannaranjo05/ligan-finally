@@ -129,23 +129,6 @@
         }
       })();
     </script>
-    
-    <!-- 🐛 ERUDA - Consola móvil para debugging en iPhone -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-    <script>
-      // Inicializar Eruda solo en móvil o si hay un parámetro ?debug=true
-      (function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const isDebugMode = urlParams.get('debug') === 'true';
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        
-        // Activar Eruda si es móvil O si hay parámetro debug=true
-        if (isMobile || isDebugMode) {
-          eruda.init();
-          console.log('🐛 Eruda activado - Consola móvil disponible');
-        }
-      })();
-    </script>
   </head>
   <body class="bg-gray-100 text-gray-900">
     <style>

@@ -26,29 +26,8 @@ const TimeDisplayImproved = ({
  loading = false,
  userData = {}
 }) => {
-  // 🔥 DEBUG: Log cuando se reciben los props
-  useEffect(() => {
-    console.log('💰 [TimeDisplayImproved] ===== PROPS RECIBIDAS =====');
-    console.log('💰 [TimeDisplayImproved] Valores recibidos:', {
-      tiempo: tiempo,
-      remainingMinutes: remainingMinutes,
-      giftBalance: giftBalance,
-      userBalance: userBalance
-    });
-    console.log('💰 [TimeDisplayImproved] Tipos de datos:', {
-      tiempo_type: typeof tiempo,
-      remainingMinutes_type: typeof remainingMinutes,
-      giftBalance_type: typeof giftBalance,
-      userBalance_type: typeof userBalance
-    });
-    console.log('💰 [TimeDisplayImproved] Valores que se mostrarán en UI:', {
-      tiempo_formato: `${Math.floor(tiempo / 60).toString().padStart(2, "0")}:${(tiempo % 60).toString().padStart(2, "0")}`,
-      remainingMinutes_display: remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0,
-      giftBalance_display: giftBalance !== undefined && giftBalance !== null ? giftBalance : 0,
-      userBalance_display: userBalance !== undefined && userBalance !== null ? userBalance : 0
-    });
-    console.log('💰 [TimeDisplayImproved] ============================');
-  }, [tiempo, remainingMinutes, giftBalance, userBalance]);
+  // 🔥 DEBUG: Logs removidos para reducir ruido en consola
+  // Los logs de debug se pueden habilitar temporalmente si es necesario para debugging
   
   // 🔥 OBTENER IDIOMA ACTUAL
   const { currentLanguage: globalCurrentLanguage } = useGlobalTranslation();
