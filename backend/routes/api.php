@@ -258,6 +258,10 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
         // Obtener saldo del cliente
         Route::post('/get', [ClientBalanceController::class, 'getClientBalance'])
             ->name('get');
+        
+        // Convertir minutos a regalos
+        Route::post('/convert-minutes-to-gifts', [ClientBalanceController::class, 'convertMinutesToGifts'])
+            ->name('convert-minutes-to-gifts');
     });
 
     // Historial de transacciones del cliente

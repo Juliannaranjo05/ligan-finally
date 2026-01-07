@@ -328,16 +328,23 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
   const loadUserBalanceCallRef = useRef(false);
   const lastLoadUserBalanceTimeRef = useRef(0);
 
-  const loadUserBalance = useCallback(async () => {
+  const loadUserBalance = useCallback(async (force = false) => {
     // 🔥 PROTECCIÓN CONTRA MÚLTIPLAS EJECUCIONES SIMULTÁNEAS (pero permitir llamadas frecuentes)
-    if (loadUserBalanceCallRef.current) {
+    if (loadUserBalanceCallRef.current && !force) {
       return { success: false, error: 'Ya hay una petición en curso' };
     }
     
     // 🔥 REDUCIR TIEMPO MÍNIMO A 5 SEGUNDOS (más permisivo)
+    // 🔥 PERO PERMITIR FORZAR LA RECARGA (útil después de conversiones)
     const now = Date.now();
-    if (now - lastLoadUserBalanceTimeRef.current < 5000) {
+    if (!force && now - lastLoadUserBalanceTimeRef.current < 5000) {
       return { success: false, error: 'Demasiado pronto para cargar balance' };
+    }
+    
+    // 🔥 SI ES FORZADO, RESETEAR EL TIEMPO PARA PERMITIR RECARGA INMEDIATA
+    if (force) {
+      lastLoadUserBalanceTimeRef.current = 0;
+      loadUserBalanceCallRef.current = false;
     }
     
     loadUserBalanceCallRef.current = true;

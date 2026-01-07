@@ -7067,6 +7067,53 @@ const checkBalanceRealTime = useCallback(async () => {
                     showMainSettings={showMainSettings}
                     setShowMainSettings={setShowMainSettings}
                     loading={loading || isHangingUp}
+                    onReloadBalance={async (includeGiftBalance, forceReload) => {
+                      // 🔥 RECARGAR BALANCES INMEDIATAMENTE DESPUÉS DE CONVERSIÓN
+                      console.log('🔄 [BALANCE] Recargando balances después de conversión...');
+                      
+                      // 1. Recargar balance de coins (purchased_balance y remainingMinutes)
+                      try {
+                        const authToken = localStorage.getItem('token');
+                        if (authToken && userData?.id) {
+                          // 🔥 FORZAR RECARGA INMEDIATA (ignorar el intervalo de 5 segundos)
+                          window.lastBalanceCall = 0; // Resetear para permitir recarga inmediata
+                          isLoadingBalanceRef.current = false; // Permitir nueva carga
+                          
+                          const coinsResponse = await fetch(`${API_BASE_URL}/api/client-balance/my-balance/quick`, {
+                            method: 'GET',
+                            headers: {
+                              'Authorization': `Bearer ${authToken}`,
+                              'Content-Type': 'application/json'
+                            }
+                          });
+                          
+                          if (coinsResponse.ok) {
+                            const coinsData = await coinsResponse.json();
+                            if (coinsData.success) {
+                              setUserBalance(coinsData.total_coins || 0);
+                              setRemainingMinutes(coinsData.remaining_minutes || 0);
+                              console.log('✅ [BALANCE] Balance de coins actualizado:', {
+                                userBalance: coinsData.total_coins || 0,
+                                remainingMinutes: coinsData.remaining_minutes || 0
+                              });
+                            }
+                          }
+                        }
+                      } catch (error) {
+                        console.warn('⚠️ [BALANCE] Error recargando balance de coins:', error);
+                      }
+                      
+                      // 2. Recargar gift balance (forzar recarga inmediata)
+                      if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
+                        try {
+                          // 🔥 FORZAR RECARGA INMEDIATA (pasar true como parámetro force)
+                          const loadResult = await loadUserBalanceRef.current(true);
+                          console.log('✅ [BALANCE] Balance de regalos actualizado:', loadResult);
+                        } catch (error) {
+                          console.warn('⚠️ [BALANCE] Error recargando balance de regalos:', error);
+                        }
+                      }
+                    }}
                   />
                 )}
                 

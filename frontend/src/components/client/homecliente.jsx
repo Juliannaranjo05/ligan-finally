@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users, Video } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "./headercliente";
 import { ProtectedPage } from '../hooks/usePageAccess';
@@ -13,6 +13,12 @@ import { useBrowsingHeartbeat } from '../../utils/heartbeat';
 import { useGlobalCall } from '../../contexts/GlobalCallContext';
 import CallModeSelector from './CallModeSelector';
 import DualCallConfigModal from './DualCallConfigModal';
+// Componentes modulares nuevos
+import BalanceCard from './BalanceCard';
+import ActiveGirlsList from './ActiveGirlsList';
+import CallHistoryList from './CallHistoryList';
+import TipOfTheDay from './TipOfTheDay';
+import SkeletonLoader from './SkeletonLoader';
 
 const logger = createLogger('HomeCliente');
 
@@ -26,7 +32,6 @@ const handleSessionClosedError = async (response, url, method = 'GET') => {
       const codigo = errorData.code || errorData.codigo || '';
       
       if (codigo === 'SESSION_CLOSED_BY_OTHER_DEVICE') {
-        console.warn('🚫 [HomeCliente] Sesión cerrada por otro dispositivo detectada en:', url);
         // Guardar flag en localStorage para persistencia
         try {
           localStorage.setItem('session_closed_by_other_device', 'true');
@@ -94,18 +99,11 @@ export default function InterfazCliente() {
   };
 
   // 🔍 LOG INICIAL DEL COMPONENTE
-  console.log('%c[HOME] Componente InterfazCliente montado', 'color: #ff00ff; font-weight: bold; font-size: 16px;');
-  console.log('[HOME] Componente InterfazCliente montado - API_BASE_URL:', API_BASE_URL);
 
   // 🔍 LOG INICIAL DEL COMPONENTE - FORZAR VISIBILIDAD
   useEffect(() => {
-    console.log('%c═══════════════════════════════════════', 'color: #ff00ff; font-weight: bold;');
-    console.log('%c[HOME] Componente InterfazCliente MONTADO', 'color: #ff00ff; font-weight: bold; font-size: 16px;');
-    console.log('%cAPI_BASE_URL:', 'color: #00ffff; font-weight: bold;', API_BASE_URL);
-    console.log('%c═══════════════════════════════════════', 'color: #ff00ff; font-weight: bold;');
     // También usar métodos directos para evitar filtros
     if (window.console) {
-      window.console.log('[HOME] COMPONENTE INICIADO');
     }
   }, []);
 
@@ -177,17 +175,15 @@ export default function InterfazCliente() {
             );
             
             if (activeSession) {
-              console.log('🔄 [HomeCliente] Llamada activa detectada - Reconectando automáticamente', {
-                roomName,
-                userName,
-                sessionStatus: activeSession.status
-              });
+                console.log('Sesión activa encontrada:', {
+                  userName,
+                  sessionStatus: activeSession.status
+                });
               
               // Redirigir de vuelta a la sala de videochat
               navigate(`/videochatclient?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, {
                 replace: true,
                 state: {
-                  roomName: roomName,
                   userName: userName,
                   reconnect: true
                 }
@@ -195,7 +191,6 @@ export default function InterfazCliente() {
               return; // Salir para evitar otras validaciones
             } else {
               // No hay sesión activa, limpiar datos
-              console.log('🧹 [HomeCliente] No hay sesión activa - Limpiando datos de llamada');
               localStorage.removeItem('roomName');
               localStorage.removeItem('userName');
               localStorage.removeItem('currentRoom');
@@ -204,7 +199,6 @@ export default function InterfazCliente() {
             }
           }
         } catch (error) {
-          console.warn('⚠️ [HomeCliente] Error verificando sesión activa:', error);
           // En caso de error, limpiar datos por seguridad
           localStorage.removeItem('roomName');
           localStorage.removeItem('userName');
@@ -323,7 +317,6 @@ export default function InterfazCliente() {
               }
             }
           } catch (error) {
-            console.error('Error actualizando balance:', error);
           }
           return true; // Indica que el pago se completó
         } else if (data.purchase.status === 'pending') {
@@ -343,7 +336,6 @@ export default function InterfazCliente() {
       }
       return false;
     } catch (error) {
-      console.error('Error verificando estado del pago:', error);
       return false;
     }
   }, [API_BASE_URL, showNotification]);
@@ -357,7 +349,6 @@ export default function InterfazCliente() {
       
       if (elapsed > maxPollingTime) {
         // Detener polling después de 5 minutos
-        console.log('Polling de pago detenido después de 5 minutos');
         setPaymentPollingActive(false);
         setPendingPurchaseId(null);
         if (paymentPollingRef.current) {
@@ -431,7 +422,6 @@ export default function InterfazCliente() {
             showNotification('Tu pago está siendo procesado. Si el redireccionamiento vino de Wompi, intentaremos resolverlo automáticamente.', 'info');
           }
         } catch (error) {
-          console.error('Error resolviendo transacción por id:', error);
         } finally {
           // Limpiar parámetros id/env de la URL
           searchParams.delete('id');
@@ -483,6 +473,17 @@ export default function InterfazCliente() {
     }, 500); // Pequeño delay para asegurar que el pago se haya procesado
   };
 
+  // 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN (useCallback para evitar problemas de inicialización)
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem("token");
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  }, []);
+
   const consultarSaldoUsuario = async () => {
     try {
       setLoadingBalance(true);
@@ -521,7 +522,6 @@ export default function InterfazCliente() {
                 setUserBalance(prev => ({
                   ...prev,
                   gift_coins: giftsData.balance.gift_balance || 0,
-                  gift_balance: giftsData.balance.gift_balance || 0
                 }));
               }
             }
@@ -623,14 +623,8 @@ export default function InterfazCliente() {
         avatar: chica.avatar_url || chica.avatar
       }));
       
-      console.log('🔄 [HOME] Actualizando modelos disponibles para selector:', {
-        count: modelosDisponibles.length,
-        modelos: modelosDisponibles
-      });
-      
       setAvailableModelos(modelosDisponibles);
     } else {
-      console.log('⚠️ [HOME] No hay chicas activas para el selector');
       setAvailableModelos([]);
     }
   }, [chicasActivas]);
@@ -654,11 +648,10 @@ export default function InterfazCliente() {
   // Estado para controlar las secciones expandidas del acordeón
   const [expandedSections, setExpandedSections] = useState({
     balance: true,       // Siempre abierto
-    activeGirls: false,  // Se abrirá automáticamente si hay chicas activas
+    activeGirls: true,   // Por defecto desplegado
     history: false       // Por defecto cerrado
   });
 
-  // 🔥 FUNCIÓN PARA OBTENER HEADERS CON TOKEN
   // 🔥 FUNCIÓN PARA CARGAR HISTORIAL DE LLAMADAS
   const cargarHistorialLlamadas = async () => {
     try {
@@ -710,16 +703,6 @@ export default function InterfazCliente() {
     }
   };
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'Authorization': token ? `Bearer ${token}` : ''
-    };
-  };
-
   // 🔥 FUNCIÓN PARA OBTENER INICIAL DEL NOMBRE
   const getInitial = (name) => {
     return name ? name.charAt(0).toUpperCase() : '?';
@@ -728,7 +711,6 @@ export default function InterfazCliente() {
   // 🔥 CARGAR CHICAS ACTIVAS/ONLINE
   const cargarChicasActivas = async (isBackgroundUpdate = false) => {
     try {
-      console.log('🔍 [HOME] cargarChicasActivas iniciado', { isBackgroundUpdate });
       if (!isBackgroundUpdate) {
         setLoadingUsers(true);
       }
@@ -738,55 +720,28 @@ export default function InterfazCliente() {
         headers: getAuthHeaders()
       });
       
-      console.log('📡 [HOME] Respuesta de my-contacts:', {
-        status: response.status,
-        ok: response.ok
-      });
-      
       // 🔥 DETECTAR SESIÓN CERRADA POR OTRO DISPOSITIVO
       const isSessionClosed = await handleSessionClosedError(response, `${API_BASE_URL}/api/chat/users/my-contacts`);
       if (isSessionClosed) {
-        console.warn('⚠️ [HOME] Sesión cerrada, no continuar');
         return; // No continuar si la sesión fue cerrada
       }
       
       if (response.ok) {
-        const data = await response.json();
-        console.log('📥 [HOME] Datos recibidos de my-contacts:', {
-          contactsCount: data.contacts?.length || 0,
-          contacts: data.contacts,
-          success: data.success
-        });
+          const data = await response.json();
         
         // 🔥 FILTRAR SOLO MODELOS (CHICAS) QUE ESTÁN ONLINE
         // Si is_online no está disponible, asumir que está online si está en la lista
         const chicasOnline = (data.contacts || []).filter(contact => {
           if (contact.role !== 'modelo') {
-            console.log('❌ [HOME] Contacto no es modelo:', contact.role, contact.id);
             return false;
           }
           // Si tiene is_online explícito, usarlo
           if (contact.is_online !== undefined) {
             const isOnline = contact.is_online === true;
-            console.log('✅ [HOME] Contacto modelo con is_online:', {
-              id: contact.id,
-              name: contact.name,
-              is_online: contact.is_online,
-              willInclude: isOnline
-            });
             return isOnline;
           }
           // Si no tiene is_online pero está en la lista, asumir que está online
-          console.log('✅ [HOME] Contacto modelo sin is_online, asumiendo online:', {
-            id: contact.id,
-            name: contact.name
-          });
           return true;
-        });
-        
-        console.log('👥 [HOME] Chicas online filtradas:', {
-          count: chicasOnline.length,
-          chicas: chicasOnline.map(c => ({ id: c.id, name: c.name, is_online: c.is_online }))
         });
         
         setChicasActivas(prevChicas => {
@@ -794,11 +749,6 @@ export default function InterfazCliente() {
           const prevChicaIds = prevChicas.map(u => u.id).sort();
           
           if (JSON.stringify(newChicaIds) !== JSON.stringify(prevChicaIds)) {
-            console.log('🔄 [HOME] Actualizando chicas activas:', {
-              prevCount: prevChicas.length,
-              newCount: chicasOnline.length,
-              newIds: newChicaIds
-            });
             // 🔥 ACTUALIZAR MODELOS DISPONIBLES PARA EL SELECTOR
             setAvailableModelos(chicasOnline.map(chica => ({
               id: chica.id,
@@ -808,7 +758,6 @@ export default function InterfazCliente() {
             return chicasOnline;
           }
           
-          console.log('⏸️ [HOME] No hay cambios en chicas activas');
           return prevChicas.map(prevChica => {
             const updatedChica = chicasOnline.find(u => u.id === prevChica.id);
             return updatedChica || prevChica;
@@ -816,16 +765,11 @@ export default function InterfazCliente() {
         });
         
       } else {
-        console.error('❌ [HOME] Error en respuesta de my-contacts:', {
-          status: response.status,
-          statusText: response.statusText
-        });
         if (initialLoad) {
           await handleFallbackData();
         }
       }
     } catch (error) {
-      console.error('❌ [HOME] Error en cargarChicasActivas:', error);
       if (initialLoad) {
         await handleFallbackData();
       }
@@ -919,20 +863,12 @@ export default function InterfazCliente() {
     try {
       // 🔍 LOG INICIAL - Forzar mostrar en consola con múltiples métodos
       const logMessage = '🔍 [HOME] Iniciando carga de historias...';
-      console.log('%c' + logMessage, 'color: #00ff00; font-weight: bold; font-size: 14px;');
-      console.log(logMessage);
-      console.info(logMessage);
-      // También usar window.console para evitar filtros
-      if (window.console && window.console.log) {
-        window.console.log('[HOME] CARGANDO HISTORIAS - FUNCIÓN EJECUTADA');
-      }
       sendLogToBackend('info', logMessage);
       setLoadingStories(true);
       const token = localStorage.getItem('token');
       
       if (!token) {
         const warnMessage = '⚠️ [HOME] No hay token disponible para cargar historias';
-        console.warn(warnMessage);
         sendLogToBackend('warn', warnMessage);
         setStories([]);
         setLoadingStories(false);
@@ -941,7 +877,6 @@ export default function InterfazCliente() {
 
       const url = `${API_BASE_URL}/api/stories/active`;
       const requestLog = `📡 [HOME] Haciendo petición a: ${url}`;
-      console.log(requestLog);
       sendLogToBackend('info', requestLog, { url });
       
       const response = await fetch(url, {
@@ -958,7 +893,6 @@ export default function InterfazCliente() {
         statusText: response.statusText,
         ok: response.ok
       };
-      console.log('📥 [HOME] Respuesta recibida:', responseData);
       sendLogToBackend('info', '📥 [HOME] Respuesta recibida', responseData);
 
       if (response.ok) {
@@ -974,7 +908,6 @@ export default function InterfazCliente() {
             status: s.status
           })) : []
         };
-        console.log('✅ [HOME] Historias cargadas exitosamente:', storiesData);
         sendLogToBackend('info', '✅ [HOME] Historias cargadas exitosamente', storiesData);
         
         const storiesArray = Array.isArray(data) ? data : [];
@@ -988,7 +921,6 @@ export default function InterfazCliente() {
           activas: onlineCount,
           inactivas: offlineCount
         };
-        console.log('📊 [HOME] Resumen de estados:', summaryData);
         sendLogToBackend('info', '📊 [HOME] Resumen de estados', summaryData);
       } else {
         const errorText = await response.text();
@@ -997,7 +929,6 @@ export default function InterfazCliente() {
           statusText: response.statusText,
           error: errorText
         };
-        console.error('❌ [HOME] Error al cargar historias:', errorData);
         sendLogToBackend('error', '❌ [HOME] Error al cargar historias', errorData);
         setStories([]);
       }
@@ -1007,47 +938,29 @@ export default function InterfazCliente() {
         stack: error.stack,
         error: String(error)
       };
-      console.error('💥 [HOME] Excepción al cargar historias:', errorData);
       sendLogToBackend('error', '💥 [HOME] Excepción al cargar historias', errorData);
       setStories([]);
     } finally {
       setLoadingStories(false);
       const finalMessage = '🏁 [HOME] Carga de historias finalizada';
-      console.log(finalMessage);
       sendLogToBackend('info', finalMessage);
     }
   };
 
   // 🔥 FUNCIÓN PARA NAVEGAR A CHAT CON CHICA ESPECÍFICA
   const abrirChatConChica = (chica) => {
-    console.log('🔵 [HOME] ========== INICIO abrirChatConChica ==========');
-    console.log('🔵 [HOME] Chica recibida:', JSON.stringify(chica, null, 2));
     logger.debug('Abriendo chat con chica:', chica);
     
     const otherUserId = chica.id || chica.user_id;
     const otherUserName = chica.display_name || chica.name || chica.alias || 'Usuario';
     const userRole = chica.role || 'modelo';
     
-    console.log('🔵 [HOME] Datos extraídos:', {
-      otherUserId,
-      otherUserName,
-      userRole
-    });
-    
     // Generar room_name (mismo formato que usa el backend)
     const currentUserFromState = user?.id;
     const currentUserFromStorage = getUser()?.id;
     const currentUserId = currentUserFromState || currentUserFromStorage;
     
-    console.log('🔵 [HOME] IDs de usuario:', {
-      currentUserFromState,
-      currentUserFromStorage,
-      currentUserId,
-      otherUserId
-    });
-    
     if (!currentUserId || !otherUserId) {
-      console.error('❌ [HOME] ERROR: No se pudo obtener IDs de usuario');
       logger.error('No se pudo obtener IDs de usuario para crear el chat');
       showNotification('Error al abrir el chat. Por favor, intenta de nuevo.', 'error');
       return;
@@ -1056,7 +969,6 @@ export default function InterfazCliente() {
     // Crear room_name ordenando los IDs para que sea consistente
     const roomName = [currentUserId, otherUserId].sort().join('_');
     
-    console.log('🔵 [HOME] Room name generado:', roomName);
     
     const chatData = {
       other_user_id: otherUserId,
@@ -1067,7 +979,6 @@ export default function InterfazCliente() {
       needsSync: true
     };
     
-    console.log('🔵 [HOME] Chat data completo:', JSON.stringify(chatData, null, 2));
     logger.debug('Datos del chat:', chatData);
     
     // 🔥 DETECTAR SI ES MÓVIL Y USAR LA RUTA CORRECTA
@@ -1075,12 +986,6 @@ export default function InterfazCliente() {
     const isMobile = windowWidth < 768;
     // 🔥 Usar ruta diferente según dispositivo
     const chatPath = isMobile ? '/mensajesmobileclient' : '/message';
-    
-    console.log('🔵 [HOME] Detección de dispositivo:', {
-      windowWidth,
-      isMobile,
-      chatPath
-    });
     
     const navigationState = {
       pathname: chatPath,
@@ -1090,8 +995,6 @@ export default function InterfazCliente() {
       }
     };
     
-    console.log('🔵 [HOME] Navegando con:', JSON.stringify(navigationState, null, 2));
-    console.log('🔵 [HOME] ========== FIN abrirChatConChica ==========');
     
     navigate(navigationState);
   };
@@ -1109,12 +1012,12 @@ export default function InterfazCliente() {
       
       // 💰 VERIFICAR SALDO ANTES DE INICIAR LLAMADA (doble si es 2vs1)
       const minimumBalance = isDualCall ? 60 : 30; // 60 para 2vs1, 30 para 1vs1
-      const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
-        method: 'GET',
-        headers: getAuthHeaders()
-      });
-      
-      if (balanceResponse.ok) {
+        const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        
+        if (balanceResponse.ok) {
         const balanceData = await balanceResponse.json();
         logger.debug('Respuesta de balance', balanceData);
         
@@ -1140,7 +1043,6 @@ export default function InterfazCliente() {
         const yoLaBloquee = usuariosBloqueados.some((user) => user.id === otherUserId);
         if (yoLaBloquee) {
           setConfirmAction({
-            type: 'blocked',
             title: t('clientInterface.notAvailable'),
             message: t('clientInterface.youBlockedUser', { name: 'nombre' }),
             confirmText: t('clientInterface.understood'),
@@ -1164,7 +1066,6 @@ export default function InterfazCliente() {
             const blockData = await blockCheckResponse.json();
             if (blockData.success && blockData.is_blocked_by_them) {
               setConfirmAction({
-                type: 'blocked',
                 title: t('clientInterface.notAvailable'),
                 message: t('clientInterface.userBlockedYou', { name: 'nombre' }),
                 confirmText: t('clientInterface.understood'),
@@ -1196,9 +1097,7 @@ export default function InterfazCliente() {
       // 🔥 REPRODUCIR SONIDO DE LLAMADA SALIENTE
       try {
         await playOutgoingCallSound();
-        console.log('✅ [HOME-CLIENTE] Sonido de llamada saliente iniciado');
       } catch (error) {
-        console.warn('⚠️ [HOME-CLIENTE] Error reproduciendo sonido de llamada saliente:', error);
       }
       
       const token = localStorage.getItem('token');
@@ -1225,14 +1124,12 @@ export default function InterfazCliente() {
             modeloIds: modeloIdsToUse,
             modelos: data.modelos,
             callId: data.call_id,
-            roomName: data.room_name,
             status: 'calling'
           });
         } else {
           setCurrentCall({
             ...chica,
             callId: data.call_id,
-            roomName: data.room_name,
             status: 'calling'
           });
         }
@@ -1262,7 +1159,6 @@ export default function InterfazCliente() {
             setShowNoBalanceModal(true);
           } else {
             setConfirmAction({
-              type: 'error',
               title: t('clientInterface.insufficientBalanceTitle') || 'Saldo Insuficiente',
               message: t('clientInterface.insufficientBalanceMessage') || 'No tienes saldo suficiente para realizar esta llamada. Por favor, recarga tu cuenta.',
               confirmText: t('clientInterface.understood'),
@@ -1276,7 +1172,6 @@ export default function InterfazCliente() {
         } else {
           // Otros errores - mostrar mensaje genérico
           setConfirmAction({
-            type: 'error',
             title: t('clientInterface.callError'),
             message: errorMessage || t('clientInterface.callFailed'),
             confirmText: t('clientInterface.understood'),
@@ -1373,28 +1268,14 @@ export default function InterfazCliente() {
           
           // 🔥 LOG DETALLADO SOLO CUANDO HAY NOTIFICACIONES O CADA 5 INTENTOS
           if (data.has_notifications || Math.random() < 0.2) {
-            console.log('📢 [CALL][CLIENTE] Verificando notificaciones:', {
-              has_notifications: data.has_notifications,
-              notification_type: data.notification?.type,
-              notification_full: data.notification,
-              callId,
-              isCallActive,
-              currentCall: currentCall?.callId
-            });
+            // Log detallado cuando hay notificaciones
           }
           
           if (data.success && data.has_notifications) {
             const notification = data.notification;
             
-            console.log('🔔 [CALL][CLIENTE] Notificación recibida:', {
-              type: notification.type,
-              data: notification.data,
-              full_notification: notification
-            });
-            
             // 🔥 DETECTAR NOTIFICACIÓN DE LLAMADA ACEPTADA
             if (notification.type === 'call_accepted') {
-              console.log('✅ [CALL][CLIENTE] ¡Notificación de llamada aceptada recibida!', notification);
               
               isPolling = false;
               if (interval) clearInterval(interval);
@@ -1406,33 +1287,23 @@ export default function InterfazCliente() {
                 ? JSON.parse(notification.data) 
                 : notification.data;
               
-              console.log('📦 [CALL][CLIENTE] Datos de notificación procesados:', notificationData);
               
               const roomName = notificationData.room_name || currentCall?.roomName;
               const receiverName = notificationData.receiver?.name || notificationData.receiver_name || 'Modelo';
-              
-              console.log('🚀 [CALL][CLIENTE] Preparando redirección:', {
-                roomName,
-                receiverName,
-                hasRoomName: !!roomName
-              });
               
               if (roomName) {
                 // Redirigir inmediatamente
                 redirigirAVideochat({
                   room_name: roomName,
-                  receiver: notificationData.receiver,
-                  call_id: notificationData.call_id || callId
+                  receiver: notificationData.receiver
                 });
               } else {
-                console.error('❌ [CALL][CLIENTE] No se pudo obtener roomName de la notificación');
               }
               return;
             }
           }
         }
       } catch (error) {
-        console.error('❌ [CALL][CLIENTE] Error verificando notificaciones:', error);
       }
     };
     
@@ -1443,7 +1314,6 @@ export default function InterfazCliente() {
       try {
         const token = localStorage.getItem('token');
         if (!token) {
-          console.warn('⚠️ [CALL][CLIENTE] No hay token disponible');
           return;
         }
         
@@ -1463,7 +1333,6 @@ export default function InterfazCliente() {
           if (data.success) {
             const callStatus = data.call.status;
             
-            console.log('📞 [CALL][CLIENTE] Estado de llamada:', callStatus);
             
             if (callStatus === 'active') {
               // ¡Llamada aceptada por la chica!
@@ -1516,23 +1385,13 @@ export default function InterfazCliente() {
           // Intentar obtener más información del error
           try {
             const errorData = await response.json();
-            console.warn('⚠️ [CALL][CLIENTE] Error 403 en status:', {
-              error: errorData.error || errorData.message,
-              callId,
-              hasToken: !!token,
-              consecutiveErrors: consecutive403Errors
-            });
+            // Error 403 en status
           } catch (e) {
-            console.warn('⚠️ [CALL][CLIENTE] Error 403 en status (sin detalles):', {
-              callId,
-              hasToken: !!token,
-              consecutiveErrors: consecutive403Errors
-            });
+            // Error 403 en status (sin detalles)
           }
           // Continuar con notificaciones - no detener el polling
         } else if (response.status === 401) {
           // Token inválido o expirado
-          console.error('❌ [CALL][CLIENTE] Error 401 - Token inválido o expirado');
           // No detener el polling, el sistema de notificaciones puede seguir funcionando
         } else if (response.ok) {
           // Si la respuesta es exitosa, resetear el contador de errores
@@ -1542,13 +1401,11 @@ export default function InterfazCliente() {
       } catch (error) {
         // Solo loggear errores críticos, no detener el polling
         if (error.name !== 'AbortError') {
-          console.error('❌ [CALL][CLIENTE] Error en checkCallStatus:', error.message);
         }
       }
     };
     
     // 🔥 EJECUTAR AMBOS INMEDIATAMENTE
-    console.log('🔄 [CALL][CLIENTE] Iniciando polling dual para callId:', callId);
     checkCallStatus();
     checkCallAcceptedNotification();
     
@@ -1559,12 +1416,6 @@ export default function InterfazCliente() {
     notificationInterval = setInterval(checkCallAcceptedNotification, 500);
     
     setCallPollingInterval(interval);
-    
-    console.log('✅ [CALL][CLIENTE] Polling dual iniciado:', {
-      statusInterval: '500ms',
-      notificationInterval: '500ms',
-      callId
-    });
     
     // Timeout de seguridad
     setTimeout(() => {
@@ -1628,18 +1479,11 @@ export default function InterfazCliente() {
     const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
     
     if (!roomName) {
-      console.error('❌ [CALL][CLIENTE] No se pudo obtener room_name');
       return;
     }
     
     // 🔥 Obtener el nombre del receptor/modelo
     const receiverName = callData.receiver?.name || callData.receiver_name || callData.modelo?.name || 'Modelo';
-    
-    console.log('🚀 [CALL][CLIENTE] Redirigiendo a videochat:', {
-      roomName,
-      receiverName,
-      callData
-    });
     
     // Guardar datos de la llamada
     localStorage.setItem('roomName', roomName);
@@ -1664,7 +1508,6 @@ export default function InterfazCliente() {
     try {
       navigate(videochatUrl, {
         state: {
-          roomName: roomName,
           userName: receiverName,
           callId: callData.call_id || callData.id || callData.incoming_call?.id,
           from: 'call',
@@ -1672,9 +1515,7 @@ export default function InterfazCliente() {
         },
         replace: true
       });
-      console.log('✅ [CALL][CLIENTE] Navegación ejecutada a:', videochatUrl);
     } catch (navError) {
-      console.error('❌ [CALL][CLIENTE] Error en navigate, usando window.location:', navError);
       // Fallback: usar window.location
       window.location.href = videochatUrl;
     }
@@ -1682,13 +1523,10 @@ export default function InterfazCliente() {
 
   // 🔄 POLLING MEJORADO - SIN PARPADEO
   useEffect(() => {
-    console.log('[HOME] useEffect ejecutado - user?.id:', user?.id);
     if (!user?.id) {
-      console.warn('[HOME] No hay user.id, saliendo del useEffect');
       return;
     }
 
-    console.log('[HOME] Llamando cargarChicasActivas y cargarHistorias');
     cargarChicasActivas(false);
     cargarHistorias(); // Cargar historias al montar
 
@@ -1908,7 +1746,6 @@ export default function InterfazCliente() {
         showNotification(data.error || 'Error al verificar los pagos pendientes.', 'error');
       }
     } catch (error) {
-      console.error('Error verificando pagos pendientes:', error);
       showNotification('Error de conexión al verificar pagos.', 'error');
     } finally {
       setCheckingPayments(false);
@@ -2017,48 +1854,60 @@ export default function InterfazCliente() {
       role: "cliente",
       blockIfInCall: true
     }}>
-      <div className="min-h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white flex flex-col p-3 sm:p-4 lg:p-6">
-        {/* Notificación Toast */}
+      <div className="h-screen bg-gradient-to-br from-[#1a1c20] via-[#1f2125] to-[#2b2d31] text-white flex flex-col overflow-hidden">
+        {/* Notificación Toast - Mejorada con accesibilidad */}
         {notification && (
-          <div className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto z-[9999] px-4 py-3 rounded-lg shadow-2xl border flex items-center gap-2 animate-slide-in-right max-w-sm sm:max-w-md backdrop-blur-sm ${
-            notification.type === 'success' 
-              ? 'bg-green-500/20 border-green-500/30 text-green-400'
-              : notification.type === 'error'
-              ? 'bg-red-500/20 border-red-500/30 text-red-400'
-              : notification.type === 'warning'
-              ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
-              : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
-          }`}>
-            {notification.type === 'success' && <span className="text-base">✓</span>}
-            {notification.type === 'error' && <span className="text-base">✗</span>}
-            {notification.type === 'warning' && <span className="text-base">⚠</span>}
-            {notification.type === 'info' && <span className="text-base">ℹ</span>}
+          <div 
+            role="alert"
+            aria-live="polite"
+            aria-atomic="true"
+            className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto z-[9999] px-4 py-3 rounded-lg shadow-2xl border flex items-center gap-2 animate-slide-in-right max-w-sm sm:max-w-md backdrop-blur-sm ${
+              notification.type === 'success' 
+                ? 'bg-green-500/20 border-green-500/30 text-green-400'
+                : notification.type === 'error'
+                ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                : notification.type === 'warning'
+                ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
+                : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+            }`}
+          >
+            {notification.type === 'success' && <span className="text-base" aria-hidden="true">✓</span>}
+            {notification.type === 'error' && <span className="text-base" aria-hidden="true">✗</span>}
+            {notification.type === 'warning' && <span className="text-base" aria-hidden="true">⚠</span>}
+            {notification.type === 'info' && <span className="text-base" aria-hidden="true">ℹ</span>}
             <span className="text-xs sm:text-sm font-medium flex-1">{notification.message}</span>
             <button
               onClick={() => setNotification(null)}
-              className="ml-2 text-white/60 hover:text-white text-lg font-bold"
+              className="ml-2 text-white/60 hover:text-white text-lg font-bold transition-colors"
+              aria-label="Cerrar notificación"
             >
               ×
             </button>
           </div>
         )}
-        <div className="flex-shrink-0 mb-3 sm:mb-4">
+        <div className="flex-shrink-0">
           <Header />
         </div>
 
-        <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6">
-          {/* Panel central */}
-          <main className="flex-1 lg:w-3/4 bg-[#1f2125] rounded-2xl p-4 sm:p-5 lg:p-6 shadow-xl flex flex-col items-center justify-center">
-            <div className="w-full flex-shrink-0 flex flex-col items-center">
-              <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-center mb-3 sm:mb-4 lg:mb-5 mt-2 sm:mt-3 lg:mt-4 px-2">
+        <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6 p-3 sm:p-4 lg:p-6 min-h-0 overflow-y-auto lg:overflow-hidden">
+          {/* Panel central - Mejorado con gradientes y sombras */}
+          <main 
+            className="flex-1 w-full lg:w-3/4 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-4 sm:p-5 lg:p-2 lg:sm:p-3 lg:p-4 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-center relative overflow-hidden min-h-0 lg:h-full flex-shrink-0"
+            role="main"
+            aria-label="Panel principal de inicio"
+          >
+            {/* Efecto de brillo sutil en el fondo */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#ff007a]/5 via-transparent to-transparent pointer-events-none"></div>
+            <div className="w-full max-w-md flex flex-col items-center justify-center relative z-10 py-4 sm:py-6 lg:py-2">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-2xl font-bold text-center mb-4 sm:mb-5 lg:mb-3 px-4 bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent">
                 {t('clientInterface.greeting', { name: user?.name })}
               </h2>
-              <p className="text-center text-white/70 mb-4 sm:mb-5 lg:mb-6 max-w-md text-xs sm:text-sm lg:text-base px-4">
+              <p className="text-center text-white/80 mb-6 sm:mb-7 lg:mb-4 text-base sm:text-lg lg:text-sm px-4 leading-relaxed" role="note">
                 {t('clientInterface.mainDescription')}
               </p>
 
               {/* 🔥 SELECTOR DE MODO DE LLAMADA */}
-              <div className="w-full max-w-xs px-2 mb-2">
+              <div className="w-full max-w-sm px-4 mb-4 sm:mb-5 lg:mb-2 lg:sm:mb-3">
                 <CallModeSelector
                   onModeChange={(mode, selectedIds) => {
                     setCallMode(mode);
@@ -2087,7 +1936,6 @@ export default function InterfazCliente() {
                 }}
                 availableModelos={availableModelos}
                 onConfirm={async (modeloIds) => {
-                  console.log('✅ [HOME] Modelos seleccionados para 2vs1:', modeloIds);
                   setSelectedModelos(modeloIds);
                   setCallMode('dual');
                   setShowDualCallModal(false);
@@ -2096,7 +1944,6 @@ export default function InterfazCliente() {
                   try {
                     await iniciarLlamadaAChica(null, modeloIds);
                   } catch (error) {
-                    console.error('❌ [HOME] Error iniciando llamada 2vs1:', error);
                     // Resetear estado en caso de error
                     setSelectedModelos([]);
                     setCallMode('normal');
@@ -2105,10 +1952,10 @@ export default function InterfazCliente() {
                 userBalance={userBalance?.purchased_coins || userBalance?.purchased_balance || 0}
               />
 
-              {/* Botones verticales */}
-              <div className="flex flex-col items-center gap-3 sm:gap-4 lg:gap-5 w-full max-w-xs px-2 pb-2 sm:pb-3">
+              {/* Botones verticales - Mejorados */}
+              <div className="flex flex-col items-center gap-4 sm:gap-5 lg:gap-3 w-full max-w-sm px-4 mb-4 sm:mb-5 lg:mb-3">
               <button
-                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full bg-gradient-to-r from-[#ff007a] to-[#e6006e] hover:from-[#ff3399] hover:to-[#ff007a] text-white px-8 sm:px-10 lg:px-5 py-4 sm:py-5 lg:py-2.5 rounded-full text-base sm:text-lg lg:text-sm font-semibold shadow-lg shadow-[#ff007a]/30 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-[#ff007a]/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-lg relative overflow-hidden group"
                 onClick={() => {
                   // 🔥 BLOQUEAR 2VS1 EN PRODUCCIÓN
                   const isProd = API_BASE_URL?.includes('ligandome.com') || API_BASE_URL?.includes('https://');
@@ -2133,17 +1980,20 @@ export default function InterfazCliente() {
                   }
                 }}
                 disabled={loadingBalance}
+                aria-label={callMode === 'dual' 
+                  ? (selectedModelos.length === 2 ? 'Iniciar Llamada 2vs1' : 'Configurar Llamada 2vs1')
+                  : t('clientInterface.startCall')}
               >
+                {/* Efecto de brillo en hover */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                 {loadingBalance ? (
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-center justify-center gap-2 relative z-10">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                     <span>{t('clientInterface.checkingBalance')}</span>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
+                  <div className="flex items-center justify-center gap-2 relative z-10">
+                    <Video className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
                     {callMode === 'dual' 
                       ? (selectedModelos.length === 2 ? 'Iniciar Llamada 2vs1' : 'Configurar Llamada 2vs1')
                       : t('clientInterface.startCall')
@@ -2153,141 +2003,71 @@ export default function InterfazCliente() {
               </button>
 
               <button
-                className="w-full bg-[#ffe4f1] hover:bg-[#ffd1e8] text-[#4b2e35] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
+                className="w-full bg-gradient-to-r from-[#ffe4f1] to-[#ffd1e8] hover:from-[#ffd1e8] hover:to-[#ffb8d9] text-[#4b2e35] px-8 sm:px-10 lg:px-5 py-4 sm:py-5 lg:py-2.5 rounded-full text-base sm:text-lg lg:text-sm font-semibold shadow-md transition-all duration-300 transform hover:scale-105 hover:shadow-lg active:scale-95 relative overflow-hidden group"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   logger.debug('Click en Comprar Monedas');
                   setShowBuyMinutes(true);
                 }}
+                aria-label={t('clientInterface.buyCoins')}
               >
-                {t('clientInterface.buyCoins')}
+                {/* Efecto ripple */}
+                <div className="absolute inset-0 bg-white/20 scale-0 group-active:scale-100 rounded-full transition-transform duration-300"></div>
+                <span className="relative z-10">{t('clientInterface.buyCoins')}</span>
               </button>
 
-              {/* Consejo del día */}
-              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-3 sm:p-4 text-center mt-1 sm:mt-2">
-                <p className="text-white text-xs sm:text-sm mb-1 font-semibold">{t('clientInterface.tipOfTheDay')}</p>
-                <p className="text-white/70 text-xs sm:text-sm italic">
-                  {t('clientInterface.dailyTip')}
-                </p>
-              </div>
+              {/* Consejo del día - Usando componente nuevo */}
+              <TipOfTheDay className="mt-6 sm:mt-8 lg:mt-3 w-full max-w-sm px-4" />
             </div>
             </div>
           </main>
 
-          {/* Panel lateral derecho - Acordeón */}
-          <aside className="w-full lg:w-1/4 flex flex-col min-h-0 max-h-full">
-            <div className="bg-[#2b2d31] rounded-2xl border border-[#ff007a]/20 overflow-hidden flex flex-col h-full max-h-full overflow-y-auto custom-scrollbar">
-              {/* Sección 1: Saldo (siempre visible, colapsable) */}
+           {/* Panel lateral derecho - Acordeón Mejorado con responsive */}
+           <aside className="w-full lg:w-1/4 flex flex-col min-h-0 lg:h-full flex-shrink-0" role="complementary" aria-label="Panel de información">
+             <div className="bg-gradient-to-b from-[#2b2d31] to-[#1f2125] rounded-2xl border border-[#ff007a]/20 flex flex-col shadow-xl lg:h-full lg:flex-1 lg:min-h-0">
+              {/* Sección 1: Saldo - Usando componente BalanceCard */}
               {userBalance && (
-                <div className="border-b border-[#ff007a]/10 flex-shrink-0">
-                  <button
-                    onClick={() => setExpandedSections(prev => ({
-                      balance: !prev.balance,
-                      activeGirls: false,
-                      history: false
-                    }))}
-                    className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors"
-                  >
-                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                      <span className="text-xs sm:text-sm font-semibold text-white whitespace-nowrap">{t('clientInterface.yourBalance')}</span>
-                      <span className="text-[#ff007a] font-bold text-base sm:text-lg">
-                        {userBalance.minutes_available || 0}
-                      </span>
-                      <span className="text-xs text-white/60 whitespace-nowrap">{t('clientInterface.minutes')}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          checkAllPendingPayments();
-                        }}
-                        disabled={checkingPayments}
-                        className="text-[10px] px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded border border-blue-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-2"
-                        title={t('clientInterface.verifyPaymentsTitle')}
-                      >
-                        {checkingPayments ? t('clientInterface.verifyingPayments') : t('clientInterface.verifyPayments')}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          consultarSaldoUsuario();
-                        }}
-                        className="text-[#ff007a] hover:text-[#e6006e] transition-colors p-1.5 rounded-lg hover:bg-[#ff007a]/10"
-                        disabled={loadingBalance}
-                        title="Actualizar saldo"
-                      >
-                        {loadingBalance ? (
-                          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        )}
-                      </button>
-                      <svg
-                        className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.balance ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </button>
-                  
-                  {expandedSections.balance && (
-                    <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10">
-                      <div className="pt-2 sm:pt-3 space-y-2 sm:space-y-3">
-                        <div className="flex justify-between text-xs sm:text-sm">
-                          <span className="text-white/70">{t('clientInterface.total')}</span>
-                          <span className="text-[#ff007a] font-semibold">
-                            {userBalance.total_coins || userBalance.total_available || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs sm:text-sm">
-                          <span className="text-white/70">Saldo de minutos</span>
-                          <span className="text-white font-semibold">
-                            {userBalance.purchased_coins || userBalance.purchased_balance || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs sm:text-sm">
-                          <span className="text-white/70">Saldo de regalo</span>
-                          <span className="text-white font-semibold">
-                            {userBalance.gift_coins || userBalance.gift_balance || 0}
-                          </span>
-                        </div>
-
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <BalanceCard
+                  userBalance={userBalance}
+                  loadingBalance={loadingBalance}
+                  checkingPayments={checkingPayments}
+                  onRefresh={consultarSaldoUsuario}
+                  onVerifyPayments={checkAllPendingPayments}
+                  isExpanded={expandedSections.balance}
+                  onToggleExpand={() => setExpandedSections(prev => ({
+                    balance: !prev.balance,
+                    activeGirls: false,
+                    history: false
+                  }))}
+                />
               )}
 
-              {/* Sección 2: Chicas Activas */}
-              <div className={`border-b border-[#ff007a]/10 flex flex-col ${expandedSections.activeGirls ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}>
+               {/* Sección 2: Chicas Activas - Usando componente ActiveGirlsList */}
+               <div className={`border-b border-[#ff007a]/10 flex flex-col ${expandedSections.activeGirls ? 'lg:flex-1 lg:min-h-0' : 'flex-shrink-0'} transition-all duration-300`}>
                 <button
                   onClick={() => setExpandedSections(prev => ({
                     balance: false,
                     activeGirls: !prev.activeGirls,
                     history: false
                   }))}
-                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0"
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0 group"
+                  aria-expanded={expandedSections.activeGirls}
+                  aria-label={t('clientInterface.activeGirls')}
                 >
                   <div className="flex items-center gap-2 sm:gap-3">
+                    <Users className="w-4 h-4 text-[#ff007a]" />
                     <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
                       {t('clientInterface.activeGirls')}
                     </h3>
-                    {stories.length > 0 && (
+                    {chicasActivas.length > 0 && (
                       <span className="text-xs text-white/50 bg-[#ff007a]/20 px-2 py-1 rounded-full">
-                        {stories.length}
+                        {chicasActivas.length}
                       </span>
                     )}
                   </div>
                   <svg
-                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.activeGirls ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-white/60 transition-transform duration-300 ${expandedSections.activeGirls ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -2296,162 +2076,42 @@ export default function InterfazCliente() {
                   </svg>
                 </button>
                 
-                  {expandedSections.activeGirls && (
-                  <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
-                    
-                    {loadingUsers ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                        <span className="ml-3 text-sm text-white/60">
-                          {t('clientInterface.loadingGirls')}
-                        </span>
-                      </div>
-                    ) : chicasActivas.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center text-center py-8">
-                        <Users size={32} className="text-white/20 mb-3" />
-                        <p className="text-sm text-white/60 font-medium">
-                          {t('clientInterface.noActiveGirls')}
-                        </p>
-                        <p className="text-xs text-white/40 mt-1">
-                          {t('clientInterface.girlsWillAppear')}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 pt-3">
-                        {(() => {
-                          const renderData = {
-                            total: chicasActivas.length,
-                            timestamp: new Date().toISOString()
-                          };
-                          console.log('🎨 [HOME] Renderizando chicas activas:', renderData);
-                          sendLogToBackend('info', '🎨 [HOME] Renderizando chicas activas', renderData);
-                          return chicasActivas.map((chica, index) => {
-                            // 🔥 USAR DATOS DE chicasActivas EN LUGAR DE stories
-                            const isOnline = chica.is_online !== undefined ? chica.is_online : true;
-                            const avatarUrl = chica.avatar_url || chica.avatar;
-                            const displayName = chica.display_name || chica.name || chica.alias || 'Usuario';
-                            
-                            // Log individual de cada chica renderizada (solo la primera para no saturar)
-                            if (index === 0) {
-                              const chicaData = {
-                                chica_id: chica.id,
-                                name: displayName,
-                                is_online: isOnline,
-                                avatar_url: avatarUrl
-                              };
-                              console.log('📝 [HOME] Ejemplo de chica activa renderizada:', chicaData);
-                              sendLogToBackend('info', '📝 [HOME] Ejemplo de chica activa renderizada', chicaData);
-                            }
-                            
-                            return (
-                            <div
-                              key={chica.id}
-                              className="relative flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
-                              style={{
-                                animationDelay: `${index * 50}ms`
-                              }}
-                            >
-                              <div className="flex items-center gap-3 flex-1">
-                                <div className="relative">
-                                  {avatarUrl ? (
-                                    <img 
-                                      src={avatarUrl} 
-                                      alt={displayName} 
-                                      className="w-12 h-12 rounded-full object-cover border-2 border-[#ff007a]"
-                                      onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        if (e.target.nextElementSibling) {
-                                          e.target.nextElementSibling.style.display = 'flex';
-                                        }
-                                      }}
-                                    />
-                                  ) : null}
-                                  <div 
-                                    className={`w-12 h-12 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${avatarUrl ? 'hidden' : ''}`}
-                                  >
-                                    {getInitial(displayName)}
-                                  </div>
-                                  {/* Mostrar indicador verde solo si está online */}
-                                  {isOnline && (
-                                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-sm truncate">
-                                    {displayName}
-                                  </div>
-                                  {/* Mostrar estado online/offline según is_online */}
-                                  <div className={`text-xs ${isOnline ? 'text-green-400' : 'text-gray-400'}`}>
-                                    {isOnline ? (t('clientInterface.online') || 'Online') : (t('clientInterface.offline') || 'Offline')}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 ml-2">
-                                <button
-                                  onClick={() => {
-                                    const chicaData = {
-                                      id: chica.id,
-                                      name: displayName,
-                                      display_name: displayName,
-                                      alias: displayName,
-                                      role: 'modelo',
-                                      is_online: isOnline,
-                                      avatar_url: avatarUrl
-                                    };
-                                    iniciarLlamadaAChica(chicaData);
-                                  }}
-                                  disabled={isCallActive || isReceivingCall}
-                                  className={`p-2 rounded-full transition-colors duration-200 ${
-                                    isCallActive || isReceivingCall 
-                                      ? 'bg-gray-500/20 cursor-not-allowed' 
-                                      : 'hover:bg-[#ff007a]/20'
-                                  }`}
-                                  title={
-                                    isCallActive || isReceivingCall 
-                                      ? t('clientInterface.callInProgress')
-                                      : t('clientInterface.callThisGirl')
-                                  }
-                                >
-                                  <Phone 
-                                    size={16} 
-                                    className={`${
-                                      isCallActive || isReceivingCall 
-                                        ? 'text-gray-500' 
-                                        : 'text-[#ff007a] hover:text-white'
-                                    } transition-colors`} 
-                                  />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const chicaData = {
-                                      id: chica.id,
-                                      name: displayName,
-                                      display_name: displayName,
-                                      alias: displayName,
-                                      role: 'modelo',
-                                      is_online: isOnline,
-                                      avatar_url: avatarUrl
-                                    };
-                                    abrirChatConChica(chicaData);
-                                  }}
-                                  className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
-                                  title={t('clientInterface.messageThisGirl')}
-                                >
-                                  <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        });
-                        })()}
-                      </div>
-                    )}
-                  </div>
+                {expandedSections.activeGirls && (
+                  <ActiveGirlsList
+                    chicasActivas={chicasActivas}
+                    loadingUsers={loadingUsers}
+                    onCall={(chica) => {
+                      const chicaData = {
+                        id: chica.id,
+                        name: chica.display_name || chica.name || chica.alias,
+                        display_name: chica.display_name || chica.name || chica.alias,
+                        alias: chica.display_name || chica.name || chica.alias,
+                        role: 'modelo',
+                        is_online: chica.is_online,
+                        avatar_url: chica.avatar_url || chica.avatar
+                      };
+                      iniciarLlamadaAChica(chicaData);
+                    }}
+                    onMessage={(chica) => {
+                      const chicaData = {
+                        id: chica.id,
+                        name: chica.display_name || chica.name || chica.alias,
+                        display_name: chica.display_name || chica.name || chica.alias,
+                        alias: chica.display_name || chica.name || chica.alias,
+                        role: 'modelo',
+                        is_online: chica.is_online,
+                        avatar_url: chica.avatar_url || chica.avatar
+                      };
+                      abrirChatConChica(chicaData);
+                    }}
+                    isCallActive={isCallActive}
+                    isReceivingCall={isReceivingCall}
+                  />
                 )}
               </div>
 
-              {/* Sección 3: Historial */}
-              <div className={`flex flex-col ${expandedSections.history ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}>
+              {/* Sección 3: Historial - Usando componente CallHistoryList */}
+              <div className={`flex flex-col ${expandedSections.history ? 'lg:flex-1 lg:min-h-0 lg:overflow-hidden' : 'flex-shrink-0'} transition-all duration-300`}>
                 <button
                   onClick={() => setExpandedSections(prev => {
                     const newHistoryState = !prev.history;
@@ -2461,13 +2121,18 @@ export default function InterfazCliente() {
                       history: newHistoryState
                     };
                   })}
-                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0"
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors flex-shrink-0 group"
+                  aria-expanded={expandedSections.history}
+                  aria-label={t('clientInterface.yourHistory')}
                 >
-                  <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
-                    {t('clientInterface.yourHistory')}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-[#ff007a]" />
+                    <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
+                      {t('clientInterface.yourHistory')}
+                    </h3>
+                  </div>
                   <svg
-                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-white/60 transition-transform duration-300 ${expandedSections.history ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -2477,82 +2142,19 @@ export default function InterfazCliente() {
                 </button>
                 
                 {expandedSections.history && (
-                  <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar max-h-[40vh] sm:max-h-[50vh]">
-                    <div className="space-y-2 sm:space-y-3 pt-2 sm:pt-3">
-                      {(() => {
-                        return loadingHistory ? (
-                          <div className="flex items-center justify-center py-8">
-                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                          </div>
-                        ) : callHistory.length === 0 ? (
-                          <div className="text-center py-8">
-                            <p className="text-white/60 text-sm">
-                              {t("client.history.noHistory")}
-                            </p>
-                          </div>
-                        ) : (
-                        callHistory.map((item) => (
-                          <div 
-                            key={item.id} 
-                            className="flex justify-between items-start bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-colors duration-200"
-                          >
-                            <div className="flex gap-3 items-center flex-1 min-w-0">
-                              <div className={`w-9 h-9 flex-shrink-0 ${item.type === 'favorite' ? 'bg-yellow-500' : 'bg-pink-400'} text-[#1a1c20] font-bold rounded-full flex items-center justify-center text-sm`}>
-                                {item.type === 'favorite' ? <Star size={16} className="text-[#1a1c20]" /> : getInitial(item.user_name)}
-                              </div>
-                              <div className="text-sm min-w-0 flex-1">
-                                <p className="font-medium text-white truncate">{item.user_name}</p>
-                                <p className="text-white/60 text-xs">
-                                  {item.type === 'favorite' 
-                                    ? `${item.user_name} ${t("client.history.addedToFavorites")}`
-                                    : item.status === 'ended' 
-                                    ? t("client.history.callEnded")
-                                    : item.status === 'rejected'
-                                    ? t("client.history.callRejected")
-                                    : t("client.history.callCancelled")
-                                  }
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <div className="text-right text-white/40 text-xs">
-                                {item.formatted_date || new Date(item.timestamp).toLocaleDateString()}
-                              </div>
-                              {item.user_id && (
-                                <>
-                                  {item.type === 'favorite' ? (
-                                    <button
-                                      onClick={() => abrirChatConChica({ id: item.user_id, name: item.user_name, role: 'modelo' })}
-                                      className="p-1.5 hover:bg-[#ff007a]/20 rounded-lg transition-colors"
-                                      title={t("client.history.sendMessage")}
-                                    >
-                                      <MessageSquare size={14} className="text-[#ff007a]" />
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => iniciarLlamadaAChica({ id: item.user_id, name: item.user_name, role: 'modelo' })}
-                                      className="p-1.5 hover:bg-[#ff007a]/20 rounded-lg transition-colors"
-                                      title={t("client.history.callAgain")}
-                                    >
-                                      <Phone size={14} className="text-[#ff007a]" />
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                        );
-                      })()}
-                    </div>
-                  </div>
+                  <CallHistoryList
+                    callHistory={callHistory}
+                    loadingHistory={loadingHistory}
+                    onCall={(item) => iniciarLlamadaAChica(item)}
+                    onMessage={(item) => abrirChatConChica(item)}
+                  />
                 )}
               </div>
             </div>
           </aside>
         </div>
 
-        {/* Estilos adicionales para animaciones y scrollbar */}
+        {/* Estilos adicionales para animaciones y scrollbar mejorados */}
         <style>{`
           @keyframes fadeIn {
             from {
@@ -2565,8 +2167,36 @@ export default function InterfazCliente() {
             }
           }
           
+          @keyframes shimmer {
+            0% {
+              background-position: -200% 0;
+            }
+            100% {
+              background-position: 200% 0;
+            }
+          }
+          
+          @keyframes slideInRight {
+            from {
+              opacity: 0;
+              transform: translateX(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateX(0);
+            }
+          }
+          
           .animate-fadeIn {
             animation: fadeIn 0.3s ease-out forwards;
+          }
+          
+          .animate-shimmer {
+            animation: shimmer 2s infinite;
+          }
+          
+          .animate-slide-in-right {
+            animation: slideInRight 0.3s ease-out;
           }
           
           /* Scrollbar personalizado mejorado */
@@ -2585,11 +2215,13 @@ export default function InterfazCliente() {
             border-radius: 10px;
             border: 2px solid rgba(43, 45, 49, 0.3);
             box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+            transition: all 0.2s ease;
           }
           
           .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
             box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+            transform: scaleY(1.1);
           }
           
           .custom-scrollbar::-webkit-scrollbar-thumb:active {
@@ -2600,6 +2232,20 @@ export default function InterfazCliente() {
           .custom-scrollbar {
             scrollbar-width: thin;
             scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
+          }
+          
+          /* Mejoras de accesibilidad - Focus visible mejorado */
+          button:focus-visible,
+          input:focus-visible,
+          a:focus-visible {
+            outline: 2px solid #ff007a;
+            outline-offset: 2px;
+            border-radius: 4px;
+          }
+          
+          /* Transiciones suaves para todos los elementos interactivos */
+          button, a, input {
+            transition: all 0.2s ease;
           }
         `}</style>
 

@@ -540,4 +540,119 @@ class ClientBalanceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Convertir minutos (purchased_balance) a regalos (gift_balance)
+     * Tasa: 2 minutos = 1 moneda de regalo (20 purchased coins = 1 gift coin)
+     */
+    public function convertMinutesToGifts(Request $request)
+    {
+        try {
+            $request->validate([
+                'minutes' => 'required|integer|min:2'
+            ]);
+
+            $user = Auth::user();
+            
+            // Obtener o crear UserCoins
+            $userCoins = UserCoins::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_earned' => 0,
+                    'total_spent' => 0
+                ]
+            );
+
+            $minutesToConvert = $request->minutes;
+            $purchasedCoinsNeeded = $minutesToConvert * self::COINS_PER_MINUTE; // 10 coins por minuto
+            $giftCoinsToReceive = floor($purchasedCoinsNeeded / 20); // 20 purchased coins = 1 gift coin
+
+            // Validar que tenga suficiente saldo
+            if ($userCoins->purchased_balance < $purchasedCoinsNeeded) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No tienes suficientes minutos para convertir. Necesitas al menos ' . $minutesToConvert . ' minutos.'
+                ], 400);
+            }
+
+            // Validar mínimo: debe recibir al menos 1 gift coin
+            if ($giftCoinsToReceive < 1) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Debes convertir al menos 2 minutos para obtener 1 moneda de regalo'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+            try {
+                // Descontar purchased_balance
+                $userCoins->purchased_balance -= $purchasedCoinsNeeded;
+                
+                // Agregar gift_balance
+                $userCoins->gift_balance += $giftCoinsToReceive;
+                
+                $userCoins->save();
+
+                // Registrar transacción de deducción
+                DB::table('coin_transactions')->insert([
+                    'user_id' => $user->id,
+                    'type' => 'purchased',
+                    'amount' => -$purchasedCoinsNeeded,
+                    'usd_amount' => 0.00,
+                    'source' => 'minutes_to_gifts',
+                    'reference_id' => 'convert_' . now()->timestamp,
+                    'balance_after' => $userCoins->purchased_balance,
+                    'notes' => "Conversión de {$minutesToConvert} minutos ({$purchasedCoinsNeeded} monedas) a {$giftCoinsToReceive} monedas de regalo",
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+
+                // Registrar transacción de adición de gift
+                DB::table('coin_transactions')->insert([
+                    'user_id' => $user->id,
+                    'type' => 'gift',
+                    'amount' => $giftCoinsToReceive,
+                    'usd_amount' => 0.00,
+                    'source' => 'minutes_to_gifts_conversion',
+                    'reference_id' => 'convert_gift_' . now()->timestamp,
+                    'balance_after' => $userCoins->gift_balance,
+                    'notes' => "Monedas de regalo recibidas por conversión de {$minutesToConvert} minutos",
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Se convirtieron {$minutesToConvert} minutos a {$giftCoinsToReceive} moneda(s) de regalo exitosamente",
+                    'data' => [
+                        'minutes_converted' => $minutesToConvert,
+                        'gift_coins_received' => $giftCoinsToReceive,
+                        'purchased_balance' => $userCoins->purchased_balance,
+                        'gift_balance' => $userCoins->gift_balance,
+                        'remaining_minutes' => floor($userCoins->purchased_balance / self::COINS_PER_MINUTE)
+                    ]
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Error convirtiendo minutos a regalos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al procesar la conversión: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

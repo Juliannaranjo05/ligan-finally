@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wifi, WifiOff, User, Signal, Coins, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical } from 'lucide-react';
+import { Wifi, WifiOff, User, Signal, Coins, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical, ArrowRightLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
 import ClientRemainingMinutes from '../../ClientRemainingMinutes';
+import ConvertMinutesToGiftsModal from '../ConvertMinutesToGiftsModal';
 
 const TimeDisplayImprovedClient = ({ 
   connected, 
@@ -25,7 +26,8 @@ const TimeDisplayImprovedClient = ({
   finalizarChat = () => {},
   showMainSettings = false,
   setShowMainSettings = () => {},
-  loading = false
+  loading = false,
+  onReloadBalance = () => {} // 🔥 CALLBACK PARA RECARGAR BALANCES DESPUÉS DE CONVERSIÓN
 }) => {
   const { t } = useTranslation();
   const finalT = propT || t;
@@ -52,6 +54,9 @@ const TimeDisplayImprovedClient = ({
   // 🔥 ESTADOS PARA MODAL DE INFORMACIÓN
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showInitialWarning, setShowInitialWarning] = useState(false);
+  
+  // 🔥 ESTADO PARA MODAL DE CONVERSIÓN
+  const [showConvertModal, setShowConvertModal] = useState(false);
 
   // 🔥 MOSTRAR ADVERTENCIA INICIAL AL CONECTAR
   useEffect(() => {
@@ -98,6 +103,16 @@ const TimeDisplayImprovedClient = ({
                 <div className="balance-label">{texts.minutes}</div>
                 <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
               </div>
+              {/* 🔥 BOTÓN DE CONVERSIÓN (solo si hay 2+ minutos) */}
+              {remainingMinutes !== undefined && remainingMinutes !== null && remainingMinutes >= 2 && (
+                <button
+                  onClick={() => setShowConvertModal(true)}
+                  className="convert-button-mobile"
+                  title="Convertir minutos a regalos"
+                >
+                  <ArrowRightLeft size={14} />
+                </button>
+              )}
             </div>
             
             {/* Estado de conexión CON BOTÓN INFO */}
@@ -224,6 +239,16 @@ const TimeDisplayImprovedClient = ({
                 <div className="balance-label">{texts.minutes}</div>
                 <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
               </div>
+              {/* 🔥 BOTÓN DE CONVERSIÓN (solo si hay 2+ minutos) */}
+              {remainingMinutes !== undefined && remainingMinutes !== null && remainingMinutes >= 2 && (
+                <button
+                  onClick={() => setShowConvertModal(true)}
+                  className="convert-button-desktop"
+                  title="Convertir minutos a regalos"
+                >
+                  <ArrowRightLeft size={14} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -2092,7 +2117,60 @@ const TimeDisplayImprovedClient = ({
           max-width: 100%;
           word-break: break-word;
         }
+
+        /* 🔥 ESTILOS PARA BOTÓN DE CONVERSIÓN */
+        .convert-button-mobile {
+          background: rgba(255, 0, 122, 0.2);
+          border: 1px solid rgba(255, 0, 122, 0.4);
+          color: #ff007a;
+          border-radius: 6px;
+          padding: 4px 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-left: 4px;
+        }
+
+        .convert-button-mobile:hover {
+          background: rgba(255, 0, 122, 0.3);
+          border-color: rgba(255, 0, 122, 0.6);
+        }
+
+        .convert-button-desktop {
+          background: rgba(255, 0, 122, 0.2);
+          border: 1px solid rgba(255, 0, 122, 0.4);
+          color: #ff007a;
+          border-radius: 6px;
+          padding: 4px 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-left: 8px;
+        }
+
+        .convert-button-desktop:hover {
+          background: rgba(255, 0, 122, 0.3);
+          border-color: rgba(255, 0, 122, 0.6);
+        }
       `}</style>
+
+      {/* 🔥 MODAL DE CONVERSIÓN DE MINUTOS A REGALOS */}
+      <ConvertMinutesToGiftsModal
+        isOpen={showConvertModal}
+        onClose={() => setShowConvertModal(false)}
+        remainingMinutes={remainingMinutes || 0}
+        purchasedBalance={userBalance || 0}
+        giftBalance={giftBalance || 0}
+        onConversionSuccess={() => {
+          if (onReloadBalance && typeof onReloadBalance === 'function') {
+            onReloadBalance(true, true); // Force reload both balances
+          }
+        }}
+      />
     </>
   );
 };

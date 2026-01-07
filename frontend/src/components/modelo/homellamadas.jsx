@@ -1,6 +1,6 @@
 // InterfazCliente.jsx - Versión actualizada con control de 24 horas integrado
 import React, { useState, useEffect, useRef } from "react";
-import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users, AlertTriangle } from "lucide-react";
+import { MessageSquare, Star, Home, Phone, Clock, CheckCircle, Users, AlertTriangle, Video, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Header from "./header";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,10 @@ import DualCallIncomingOverlay from '../DualCallIncomingOverlay';
 import StoryModal from '../StoryModal';
 import { useAppNotifications } from '../../contexts/NotificationContext';
 import audioManager from '../../utils/AudioManager';
+// Componentes modulares nuevos
+import ActiveUsersList from './ActiveUsersList';
+import ModelCallHistoryList from './ModelCallHistoryList';
+import ProfessionalTip from './ProfessionalTip';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -60,7 +64,7 @@ export default function InterfazCliente() {
   
   // Estado para controlar las secciones expandidas del acordeón
   const [expandedSections, setExpandedSections] = useState({
-    activeUsers: false,  // Por defecto colapsado
+    activeUsers: true,   // Por defecto abierto
     history: false       // Por defecto colapsado
   });
 
@@ -355,7 +359,6 @@ export default function InterfazCliente() {
     navigate('/mensajes', {
       state: {
         openChatWith: {
-          userId: usuario.id,
           userName: usuario.name || usuario.alias,
           userRole: usuario.role
         }
@@ -436,17 +439,11 @@ export default function InterfazCliente() {
               );
               
               if (activeSession) {
-                console.log('🔄 [HomeLlamadas] Llamada activa detectada - Reconectando automáticamente', {
-                  roomName,
-                  userName,
-                  sessionStatus: activeSession.status
-                });
                 
                 // Redirigir de vuelta a la sala de videochat
                 navigate(`/videochatclient?roomName=${encodeURIComponent(roomName)}&userName=${encodeURIComponent(userName)}`, {
                   replace: true,
                   state: {
-                    roomName: roomName,
                     userName: userName,
                     reconnect: true
                   }
@@ -537,7 +534,7 @@ export default function InterfazCliente() {
         text: t("client.loading") || "Cargando...",
         icon: null,
         disabled: true,
-        className: "w-full bg-gray-500 text-white px-8 py-4 rounded-full text-lg font-semibold shadow-md opacity-50 cursor-not-allowed"
+        className: "w-full bg-gray-500 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md opacity-50 cursor-not-allowed"
       };
     }
 
@@ -547,16 +544,16 @@ export default function InterfazCliente() {
         if (uploadRestriction?.reason === 'pending_story') {
           return {
             text: t("client.restrictions.pendingApproval"),
-            icon: <Clock size={20} className="text-yellow-500" />,
+            icon: <Clock size={18} className="text-yellow-500 sm:w-5 sm:h-5" />,
             disabled: false,
-            className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-yellow-500/30 transition"
+            className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-yellow-500/30 transition"
           };
         } else if (uploadRestriction?.reason === 'active_story') {
           return {
             text: timeRemaining ? t("client.restrictions.waitTime", { hours: timeRemaining.hours, minutes: timeRemaining.minutes }) : t("client.restrictions.activeStory"),
-            icon: <AlertTriangle size={20} className="text-orange-400" />,
+            icon: <AlertTriangle size={18} className="text-orange-400 sm:w-5 sm:h-5" />,
             disabled: false,
-            className: "w-full bg-orange-500/20 border border-orange-500/50 text-orange-300 px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-orange-500/30 transition"
+            className: "w-full bg-orange-500/20 border border-orange-500/50 text-orange-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-orange-500/30 transition"
           };
         }
       }
@@ -565,7 +562,7 @@ export default function InterfazCliente() {
         text: t("client.uploadStory") || "Subir Historia",
         icon: null,
         disabled: false,
-        className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-[#ff9fcb] transition"
+        className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff9fcb] transition"
       };
     }
 
@@ -576,18 +573,18 @@ export default function InterfazCliente() {
     if (isPending) {
       return {
         text: t("client.storyPending") || "Historia Pendiente por Aprobación",
-        icon: <Clock size={20} className="text-yellow-500" />,
+        icon: <Clock size={18} className="text-yellow-500 sm:w-5 sm:h-5" />,
         disabled: false,
-        className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-yellow-500/30 transition"
+        className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-yellow-500/30 transition"
       };
     }
 
     if (isApproved) {
       return {
         text: t("client.viewApprovedStory") || "Ver Mi Historia",
-        icon: <CheckCircle size={20} className="text-[#ff007a]" />,
+        icon: <CheckCircle size={18} className="text-[#ff007a] sm:w-5 sm:h-5" />,
         disabled: false,
-        className: "w-full bg-[#ff007a]/20 border border-[#ff007a]/50 text-[#ff007a] px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-[#ff007a]/30 transition"
+        className: "w-full bg-[#ff007a]/20 border border-[#ff007a]/50 text-[#ff007a] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff007a]/30 transition"
       };
     }
 
@@ -596,7 +593,7 @@ export default function InterfazCliente() {
         text: t("client.storyRejected") || "Historia Rechazada - Crear Nueva",
         icon: null,
         disabled: false,
-        className: "w-full bg-red-500/20 border border-red-500/50 text-red-300 px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-red-500/30 transition"
+        className: "w-full bg-red-500/20 border border-red-500/50 text-red-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-red-500/30 transition"
       };
     }
 
@@ -604,7 +601,7 @@ export default function InterfazCliente() {
       text: t("client.uploadStory") || "Subir Historia",
       icon: null,
       disabled: false,
-      className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-8 py-4 rounded-full text-lg font-semibold shadow-md hover:bg-[#ff9fcb] transition"
+      className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff9fcb] transition"
     };
   };
 
@@ -696,7 +693,6 @@ const iniciarLlamadaReal = async (usuario) => {
     const yoLoBloquee = usuariosBloqueados.some((user) => user.id === otherUserId);
     if (yoLoBloquee) {
       setConfirmAction({
-        type: 'blocked',
         title: t("client.errors.notAvailable"),
         message: t("client.errors.userBlocked", { name: otherUserName }),
         confirmText: t("client.errors.understood"),
@@ -719,7 +715,6 @@ const iniciarLlamadaReal = async (usuario) => {
       const blockData = await blockCheckResponse.json();
       if (blockData.success && blockData.is_blocked_by_them) {
         setConfirmAction({
-          type: 'blocked',
           title: t("client.errors.notAvailable"),
           message: t("client.errors.blockedByUser", { name: otherUserName }),
           confirmText: t("client.errors.understood"),
@@ -755,7 +750,6 @@ const iniciarLlamadaReal = async (usuario) => {
           
           const clientMinutes = clientBalanceData.balance?.minutes_available ?? clientBalanceData.success?.balance?.minutes_available ?? 0;
           setConfirmAction({
-            type: 'error',
             title: t("client.errors.clientNoBalance") || 'Este cliente tiene saldo insuficiente',
             message: t("client.errors.clientNoBalanceMessage", { name: otherUserName }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita más de 2 minutos de saldo.`,
             confirmText: t("client.errors.understood") || 'Entendido',
@@ -770,7 +764,6 @@ const iniciarLlamadaReal = async (usuario) => {
         setCurrentCall(null);
         
         setConfirmAction({
-          type: 'error',
           title: t("client.errors.clientNoBalance") || 'Error al verificar saldo',
           message: 'No se pudo verificar el saldo del cliente. Por favor intenta nuevamente.',
           confirmText: t("client.errors.understood") || 'Entendido',
@@ -786,7 +779,6 @@ const iniciarLlamadaReal = async (usuario) => {
       setCurrentCall(null);
       
       setConfirmAction({
-        type: 'error',
         title: t("client.errors.clientNoBalance") || 'Error al verificar saldo',
         message: 'Error al verificar el saldo del cliente. Por favor intenta nuevamente.',
         confirmText: t("client.errors.understood") || 'Entendido',
@@ -822,7 +814,6 @@ const iniciarLlamadaReal = async (usuario) => {
             setCurrentCall({
         ...usuario,
         callId: data.call_id,
-        roomName: data.room_name,
         status: 'calling'
       });
       iniciarPollingLlamada(data.call_id);
@@ -840,7 +831,6 @@ const iniciarLlamadaReal = async (usuario) => {
       if (isBalanceError) {
         // Mostrar modal de error con mensaje específico
         setConfirmAction({
-          type: 'error',
           title: t("client.errors.clientNoBalance") || 'Este cliente tiene saldo insuficiente',
           message: t("client.errors.clientNoBalanceMessage", { name: otherUserName }) || `${otherUserName} no tiene saldo suficiente para realizar videollamadas. Necesita más de 2 minutos de saldo.`,
           confirmText: t("client.errors.understood") || 'Entendido',
@@ -990,12 +980,6 @@ const verificarLlamadasEntrantes = async () => {
             : data.incoming_call.data;
           const isDualModelCall = callData?.is_dual_model_call === true;
           
-          console.log('🔔 [MODELO] Llamada entrante detectada:', {
-            isDualModelCall,
-            callData,
-            incoming_call: data.incoming_call,
-            room_name: data.incoming_call.room_name || callData?.room_name
-          });
           
           // 🔥 SI ES LLAMADA 2VS1, USAR OVERLAY DE INVITACIÓN EN LUGAR DE LLAMADA NORMAL
           if (isDualModelCall) {
@@ -1052,11 +1036,6 @@ const responderLlamada = async (accion) => {
   if (!incomingCall) return;
   
   try {
-    console.log('📞 [MODELO] Respondiendo llamada:', {
-      call_id: incomingCall.id,
-      action: accion,
-      isDualCall
-    });
         
     stopIncomingCallSound();
     
@@ -1090,25 +1069,12 @@ const responderLlamada = async (accion) => {
     
     const data = await response.json();
     
-    console.log('📞 [MODELO] Respuesta del backend:', {
-      success: data.success,
-      room_name: data.room_name || data.call?.room_name,
-      action: data.action,
-      full_data: data
-    });
     
     if (data.success) {
       if (accion === 'accept') {
         // 🔥 OBTENER ROOM_NAME DE DIFERENTES UBICACIONES
         const roomName = data.room_name || data.call?.room_name || incomingCall.room_name || incomingCall.data?.room_name;
         
-        console.log('🔍 [MODELO] Buscando room_name:', {
-          data_room_name: data.room_name,
-          data_call_room_name: data.call?.room_name,
-          incomingCall_room_name: incomingCall.room_name,
-          incomingCall_data_room_name: incomingCall.data?.room_name,
-          final_room_name: roomName
-        });
         
         if (!roomName) {
           console.error('❌ [MODELO] No se pudo obtener room_name de la respuesta');
@@ -1171,12 +1137,6 @@ const redirigirAVideochat = (callData) => {
   // 🔥 Obtener room_name de diferentes posibles ubicaciones en la respuesta
   const roomName = callData.room_name || callData.incoming_call?.room_name || callData.call?.room_name;
   
-  console.log('🔍 [MODELO] Buscando room_name en callData:', {
-    callData_room_name: callData.room_name,
-    incoming_call_room_name: callData.incoming_call?.room_name,
-    call_room_name: callData.call?.room_name,
-    final_room_name: roomName
-  });
   
   if (!roomName) {
     console.error('❌ [MODELO] No se encontró room_name en callData');
@@ -1224,11 +1184,6 @@ const redirigirAVideochat = (callData) => {
     if (callData?.modelo_id_2) {
       sessionStorage.setItem('modeloId2', callData.modelo_id_2);
     }
-    console.log('✅ [MODELO] Llamada 2vs1 detectada, guardando información:', {
-      isDualCall,
-      modelo_id_2: callData?.modelo_id_2,
-      modelo2: callData?.modelo2
-    });
   }
   sessionStorage.setItem('currentRoom', roomName);
   sessionStorage.setItem('inCall', 'true');
@@ -1254,7 +1209,6 @@ const redirigirAVideochat = (callData) => {
   setTimeout(() => {
     // 🔥 PREPARAR DATOS PARA VIDEOCHAT 2VS1
     const videoChatState = {
-      roomName: roomName,
       userName: user?.name || 'Modelo',
       callId: callData.call_id || callData.id || callData.incoming_call?.id,
       from: 'call',
@@ -1416,81 +1370,95 @@ useEffect(() => {
       verificationStatus: "aprobada",
       blockIfInCall: true
     }}>
-      <div className="h-screen bg-ligand-mix-dark from-[#1a1c20] to-[#2b2d31] text-white p-6 overflow-hidden flex flex-col">
+      <div className="min-h-screen max-h-screen bg-gradient-to-br from-[#1a1c20] via-[#1f2125] to-[#2b2d31] text-white p-4 sm:p-6 overflow-hidden flex flex-col">
         <Header />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1 overflow-hidden">
-          {/* Panel central */}
-          <main className="lg:col-span-3 bg-[#1f2125] rounded-2xl p-6 shadow-xl flex flex-col items-center justify-center overflow-hidden">
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-              {t("client.greeting", { name: user?.display_name || user?.nickname || user?.name || t("client.defaultUser") || "Usuario" })}
-            </h2>
-            <p className="text-center text-white/70 mb-6 max-w-md">
-              {t("client.instructions")}
-            </p>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 flex-1 min-h-0 overflow-hidden">
+          {/* Panel central - Mejorado con gradientes y sombras */}
+          <main 
+            className="lg:col-span-3 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-2 sm:p-3 lg:p-4 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-start overflow-hidden relative min-h-0 h-full"
+            role="main"
+            aria-label="Panel principal de inicio"
+          >
+            {/* Efecto de brillo sutil en el fondo */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#ff007a]/5 via-transparent to-transparent pointer-events-none"></div>
+            <div className="relative z-10 w-full flex flex-col items-center justify-start min-h-0 py-1 sm:py-2">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-center mb-2 sm:mb-3 bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent">
+                {t("client.greeting", { name: user?.display_name || user?.nickname || user?.name || t("client.defaultUser") || "Usuario" })}
+              </h2>
+              <p className="text-center text-white/80 mb-3 sm:mb-4 max-w-md leading-relaxed text-xs sm:text-sm px-2" role="note">
+                {t("client.instructions")}
+              </p>
 
-            <div className="flex flex-col items-center gap-3 w-full max-w-xs">
-              <button
-                className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-8 py-3 rounded-full text-lg font-semibold shadow-md transition-all duration-200 transform hover:scale-105"
-                onClick={() => navigate("/esperandocall")}
-              >
-                {t("client.startCall")}
-              </button>
+              <div className="flex flex-col items-center gap-2 sm:gap-3 w-full max-w-xs mb-2 sm:mb-3">
+                <button
+                  className="w-full bg-gradient-to-r from-[#ff007a] to-[#e6006e] hover:from-[#ff3399] hover:to-[#ff007a] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-lg shadow-[#ff007a]/30 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-[#ff007a]/50 relative overflow-hidden group"
+                  onClick={() => navigate("/esperandocall")}
+                  aria-label={t("client.startCall")}
+                >
+                  {/* Efecto de brillo en hover */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                  <div className="flex items-center justify-center gap-2 relative z-10">
+                    <Video className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+                    {t("client.startCall")}
+                  </div>
+                </button>
 
-              {/* 👈 BOTÓN ACTUALIZADO CON NUEVA LÓGICA */}
-              <button
-                className={storyButtonInfo.className}
-                onClick={handleStoryButtonClick}
-                disabled={storyButtonInfo.disabled}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  {storyButtonInfo.icon}
-                  <span>{storyButtonInfo.text}</span>
-                </div>
-              </button>
+                {/* 👈 BOTÓN ACTUALIZADO CON NUEVA LÓGICA - Mejorado */}
+                <button
+                  className={`w-full ${storyButtonInfo.className} relative overflow-hidden group transition-all duration-300 transform hover:scale-105 active:scale-95`}
+                  onClick={handleStoryButtonClick}
+                  disabled={storyButtonInfo.disabled}
+                  aria-label={storyButtonInfo.text}
+                >
+                  {/* Efecto ripple */}
+                  <div className="absolute inset-0 bg-white/20 scale-0 group-active:scale-100 rounded-full transition-transform duration-300"></div>
+                  <div className="flex items-center justify-center gap-2 relative z-10">
+                    {storyButtonInfo.icon}
+                    <span>{storyButtonInfo.text}</span>
+                  </div>
+                </button>
 
-              {/* 🆕 MOSTRAR INFORMACIÓN ADICIONAL SI HAY RESTRICCIÓN */}
-              {!canUpload && uploadRestriction && (
-                <div className="w-full bg-[#2b2d31] border border-orange-400/30 rounded-xl p-3 text-center">
-                  <p className="text-orange-300 text-xs font-semibold mb-1">
-                    ⏰ {t("client.restrictions.activeRestriction")}
-                  </p>
-                  <p className="text-white/60 text-xs">
-                    {uploadRestriction.reason === 'active_story' 
-                      ? t("client.restrictions.timeRemaining", { 
-                          hours: timeRemaining?.hours || 0, 
-                          minutes: timeRemaining?.minutes || 0 
-                        })
-                      : t("client.restrictions.pendingApprovalDesc")
-                    }
-                  </p>
-                </div>
-              )}
+                {/* 🆕 MOSTRAR INFORMACIÓN ADICIONAL SI HAY RESTRICCIÓN - Mejorado */}
+                {!canUpload && uploadRestriction && (
+                  <div className="w-full bg-gradient-to-r from-orange-500/20 to-yellow-500/20 border border-orange-400/30 rounded-xl p-3 text-center backdrop-blur-sm animate-fadeIn">
+                    <p className="text-orange-300 text-xs font-semibold mb-1">
+                      ⏰ {t("client.restrictions.activeRestriction")}
+                    </p>
+                    <p className="text-white/70 text-xs">
+                      {uploadRestriction.reason === 'active_story' 
+                        ? t("client.restrictions.timeRemaining", { 
+                            hours: timeRemaining?.hours || 0, 
+                            minutes: timeRemaining?.minutes || 0 
+                          })
+                        : t("client.restrictions.pendingApprovalDesc")
+                      }
+                    </p>
+                  </div>
+                )}
 
-              <div className="w-full bg-[#2b2d31] border border-[#ff007a]/30 rounded-xl p-3 text-center">
-                <p className="text-white text-xs mb-1 font-semibold">
-                  🌟 {t("client.restrictions.professionalTip")}
-                </p>
-                <p className="text-white/70 text-xs italic">
-                  {t("client.restrictions.professionalTipText")}
-                </p>
+                {/* Consejo profesional - Usando componente nuevo */}
+                <ProfessionalTip />
               </div>
             </div>
           </main>
 
-          {/* Panel lateral - Acordeón */}
-          <aside className="h-full overflow-y-auto custom-scrollbar">
-            <div className="bg-[#2b2d31] rounded-2xl border border-[#ff007a]/20 overflow-hidden">
-              {/* Sección 1: Usuarios Activos */}
-              <div className="border-b border-[#ff007a]/10">
+          {/* Panel lateral - Acordeón Mejorado */}
+          <aside className="flex flex-col min-h-0 h-full" role="complementary" aria-label="Panel de información">
+            <div className="bg-gradient-to-b from-[#2b2d31] to-[#1f2125] rounded-2xl border border-[#ff007a]/20 shadow-xl flex flex-col h-full flex-1 min-h-0">
+              {/* Sección 1: Usuarios Activos - Usando componente ActiveUsersList */}
+              <div className={`border-b border-[#ff007a]/10 flex flex-col transition-all duration-300 ${expandedSections.activeUsers ? '' : 'flex-shrink-0'}`}>
                 <button
                   onClick={() => setExpandedSections(prev => ({
                     activeUsers: !prev.activeUsers,
                     history: false
                   }))}
-                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors"
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
+                  aria-expanded={expandedSections.activeUsers}
+                  aria-label={t("client.activeUsers")}
                 >
                   <div className="flex items-center gap-3">
+                    <Users className="w-5 h-5 text-[#ff007a]" />
                     <h3 className="text-lg font-bold text-[#ff007a]">
                       {t("client.activeUsers")}
                     </h3>
@@ -1501,7 +1469,7 @@ useEffect(() => {
                     )}
                   </div>
                   <svg
-                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.activeUsers ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-white/60 transition-transform duration-300 ${expandedSections.activeUsers ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1511,115 +1479,36 @@ useEffect(() => {
                 </button>
                 
                 {expandedSections.activeUsers && (
-                  <div className="px-4 pb-4 border-t border-[#ff007a]/10 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                    {loadingUsers && initialLoad ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                        <span className="ml-3 text-sm text-white/60">
-                          {t("client.loadingUsers")}
-                        </span>
-                      </div>
-                    ) : usuariosActivos.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center text-center py-8">
-                        <Users size={32} className="text-white/20 mb-3" />
-                        <p className="text-sm text-white/60 font-medium">
-                          {t("client.noActiveUsers")}
-                        </p>
-                        <p className="text-xs text-white/40 mt-1">
-                          {t("client.contactsWillAppear")}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 pt-3">
-                        {usuariosActivos.map((usuario, index) => (
-                          <div
-                            key={usuario.id}
-                            className="flex items-center justify-between bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-all duration-200 animate-fadeIn"
-                            style={{
-                              animationDelay: `${index * 50}ms`
-                            }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="relative">
-                                {usuario.avatar_url ? (
-                                  <img
-                                    src={usuario.avatar_url}
-                                    alt={usuario.display_name || usuario.name || usuario.alias}
-                                    className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      e.target.nextElementSibling.style.display = 'flex';
-                                    }}
-                                  />
-                                ) : null}
-                                <div className={`w-10 h-10 rounded-full bg-[#ff007a] flex items-center justify-center font-bold text-sm ${usuario.avatar_url ? 'hidden' : ''}`}>
-                                  {getInitial(usuario.display_name || usuario.name || usuario.alias)}
-                                </div>
-                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2b2d31] animate-pulse"></div>
-                              </div>
-                              <div>
-                                <div className="font-semibold text-sm">
-                                  {usuario.display_name || usuario.name || usuario.alias}
-                                </div>
-                                <div className="text-xs text-green-400">
-                                  {t("client.status.home.online")}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => iniciarLlamadaReal(usuario)}
-                                disabled={isCallActive || isReceivingCall}
-                                className={`p-2 rounded-full transition-colors duration-200 ${
-                                  isCallActive || isReceivingCall 
-                                    ? 'bg-gray-500/20 cursor-not-allowed' 
-                                    : 'hover:bg-[#ff007a]/20'
-                                }`}
-                                title={
-                                  isCallActive || isReceivingCall 
-                                    ? t("client.errors.callError")
-                                    : t("client.call")
-                                }
-                              >
-                                <Phone 
-                                  size={16} 
-                                  className={`${
-                                    isCallActive || isReceivingCall 
-                                      ? 'text-gray-500' 
-                                      : 'text-[#ff007a] hover:text-white'
-                                  } transition-colors`} 
-                                />
-                              </button>
-                              <button
-                                onClick={() => abrirChatConUsuario(usuario)}
-                                className="p-2 rounded-full hover:bg-gray-500/20 transition-colors duration-200"
-                                title={t("client.message")}
-                              >
-                                <MessageSquare size={16} className="text-gray-400 hover:text-white transition-colors" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <ActiveUsersList
+                    usuariosActivos={usuariosActivos}
+                    loadingUsers={loadingUsers && initialLoad}
+                    onCall={(usuario) => iniciarLlamadaReal(usuario)}
+                    onMessage={(usuario) => abrirChatConUsuario(usuario)}
+                    isCallActive={isCallActive}
+                    isReceivingCall={isReceivingCall}
+                  />
                 )}
               </div>
 
-              {/* Sección 2: Historial */}
-              <div>
+              {/* Sección 2: Historial - Usando componente ModelCallHistoryList */}
+              <div className={`flex flex-col transition-all duration-300 ${expandedSections.history ? 'flex-1 min-h-0 overflow-hidden' : 'flex-shrink-0'}`}>
                 <button
                   onClick={() => setExpandedSections(prev => ({
                     activeUsers: false,
                     history: !prev.history
                   }))}
-                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors"
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
+                  aria-expanded={expandedSections.history}
+                  aria-label={t("client.yourHistory")}
                 >
-                  <h3 className="text-lg font-bold text-[#ff007a]">
-                    {t("client.yourHistory")}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-[#ff007a]" />
+                    <h3 className="text-lg font-bold text-[#ff007a]">
+                      {t("client.yourHistory")}
+                    </h3>
+                  </div>
                   <svg
-                    className={`w-5 h-5 text-white/60 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-white/60 transition-transform duration-300 ${expandedSections.history ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1629,89 +1518,21 @@ useEffect(() => {
                 </button>
                 
                 {expandedSections.history && (
-                  <div className="px-4 pb-4 border-t border-[#ff007a]/10 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                    <div className="space-y-3 pt-3">
-                      {loadingHistory ? (
-                        <div className="flex items-center justify-center py-8">
-                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
-                        </div>
-                      ) : callHistory.length === 0 ? (
-                        <div className="text-center py-8">
-                          <p className="text-white/60 text-sm">
-                            {t("client.history.noHistory")}
-                          </p>
-                        </div>
-                      ) : (
-                        callHistory.map((item) => (
-                          <div 
-                            key={item.id} 
-                            className="flex justify-between items-start bg-[#1f2125] p-3 rounded-xl hover:bg-[#25282c] transition-colors duration-200"
-                          >
-                            <div className="flex gap-3 items-center">
-                              <div className={`w-9 h-9 ${item.type === 'favorite' ? 'bg-yellow-500' : 'bg-pink-400'} text-[#1a1c20] font-bold rounded-full flex items-center justify-center text-sm`}>
-                                {item.type === 'favorite' ? <Star size={16} className="text-[#1a1c20]" /> : getInitial(item.user_name)}
-                              </div>
-                              <div className="text-sm">
-                                <p className="font-medium">{item.user_name}</p>
-                                <p className="text-white/60 text-xs">
-                                  {item.type === 'favorite' 
-                                    ? `${item.user_name} ${t("client.history.addedToFavorites")}`
-                                    : item.status === 'ended' 
-                                    ? t("client.history.callEnded")
-                                    : item.status === 'rejected'
-                                    ? t("client.history.callRejected")
-                                    : t("client.history.callCancelled")
-                                  }
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right text-white/40 text-xs">
-                                {item.formatted_date || item.timestamp}
-                              </div>
-                              {item.user_id && (
-                                <>
-                                  {item.type === 'favorite' ? (
-                                    <button
-                                      onClick={() => abrirChatConUsuario({ 
-                                        id: item.user_id, 
-                                        name: item.user_name,
-                                        alias: item.user_name
-                                      })}
-                                      className="p-2 rounded-full bg-[#ff007a] hover:bg-[#e6006e] text-white transition-colors duration-200"
-                                      title={t("client.message")}
-                                    >
-                                      <MessageSquare size={14} />
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => iniciarLlamadaReal({ 
-                                        id: item.user_id, 
-                                        name: item.user_name,
-                                        alias: item.user_name
-                                      })}
-                                      disabled={isCallActive || isReceivingCall}
-                                      className="p-2 rounded-full bg-[#ff007a] hover:bg-[#e6006e] text-white transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title={t("client.startCall")}
-                                    >
-                                      <Phone size={14} />
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  <ModelCallHistoryList
+                    callHistory={callHistory}
+                    loadingHistory={loadingHistory}
+                    onCall={(item) => iniciarLlamadaReal(item)}
+                    onMessage={(item) => abrirChatConUsuario(item)}
+                    isCallActive={isCallActive}
+                    isReceivingCall={isReceivingCall}
+                  />
                 )}
               </div>
             </div>
           </aside>
         </div>
 
-        {/* Estilos adicionales para animaciones y scrollbar */}
+        {/* Estilos adicionales para animaciones y scrollbar mejorados */}
         <style jsx>{`
           @keyframes fadeIn {
             from {
@@ -1744,11 +1565,13 @@ useEffect(() => {
             border-radius: 10px;
             border: 2px solid rgba(43, 45, 49, 0.3);
             box-shadow: 0 2px 4px rgba(255, 0, 122, 0.3);
+            transition: all 0.2s ease;
           }
           
           .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, #ff3399 0%, #e6006e 100%);
             box-shadow: 0 2px 6px rgba(255, 0, 122, 0.5);
+            transform: scaleY(1.1);
           }
           
           .custom-scrollbar::-webkit-scrollbar-thumb:active {
@@ -1759,6 +1582,20 @@ useEffect(() => {
           .custom-scrollbar {
             scrollbar-width: thin;
             scrollbar-color: #ff007a rgba(43, 45, 49, 0.5);
+          }
+          
+          /* Mejoras de accesibilidad - Focus visible mejorado */
+          button:focus-visible,
+          input:focus-visible,
+          a:focus-visible {
+            outline: 2px solid #ff007a;
+            outline-offset: 2px;
+            border-radius: 4px;
+          }
+          
+          /* Transiciones suaves para todos los elementos interactivos */
+          button, a, input {
+            transition: all 0.2s ease;
           }
         `}</style>
       </div>
@@ -1819,10 +1656,6 @@ useEffect(() => {
             return;
           }
           
-          console.log('📞 [MODELO] Aceptando invitación de segundo modelo:', {
-            call_id: secondModelInvitation.call_id,
-            room_name: secondModelInvitation.room_name
-          });
           
           try {
             const token = localStorage.getItem('token');
@@ -1838,10 +1671,6 @@ useEffect(() => {
               })
             });
             
-            console.log('📞 [MODELO] Respuesta de aceptar invitación:', {
-              status: response.status,
-              ok: response.ok
-            });
             
             if (!response.ok) {
               const errorText = await response.text();
