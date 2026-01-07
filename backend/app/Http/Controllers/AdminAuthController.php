@@ -31,8 +31,8 @@ class AdminAuthController extends Controller
                 return response()->json(['message' => 'Contraseña incorrecta'], 401);
             }
 
-            // Generar nuevo código
-            $code = random_int(100000, 999999);
+            // Generar nuevo código (como string para consistencia con la base de datos)
+            $code = (string) random_int(100000, 999999);
 
             // Actualizar el usuario existente con el nuevo código
             $user->update([
@@ -138,9 +138,19 @@ class AdminAuthController extends Controller
             return response()->json(['message' => 'Demasiados intentos fallidos'], 403);
         }
 
-        // Verificar código
-        if ($admin->last_code !== $request->code) {
+        // Verificar código - normalizar ambos valores a string para comparación
+        $storedCode = (string) $admin->last_code;
+        $providedCode = trim((string) $request->code);
+        
+        if ($storedCode !== $providedCode) {
             $admin->increment('attempts');
+            Log::warning('❌ [AdminAuth] Código incorrecto en verificación', [
+                'admin_id' => $admin->id,
+                'stored_code' => $storedCode,
+                'provided_code' => $providedCode,
+                'stored_type' => gettype($admin->last_code),
+                'provided_type' => gettype($request->code),
+            ]);
             return response()->json(['success' => false, 'message' => 'Código incorrecto'], 401);
         }
 
