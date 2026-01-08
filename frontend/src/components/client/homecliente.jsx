@@ -11,13 +11,14 @@ import { useTranslation } from 'react-i18next';
 import { createLogger } from '../../utils/logger';
 import { useBrowsingHeartbeat } from '../../utils/heartbeat';
 import { useGlobalCall } from '../../contexts/GlobalCallContext';
+import { playOutgoingCallSound as playOutgoingCallSoundHelper, stopOutgoingCallSound as stopOutgoingCallSoundHelper } from '../../utils/callAudioHelpers';
 import CallModeSelector from './CallModeSelector';
 import DualCallConfigModal from './DualCallConfigModal';
 // Componentes modulares nuevos
 import BalanceCard from './BalanceCard';
 import ActiveGirlsList from './ActiveGirlsList';
 import CallHistoryList from './CallHistoryList';
-import TipOfTheDay from './TipOfTheDay';
+// import TipOfTheDay from './TipOfTheDay'; // 🔥 TEMPORALMENTE DESHABILITADO
 import SkeletonLoader from './SkeletonLoader';
 
 const logger = createLogger('HomeCliente');
@@ -64,6 +65,24 @@ export default function InterfazCliente() {
   const [searchParams, setSearchParams] = useSearchParams();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const { t } = useTranslation(); // 🔥 MOVER AQUÍ PARA QUE ESTÉ DISPONIBLE EN TODO EL COMPONENTE
+  
+  // 🔥 REFS PARA AUDIO (definir ANTES de cualquier función que los use)
+  const outgoingAudioRef = useRef(null);
+  const outgoingPlayPromiseRef = useRef(null);
+  const [outgoingCallAudio, setOutgoingCallAudio] = useState(null);
+  
+  // 🔥 WRAPPERS COMO FUNCTION DECLARATIONS para evitar TDZ (se elevan antes de ser usadas)
+  // Estas funciones se definen INMEDIATAMENTE después de los refs para evitar problemas
+  function playOutgoingCallSound() {
+    return playOutgoingCallSoundHelper(outgoingAudioRef, outgoingPlayPromiseRef, setOutgoingCallAudio);
+  }
+  
+  function stopOutgoingCallSound() {
+    return stopOutgoingCallSoundHelper(outgoingPlayPromiseRef, outgoingAudioRef, setOutgoingCallAudio);
+  }
+  
+  // 🔥 MOVER useGlobalCall DESPUÉS de las funciones de audio para evitar TDZ
+  const { isReceivingCall } = useGlobalCall();
 
   // 🔍 Función para enviar logs al backend
   const sendLogToBackend = async (level, message, data = null) => {
@@ -629,8 +648,6 @@ export default function InterfazCliente() {
     }
   }, [chicasActivas]);
   
-  // 🔥 USAR CONTEXTO GLOBAL PARA LLAMADAS ENTRANTES
-  const { isReceivingCall, playOutgoingCallSound, stopOutgoingCallSound } = useGlobalCall();
   // 🔥 ESTADOS PARA MODAL DE CONFIRMACIÓN
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -1885,20 +1902,20 @@ export default function InterfazCliente() {
             </button>
           </div>
         )}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 pt-4 sm:pt-5 lg:pt-6 mb-2 sm:mb-3 lg:mb-4 px-4 sm:px-6">
           <Header />
         </div>
 
         <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-6 p-3 sm:p-4 lg:p-6 min-h-0 overflow-y-auto lg:overflow-hidden">
           {/* Panel central - Mejorado con gradientes y sombras */}
           <main 
-            className="flex-1 w-full lg:w-3/4 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-4 sm:p-5 lg:p-2 lg:sm:p-3 lg:p-4 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-center relative overflow-hidden min-h-0 lg:h-full flex-shrink-0"
+            className="flex-1 w-full lg:w-3/4 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-6 sm:p-8 lg:p-8 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-center relative overflow-hidden min-h-[100vh] max-h-[130vh] lg:min-h-0 lg:max-h-none lg:h-full flex-shrink-0"
             role="main"
             aria-label="Panel principal de inicio"
           >
             {/* Efecto de brillo sutil en el fondo */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#ff007a]/5 via-transparent to-transparent pointer-events-none"></div>
-            <div className="w-full max-w-md flex flex-col items-center justify-center relative z-10 py-4 sm:py-6 lg:py-2">
+            <div className="w-full max-w-2xl flex flex-col items-center justify-center relative z-10 py-6 sm:py-8 lg:py-6">
               <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-2xl font-bold text-center mb-4 sm:mb-5 lg:mb-3 px-4 bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent">
                 {t('clientInterface.greeting', { name: user?.name })}
               </h2>
@@ -2017,8 +2034,8 @@ export default function InterfazCliente() {
                 <span className="relative z-10">{t('clientInterface.buyCoins')}</span>
               </button>
 
-              {/* Consejo del día - Usando componente nuevo */}
-              <TipOfTheDay className="mt-6 sm:mt-8 lg:mt-3 w-full max-w-sm px-4" />
+              {/* Consejo del día - Usando componente nuevo - TEMPORALMENTE DESHABILITADO PARA EVITAR ERRORES */}
+              {/* <TipOfTheDay className="mt-6 sm:mt-8 lg:mt-3 w-full max-w-sm px-4" /> */}
             </div>
             </div>
           </main>
