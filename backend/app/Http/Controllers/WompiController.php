@@ -14,14 +14,16 @@ use App\Models\UserCoins;
 use App\Models\CoinTransaction;
 use App\Http\Controllers\VideoChatCoinController;
 use App\Services\CurrencyDetectionService;
+use App\Services\ExchangeRateService;
 use Exception;
 
 class WompiController extends Controller
 {
     private $wompiConfig;
     private $currencyDetectionService;
+    private $exchangeRateService;
 
-    public function __construct(CurrencyDetectionService $currencyDetectionService)
+    public function __construct(CurrencyDetectionService $currencyDetectionService, ExchangeRateService $exchangeRateService)
     {
         $this->wompiConfig = [
             // Credenciales Wompi
@@ -41,6 +43,20 @@ class WompiController extends Controller
         ];
         
         $this->currencyDetectionService = $currencyDetectionService;
+        $this->exchangeRateService = $exchangeRateService;
+    }
+
+    private function getFixedCopPriceForPackage($package)
+    {
+        if (!$package) {
+            return null;
+        }
+
+        if ($package->type === 'minutes' && $package->name === 'Test COP 2000') {
+            return 2000;
+        }
+
+        return null;
     }
 
     /**
@@ -204,44 +220,48 @@ class WompiController extends Controller
                 })
                 ->values() // Reindexar el array después de unique
                 ->map(function ($package) use ($hasFirstPurchase, $currency, $pricePerHour) {
+                    $fixedCop = $this->getFixedCopPriceForPackage($package);
+
                     // 🔥 LÓGICA DE PRECIOS SEGÚN TIPO DE PAQUETE
                     if ($package->type === 'gifts') {
-                        // REGALOS: Precio fijo 1 moneda = 1 USD (sin bonos, descuentos ni precios regionales)
-                        $calculatedPriceUsd = $package->price; // Precio exacto = número de monedas
+                        // REGALOS: Precio fijo 1 moneda = 1 USD
+                        $calculatedPriceUsd = $package->price;
                         $basePriceUsd = $package->price;
+                        $originalPriceUsd = $package->price;
+                        $discountPercentage = 0;
                     } else {
-                        // MINUTOS: Calcular precio dinámicamente según precio por hora del país
-                        // Precio = (minutos / 60) * precio_por_hora
-                        $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
-                        $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
-                        $basePriceUsd = $package->price; // Precio base original (para referencia)
+                        // MINUTOS: Usar precio del seeder (precio final con descuento)
+                        $calculatedPriceUsd = $package->price; // Precio final (lo que se paga)
+                        $basePriceUsd = $package->price;
+                        $originalPriceUsd = $package->original_price ?? $package->regular_price ?? $package->price; // Precio regular (ancla)
+                        $discountPercentage = $package->discount_percentage ?? 0;
                     }
                     
-                    // Convertir precios a otras monedas para mostrar
-                    $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-                    $usdToEur = config('wompi.usd_to_eur_rate', 0.92);
+                    // Convertir precios a otras monedas para mostrar (tasas dinámicas desde API)
+                    $usdToCop = $this->exchangeRateService->getUsdToCopRate();
+                    $usdToEur = $this->exchangeRateService->getUsdToEurRate();
                     
-                    // Precio en COP (para Wompi, siempre en COP)
-                    $priceCop = $calculatedPriceUsd * $usdToCop;
+                    // Precio en COP (para Wompi, siempre en COP) - usar precio final
+                    // Redondear a entero para evitar decimales
+                    if ($fixedCop) {
+                        $priceCop = (int)$fixedCop;
+                        $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
+                        $basePriceUsd = $calculatedPriceUsd;
+                        $originalPriceUsd = $calculatedPriceUsd;
+                        $discountPercentage = 0;
+                    } else {
+                        $priceCop = round($calculatedPriceUsd * $usdToCop);
+                    }
                     
-                    // Precio en EUR
+                    // Precio en EUR - usar precio final
                     $priceEur = $calculatedPriceUsd * $usdToEur;
                     
-                    // Lógica de precios (mantener compatibilidad con descuentos de primera vez)
-                    // Para regalos, no aplicar descuentos
-                    if ($package->type === 'gifts') {
-                        $showPriceCop = $priceCop;
-                        $showDiscount = 0;
-                        $isFirstTimeEligible = false;
-                    } else if ($hasFirstPurchase) {
-                        $showPriceCop = $package->regular_price * $usdToCop;
-                        $showDiscount = 0;
-                        $isFirstTimeEligible = false;
-                    } else {
-                        $showPriceCop = $package->is_first_time_only ? $priceCop : $priceCop;
-                        $showDiscount = $package->is_first_time_only ? $package->discount_percentage : 0;
-                        $isFirstTimeEligible = $package->is_first_time_only;
-                    }
+                    // Precio regular (ancla) en otras monedas - también redondear a entero
+                    $originalPriceCop = round($originalPriceUsd * $usdToCop);
+                    $originalPriceEur = $originalPriceUsd * $usdToEur;
+                    
+                    // Mostrar precio ancla solo si hay diferencia
+                    $showAnchorPrice = ($package->type === 'minutes' && $originalPriceUsd > $calculatedPriceUsd);
 
                     return [
                         'id' => $package->id,
@@ -252,22 +272,25 @@ class WompiController extends Controller
                         'coins' => $package->coins,
                         'bonus_coins' => $package->bonus_coins,
                         'total_coins' => $package->coins + $package->bonus_coins,
-                        'price_usd' => round($calculatedPriceUsd, 2), // Precio calculado (dinámico para minutos, fijo para regalos)
-                        'price_usd_base' => round($basePriceUsd, 2), // Precio base original (para referencia)
-                        'price_per_hour' => $package->type === 'gifts' ? null : $pricePerHour, // Solo para minutos
+                        'price_usd' => round($calculatedPriceUsd, 2), // Precio final (lo que se cobra)
+                        'price_usd_base' => round($basePriceUsd, 2),
+                        'original_price_usd' => round($originalPriceUsd, 2), // Precio regular (ancla)
+                        'discount_percentage' => round($discountPercentage, 1), // Porcentaje de descuento
+                        'show_anchor_price' => $showAnchorPrice, // Flag para mostrar precio ancla tachado
+                        'price_per_hour' => $package->type === 'gifts' ? null : $pricePerHour,
                         'price_eur' => round($priceEur, 2),
-                        'price_cop' => (int)$showPriceCop, // Mantener para uso interno de Wompi
-                        'price_cop_cents' => (int)($showPriceCop * 100), // Para Wompi
-                        'regular_price_cop' => (int)($package->regular_price * $usdToCop),
-                        'discount_percentage' => $showDiscount,
-                        'is_first_time_only' => $isFirstTimeEligible,
-                        'is_popular' => $package->is_popular,
+                        'original_price_eur' => round($originalPriceEur, 2),
+                        'price_cop' => (int)$priceCop, // Precio redondeado a entero (sin decimales)
+                        'price_cop_cents' => (int)($priceCop * 100), // Para Wompi (múltiplo de 100)
+                        'original_price_cop' => (int)$originalPriceCop, // Precio ancla redondeado
+                        'regular_price_cop' => (int)round($package->regular_price * $usdToCop), // Precio regular redondeado
+                        'is_popular' => $package->is_popular, // Solo plan de 60 minutos
                         'is_active' => $package->is_active,
                         'is_first_purchase' => !$hasFirstPurchase,
                         'usd_to_cop_rate' => $usdToCop,
                         'usd_to_eur_rate' => $usdToEur,
-                        'currency' => $currency, // Moneda seleccionada
-                        'price_multiplier' => $package->type === 'gifts' ? 1.00 : (($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00) // Regalos siempre 1.00, minutos según región
+                        'currency' => $currency,
+                        'price_multiplier' => $package->type === 'gifts' ? 1.00 : (($currency === 'USD' || $currency === 'EUR') ? 1.10 : 1.00)
                     ];
                 });
 
@@ -279,8 +302,8 @@ class WompiController extends Controller
                 'currency_detected' => !($request && $request->has('currency') && $request->input('currency')), // true si fue detectada automáticamente
                 'default_currency' => 'COP', // Moneda por defecto (Wompi)
                 'is_latam' => $this->currencyDetectionService->isLatamCurrency($currency),
-                'usd_to_cop_rate' => config('wompi.usd_to_cop_rate', 4000),
-                'usd_to_eur_rate' => config('wompi.usd_to_eur_rate', 0.92),
+                'usd_to_cop_rate' => $this->exchangeRateService->getUsdToCopRate(),
+                'usd_to_eur_rate' => $this->exchangeRateService->getUsdToEurRate(),
                 'environment_info' => $this->getEnvironmentInfo()
             ]);
 
@@ -366,19 +389,26 @@ class WompiController extends Controller
                     'created_at' => $recentPendingPurchase->created_at
                 ]);
                 
+                $fixedCop = $this->getFixedCopPriceForPackage($package);
+
                 // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
                 if ($package->type === 'gifts') {
                     // REGALOS: Precio fijo 1 moneda = 1 USD
                     $calculatedPriceUsd = $package->price;
                     $basePriceUsd = $package->price;
                 } else {
-                    // MINUTOS: Calcular precio dinámicamente según precio por hora del país
-                    $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
-                    $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
-                    $basePriceUsd = $package->price; // Para referencia
+                    // MINUTOS: Usar precio del seeder (ya con descuento aplicado)
+                    $calculatedPriceUsd = $package->price; // Precio final con descuento (lo que se paga)
+                    $basePriceUsd = $package->price;
                 }
-                $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-                $priceCop = $calculatedPriceUsd * $usdToCop;
+                $usdToCop = $this->exchangeRateService->getUsdToCopRate();
+                if ($fixedCop) {
+                    $priceCop = (int)$fixedCop;
+                    $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
+                    $basePriceUsd = $calculatedPriceUsd;
+                } else {
+                    $priceCop = $calculatedPriceUsd * $usdToCop;
+                }
                 
                 $signature = $this->generateIntegritySignature($recentPendingPurchase->transaction_id, $priceCop * 100, 'COP');
                 
@@ -411,25 +441,32 @@ class WompiController extends Controller
                 ], 200);
             }
 
+            $fixedCop = $this->getFixedCopPriceForPackage($package);
+
             // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
             if ($package->type === 'gifts') {
                 // REGALOS: Precio fijo 1 moneda = 1 USD
                 $calculatedPriceUsd = $package->price; // Precio exacto = número de monedas
                 $basePriceUsd = $package->price;
             } else {
-                // MINUTOS: Calcular precio dinámicamente según precio por hora del país
-                $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
-                $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
-                $basePriceUsd = $package->price; // Precio base original (para referencia)
+                // MINUTOS: Usar precio del seeder (ya con descuento aplicado)
+                $calculatedPriceUsd = $package->price; // Precio final con descuento (lo que se paga)
+                $basePriceUsd = $package->price;
             }
             
-            // Convertir precio calculado a COP (Wompi siempre procesa en COP)
-            $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-            $priceCop = $calculatedPriceUsd * $usdToCop;
+            // Convertir precio calculado a COP (Wompi solo acepta COP)
+            $usdToCop = $this->exchangeRateService->getUsdToCopRate();
+            // Redondear a entero para evitar decimales (ej: 193572 en lugar de 193572.08)
+            if ($fixedCop) {
+                $priceCop = (int)$fixedCop;
+                $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
+                $basePriceUsd = $calculatedPriceUsd;
+            } else {
+                $priceCop = round($calculatedPriceUsd * $usdToCop);
+            }
             
-
-            // Asegurar que el precio en centavos sea un entero
-            $amountInCents = (int)round($priceCop * 100);
+            // Calcular monto en centavos de COP (múltiplo de 100, sin centavos)
+            $amountInCents = (int)($priceCop * 100);
             
             // Validar que el monto mínimo sea al menos 1000 COP (según documentación Wompi)
             if ($amountInCents < 100000) { // 1000 COP = 100000 centavos
@@ -470,13 +507,15 @@ class WompiController extends Controller
                 ])
             ]);
 
-            // Generar firma de integridad usando el monto en centavos como entero
+            // Generar firma de integridad usando el monto en centavos de COP
             $signature = $this->generateIntegritySignature($reference, $amountInCents, 'COP');
             
             Log::info("🔐 Firma de integridad generada", [
                 'reference' => $reference,
                 'amount_in_cents' => $amountInCents,
                 'currency' => 'COP',
+                'amount_cop' => $priceCop,
+                'amount_usd' => $calculatedPriceUsd,
                 'signature_preview' => substr($signature, 0, 20) . '...'
             ]);
 
@@ -484,13 +523,14 @@ class WompiController extends Controller
             $redirectUrl = $this->buildRedirectUrl(null, 'success');
             $cancelUrl = $this->buildRedirectUrl(null, 'cancel');
             
-            // Construir URL completa de checkout (para registrar en logs y en payment_data)
+            // Construir URL completa de checkout (Wompi solo acepta COP)
             $paymentParams = http_build_query([
                 'public-key' => $this->wompiConfig['public_key'],
                 'currency' => 'COP',
                 'amount-in-cents' => $amountInCents,
                 'reference' => $reference,
                 'signature:integrity' => $signature,
+                'default-language' => 'en',
                 'redirect-url' => $redirectUrl,
                 'cancel-url' => $cancelUrl
             ]);
@@ -527,8 +567,8 @@ class WompiController extends Controller
                 'purchase_id' => $purchase->id,
                 'wompi_data' => [
                     'public_key' => $this->wompiConfig['public_key'],
-                    'currency' => 'COP',
-                    'amount_in_cents' => $amountInCents, // Usar el entero calculado
+                    'currency' => 'COP', // Wompi solo acepta COP
+                    'amount_in_cents' => $amountInCents, // Centavos de COP
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],
@@ -1765,24 +1805,32 @@ class WompiController extends Controller
                 $currency = $this->currencyDetectionService->detectCurrencyByIp($userIp);
             }
 
+            $fixedCop = $this->getFixedCopPriceForPackage($package);
+
             // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
             if ($package->type === 'gifts') {
                 // REGALOS: Precio fijo 1 moneda = 1 USD
                 $calculatedPriceUsd = $package->price;
                 $basePriceUsd = $package->price;
             } else {
-                // MINUTOS: Calcular precio dinámicamente según precio por hora del país
-                $minutes = $package->minutes ?? ($package->coins / VideoChatCoinController::COST_PER_MINUTE);
-                $calculatedPriceUsd = ($minutes / 60) * $pricePerHour;
+                // MINUTOS: Usar precio del seeder (ya con descuento aplicado)
+                $calculatedPriceUsd = $package->price; // Precio final con descuento (lo que se paga)
                 $basePriceUsd = $package->price;
             }
             
-            // Convertir precio calculado a COP (Wompi siempre procesa en COP)
-            $usdToCop = config('wompi.usd_to_cop_rate', 4000);
-            $priceCop = $calculatedPriceUsd * $usdToCop;
+            // Convertir precio calculado a COP (Wompi solo acepta COP)
+            $usdToCop = $this->exchangeRateService->getUsdToCopRate();
+            // Redondear a entero para evitar decimales (ej: 193572 en lugar de 193572.08)
+            if ($fixedCop) {
+                $priceCop = (int)$fixedCop;
+                $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
+                $basePriceUsd = $calculatedPriceUsd;
+            } else {
+                $priceCop = round($calculatedPriceUsd * $usdToCop);
+            }
             
-            // Asegurar que el precio en centavos sea un entero
-            $amountInCents = (int)round($priceCop * 100);
+            // Calcular monto en centavos de COP (múltiplo de 100, sin centavos)
+            $amountInCents = (int)($priceCop * 100);
             
             // Validar que el monto mínimo sea al menos 1000 COP
             if ($amountInCents < 100000) {
@@ -1824,7 +1872,7 @@ class WompiController extends Controller
                 ])
             ]);
 
-            // Generar firma de integridad usando el monto en centavos como entero
+            // Generar firma de integridad usando el monto en centavos de COP
             $signature = $this->generateIntegritySignature($reference, $amountInCents, 'COP');
             
             Log::info("🧪 Pago Wompi Sandbox Widget creado", [
@@ -1835,7 +1883,7 @@ class WompiController extends Controller
                 'amount_usd' => $calculatedPriceUsd,
                 'amount_cop' => $priceCop,
                 'amount_cop_cents' => $amountInCents,
-                'currency' => $currency,
+                'currency' => 'COP',
                 'sandbox' => true
             ]);
 
@@ -1847,8 +1895,8 @@ class WompiController extends Controller
                 'purchase_id' => $purchase->id,
                 'wompi_data' => [
                     'public_key' => $this->wompiConfig['public_key'],
-                    'currency' => 'COP',
-                    'amount_in_cents' => $amountInCents,
+                    'currency' => 'COP', // Wompi solo acepta COP
+                    'amount_in_cents' => $amountInCents, // Centavos de COP
                     'reference' => $reference,
                     'signature_integrity' => $signature,
                     'checkout_url' => $this->wompiConfig['checkout_url'],

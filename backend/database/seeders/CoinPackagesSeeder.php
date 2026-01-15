@@ -9,21 +9,19 @@ class CoinPackagesSeeder extends Seeder
 {
     public function run()
     {
-        // PAQUETES DE MINUTOS - Nueva estructura: 1 minuto = 10 monedas
-        // Precios base (LATAM): 60 min = $30 USD
-        // Para USD/EUR: 60 min = $33 USD (se calcula dinámicamente con pricePerHour=33)
-        // Los precios aquí son solo referencia, el cálculo real se hace dinámicamente
+        // PAQUETES DE MINUTOS - Estrategia de precio ancla + descuento visible
+        // Precio regular (ancla) tachado + Precio final (el que se cobra) destacado
         $minutePackages = [
             [
-                'name' => '15 Minutos',
-                'description' => 'Perfecto para comenzar',
+                'name' => 'Ideal para probar',
+                'description' => '15 Minutos',
                 'type' => 'minutes',
                 'minutes' => 15,
                 'coins' => 150,
-                'bonus_coins' => 0, // Sin bono
-                'price' => 7.50, // Precio base LATAM (15/60 * 30)
-                'regular_price' => 7.50,
-                'original_price' => 7.50,
+                'bonus_coins' => 0,
+                'price' => 6.99,
+                'regular_price' => 6.99,
+                'original_price' => 6.99,
                 'discount_percentage' => 0,
                 'is_first_time_only' => false,
                 'is_active' => true,
@@ -31,15 +29,15 @@ class CoinPackagesSeeder extends Seeder
                 'sort_order' => 1
             ],
             [
-                'name' => '30 Minutos',
-                'description' => 'Recomendado',
+                'name' => 'Más tiempo, más conexión',
+                'description' => '30 Minutos',
                 'type' => 'minutes',
                 'minutes' => 30,
                 'coins' => 300,
-                'bonus_coins' => 30, // 10% de bono (30 monedas gratis)
-                'price' => 15.00, // Precio base LATAM (30/60 * 30)
-                'regular_price' => 15.00,
-                'original_price' => 15.00,
+                'bonus_coins' => 0,
+                'price' => 12.99,
+                'regular_price' => 12.99,
+                'original_price' => 12.99,
                 'discount_percentage' => 0,
                 'is_first_time_only' => false,
                 'is_active' => true,
@@ -47,36 +45,117 @@ class CoinPackagesSeeder extends Seeder
                 'sort_order' => 2
             ],
             [
-                'name' => '60 Minutos',
-                'description' => 'El más popular',
+                'name' => 'La mejor experiencia',
+                'description' => '60 Minutos',
                 'type' => 'minutes',
                 'minutes' => 60,
                 'coins' => 600,
-                'bonus_coins' => 90, // 15% de bono (90 monedas gratis)
-                'price' => 30.00, // Precio base LATAM (60/60 * 30)
-                'regular_price' => 30.00,
-                'original_price' => 30.00,
+                'bonus_coins' => 0,
+                'price' => 22.99,
+                'regular_price' => 22.99,
+                'original_price' => 22.99,
                 'discount_percentage' => 0,
                 'is_first_time_only' => false,
                 'is_active' => true,
-                'is_popular' => true, // MÁS POPULAR
+                'is_popular' => true,
                 'sort_order' => 3
             ],
             [
-                'name' => '120 Minutos',
-                'description' => 'Premium - Alto valor',
+                'name' => 'Experiencia Premium',
+                'description' => '120 Minutos',
                 'type' => 'minutes',
                 'minutes' => 120,
                 'coins' => 1200,
-                'bonus_coins' => 240, // 20% de bono (240 monedas gratis)
-                'price' => 60.00, // Precio base LATAM (120/60 * 30)
-                'regular_price' => 60.00,
-                'original_price' => 60.00,
+                'bonus_coins' => 0,
+                'price' => 42.99,
+                'regular_price' => 42.99,
+                'original_price' => 42.99,
                 'discount_percentage' => 0,
                 'is_first_time_only' => false,
                 'is_active' => true,
                 'is_popular' => false,
                 'sort_order' => 4
+            ],
+            [
+                'name' => 'Power Plan',
+                'description' => '250 Minutos',
+                'type' => 'minutes',
+                'minutes' => 250,
+                'coins' => 2500,
+                'bonus_coins' => 0,
+                'price' => 114.99,
+                'regular_price' => 114.99,
+                'original_price' => 114.99,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
+                'is_active' => true,
+                'is_popular' => false,
+                'sort_order' => 9
+            ],
+            [
+                'name' => 'Pro Plan',
+                'description' => '500 Minutos',
+                'type' => 'minutes',
+                'minutes' => 500,
+                'coins' => 5000,
+                'bonus_coins' => 0,
+                'price' => 209.99,
+                'regular_price' => 209.99,
+                'original_price' => 209.99,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
+                'is_active' => true,
+                'is_popular' => false,
+                'sort_order' => 10
+            ],
+            [
+                'name' => 'Elite Plan',
+                'description' => '1000 Minutos',
+                'type' => 'minutes',
+                'minutes' => 1000,
+                'coins' => 10000,
+                'bonus_coins' => 0,
+                'price' => 369.99,
+                'regular_price' => 369.99,
+                'original_price' => 369.99,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
+                'is_active' => true,
+                'is_popular' => false,
+                'sort_order' => 11
+            ],
+            [
+                'name' => 'VIP Experience',
+                'description' => '1500 Minutos',
+                'type' => 'minutes',
+                'minutes' => 1500,
+                'coins' => 15000,
+                'bonus_coins' => 0,
+                'price' => 459.99,
+                'regular_price' => 459.99,
+                'original_price' => 459.99,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
+                'is_active' => true,
+                'is_popular' => false,
+                'sort_order' => 12
+            ]
+            ,
+            [
+                'name' => 'Test COP 2000',
+                'description' => 'Plan temporal de prueba',
+                'type' => 'minutes',
+                'minutes' => 5,
+                'coins' => 50,
+                'bonus_coins' => 0,
+                'price' => 0.50,
+                'regular_price' => 0.50,
+                'original_price' => 0.50,
+                'discount_percentage' => 0,
+                'is_first_time_only' => false,
+                'is_active' => true,
+                'is_popular' => false,
+                'sort_order' => 13
             ]
         ];
 
@@ -148,29 +227,23 @@ class CoinPackagesSeeder extends Seeder
             ]
         ];
 
-        // Actualizar o crear paquetes de minutos
+        // Eliminar todos los paquetes de minutos existentes
+        CoinPackage::where('type', 'minutes')->delete();
+        
+        // Eliminar todos los paquetes de regalos existentes
+        CoinPackage::where('type', 'gifts')->delete();
+
+        // Crear nuevos paquetes de minutos
         foreach ($minutePackages as $package) {
-            CoinPackage::updateOrCreate(
-                [
-                    'name' => $package['name'],
-                    'type' => $package['type']
-                ],
-                $package
-            );
+            CoinPackage::create($package);
         }
 
-        // Actualizar o crear paquetes de regalos
+        // Crear nuevos paquetes de regalos
         foreach ($giftPackages as $package) {
-            CoinPackage::updateOrCreate(
-                [
-                    'name' => $package['name'],
-                    'type' => $package['type']
-                ],
-                $package
-            );
+            CoinPackage::create($package);
         }
 
-        $this->command->info('✅ 4 paquetes de minutos actualizados/creados correctamente');
+        $this->command->info('✅ 8 paquetes de minutos actualizados/creados correctamente');
         $this->command->info('✅ 4 paquetes de regalos actualizados/creados correctamente');
         $this->command->info('🎉 Total: 8 paquetes procesados');
     }
