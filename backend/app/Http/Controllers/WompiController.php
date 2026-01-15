@@ -25,6 +25,26 @@ class WompiController extends Controller
 
     public function __construct(CurrencyDetectionService $currencyDetectionService, ExchangeRateService $exchangeRateService)
     {
+        $sandboxEnabled = (bool)config('wompi.sandbox', false);
+        $configuredApiUrl = config('wompi.api_url', 'https://production.wompi.co/v1');
+        $configuredCheckoutUrl = config('wompi.checkout_url', 'https://checkout.wompi.co');
+
+        $apiUrl = $sandboxEnabled ? 'https://sandbox.wompi.co/v1' : 'https://production.wompi.co/v1';
+        if (!$sandboxEnabled && str_contains($configuredApiUrl, 'sandbox')) {
+            $configuredApiUrl = $apiUrl;
+        }
+        if ($sandboxEnabled && !str_contains($configuredApiUrl, 'sandbox')) {
+            $configuredApiUrl = $apiUrl;
+        }
+
+        $checkoutUrl = $sandboxEnabled ? 'https://sandbox.checkout.wompi.co' : 'https://checkout.wompi.co';
+        if (!$sandboxEnabled && str_contains($configuredCheckoutUrl, 'sandbox')) {
+            $configuredCheckoutUrl = $checkoutUrl;
+        }
+        if ($sandboxEnabled && !str_contains($configuredCheckoutUrl, 'sandbox')) {
+            $configuredCheckoutUrl = $checkoutUrl;
+        }
+
         $this->wompiConfig = [
             // Credenciales Wompi
             'public_key' => config('wompi.public_key'),
@@ -33,30 +53,17 @@ class WompiController extends Controller
             'events_secret' => config('wompi.events_secret'),
             
             // URLs de Wompi
-            'api_url' => config('wompi.api_url', 'https://production.wompi.co/v1'),
-            'checkout_url' => config('wompi.checkout_url', 'https://checkout.wompi.co'),
+            'api_url' => $configuredApiUrl,
+            'checkout_url' => $configuredCheckoutUrl,
             
             // Configuración
-            'sandbox' => config('wompi.sandbox', false),
+            'sandbox' => $sandboxEnabled,
             'currency' => config('wompi.currency', 'COP'),
             'environment' => config('app.env'),
         ];
         
         $this->currencyDetectionService = $currencyDetectionService;
         $this->exchangeRateService = $exchangeRateService;
-    }
-
-    private function getFixedCopPriceForPackage($package)
-    {
-        if (!$package) {
-            return null;
-        }
-
-        if ($package->type === 'minutes' && $package->name === 'Test COP 2000') {
-            return 2000;
-        }
-
-        return null;
     }
 
     /**
@@ -220,8 +227,6 @@ class WompiController extends Controller
                 })
                 ->values() // Reindexar el array después de unique
                 ->map(function ($package) use ($hasFirstPurchase, $currency, $pricePerHour) {
-                    $fixedCop = $this->getFixedCopPriceForPackage($package);
-
                     // 🔥 LÓGICA DE PRECIOS SEGÚN TIPO DE PAQUETE
                     if ($package->type === 'gifts') {
                         // REGALOS: Precio fijo 1 moneda = 1 USD
@@ -243,15 +248,7 @@ class WompiController extends Controller
                     
                     // Precio en COP (para Wompi, siempre en COP) - usar precio final
                     // Redondear a entero para evitar decimales
-                    if ($fixedCop) {
-                        $priceCop = (int)$fixedCop;
-                        $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
-                        $basePriceUsd = $calculatedPriceUsd;
-                        $originalPriceUsd = $calculatedPriceUsd;
-                        $discountPercentage = 0;
-                    } else {
-                        $priceCop = round($calculatedPriceUsd * $usdToCop);
-                    }
+                    $priceCop = round($calculatedPriceUsd * $usdToCop);
                     
                     // Precio en EUR - usar precio final
                     $priceEur = $calculatedPriceUsd * $usdToEur;
@@ -389,8 +386,6 @@ class WompiController extends Controller
                     'created_at' => $recentPendingPurchase->created_at
                 ]);
                 
-                $fixedCop = $this->getFixedCopPriceForPackage($package);
-
                 // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
                 if ($package->type === 'gifts') {
                     // REGALOS: Precio fijo 1 moneda = 1 USD
@@ -402,13 +397,7 @@ class WompiController extends Controller
                     $basePriceUsd = $package->price;
                 }
                 $usdToCop = $this->exchangeRateService->getUsdToCopRate();
-                if ($fixedCop) {
-                    $priceCop = (int)$fixedCop;
-                    $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
-                    $basePriceUsd = $calculatedPriceUsd;
-                } else {
-                    $priceCop = $calculatedPriceUsd * $usdToCop;
-                }
+                $priceCop = $calculatedPriceUsd * $usdToCop;
                 
                 $signature = $this->generateIntegritySignature($recentPendingPurchase->transaction_id, $priceCop * 100, 'COP');
                 
@@ -441,8 +430,6 @@ class WompiController extends Controller
                 ], 200);
             }
 
-            $fixedCop = $this->getFixedCopPriceForPackage($package);
-
             // 🔥 CALCULAR PRECIO SEGÚN TIPO DE PAQUETE
             if ($package->type === 'gifts') {
                 // REGALOS: Precio fijo 1 moneda = 1 USD
@@ -457,13 +444,7 @@ class WompiController extends Controller
             // Convertir precio calculado a COP (Wompi solo acepta COP)
             $usdToCop = $this->exchangeRateService->getUsdToCopRate();
             // Redondear a entero para evitar decimales (ej: 193572 en lugar de 193572.08)
-            if ($fixedCop) {
-                $priceCop = (int)$fixedCop;
-                $calculatedPriceUsd = round($priceCop / $usdToCop, 2);
-                $basePriceUsd = $calculatedPriceUsd;
-            } else {
-                $priceCop = round($calculatedPriceUsd * $usdToCop);
-            }
+            $priceCop = round($calculatedPriceUsd * $usdToCop);
             
             // Calcular monto en centavos de COP (múltiplo de 100, sin centavos)
             $amountInCents = (int)($priceCop * 100);
@@ -1159,7 +1140,7 @@ class WompiController extends Controller
             // Buscar por reference primero (más confiable), luego por transaction_id si está disponible
             $searchId = $wompiTransactionId ?: $reference;
             
-            if ($purchase->status === 'pending' && $searchId) {
+            if (in_array($purchase->status, ['pending', 'pending_confirmation'], true) && $searchId) {
                 try {
                     Log::info('🔍 Verificando estado con Wompi API', [
                         'purchase_id' => $purchase->id,
@@ -1283,7 +1264,7 @@ class WompiController extends Controller
                         ]);
 
                         // Si Wompi dice que está aprobado pero localmente está pendiente, procesarlo automáticamente
-                        if (in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && $purchase->status === 'pending') {
+                        if (in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && in_array($purchase->status, ['pending', 'pending_confirmation'], true)) {
                             Log::info('🔄🔄🔄 PROCESANDO AUTOMÁTICAMENTE: Pago aprobado en Wompi pero pendiente localmente', [
                                 'purchase_id' => $purchase->id,
                                 'wompi_status' => $wompiStatus,
@@ -1330,7 +1311,7 @@ class WompiController extends Controller
                                 'purchase_id' => $purchase->id,
                                 'wompi_status' => $wompiStatus,
                                 'local_status' => $purchase->status,
-                                'needs_processing' => in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && $purchase->status === 'pending',
+                                'needs_processing' => in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']) && in_array($purchase->status, ['pending', 'pending_confirmation'], true),
                                 'is_approved' => in_array($wompiStatus, ['APPROVED', 'APPROVED_PARTIAL']),
                                 'is_pending' => $purchase->status === 'pending'
                             ]);
@@ -1945,6 +1926,13 @@ class WompiController extends Controller
                 ], 401);
             }
 
+            if (empty($this->wompiConfig['private_key'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Configuración de Wompi incompleta. Falta WOMPI_PRIVATE_KEY.'
+                ], 500);
+            }
+
             // Obtener todos los pagos pendientes del usuario
             $pendingPurchases = CoinPurchase::where('user_id', $user->id)
                 ->where('payment_method', 'wompi')
@@ -2034,9 +2022,51 @@ class WompiController extends Controller
                                 } else {
                                     $transactionData = $responseData['data'] ?? $responseData;
                                 }
+                            } else {
+                                Log::warning('⚠️ Respuesta no exitosa buscando por reference', [
+                                    'purchase_id' => $purchase->id,
+                                    'status_code' => $response->status(),
+                                    'response' => $response->body()
+                                ]);
                             }
                         } catch (Exception $e) {
                             Log::warning('⚠️ Error buscando por reference: ' . $e->getMessage());
+                        }
+                    }
+
+                    if (!$transactionData) {
+                        try {
+                            $response = Http::timeout(10)
+                                ->withHeaders([
+                                    'Authorization' => 'Bearer ' . $this->wompiConfig['private_key'],
+                                    'Accept' => 'application/json'
+                                ])
+                                ->get($this->wompiConfig['api_url'] . '/transactions');
+
+                            if ($response->successful()) {
+                                $responseData = $response->json();
+                                if (isset($responseData['data']) && is_array($responseData['data'])) {
+                                    foreach ($responseData['data'] as $tx) {
+                                        if (($tx['reference'] ?? null) === $reference) {
+                                            $transactionData = $tx;
+                                            break;
+                                        }
+                                    }
+                                    if (!$transactionData && count($responseData['data']) > 0) {
+                                        $transactionData = $responseData['data'][0];
+                                    }
+                                } else {
+                                    $transactionData = $responseData['data'] ?? $responseData;
+                                }
+                            } else {
+                                Log::warning('⚠️ Respuesta no exitosa buscando en lista de transacciones', [
+                                    'purchase_id' => $purchase->id,
+                                    'status_code' => $response->status(),
+                                    'response' => $response->body()
+                                ]);
+                            }
+                        } catch (Exception $e) {
+                            Log::warning('⚠️ Error buscando en lista de transacciones: ' . $e->getMessage());
                         }
                     }
 

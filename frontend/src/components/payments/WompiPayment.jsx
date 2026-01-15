@@ -149,7 +149,7 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
       }
       
       // Si sigue pendiente, mostrar mensaje informativo
-      if (data.purchase.status === 'pending') {
+      if (data.purchase.status === 'pending' || data.purchase.status === 'pending_confirmation') {
         console.log('⏳ Pago aún pendiente, continuando verificación...');
       }
       
@@ -1616,153 +1616,6 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
     }
   };
 
-  const testPlanByLocale = {
-    es: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Plan de prueba',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Solo para pruebas',
-      subtext: [
-        'Acceso corto para validar pagos',
-        'Ideal para pruebas con chicas'
-      ]
-    },
-    en: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Test plan',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Testing only',
-      subtext: [
-        'Short access to validate payments',
-        'Ideal for tests with girls'
-      ]
-    },
-    pt: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Plano de teste',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Apenas para testes',
-      subtext: [
-        'Acesso curto para validar pagamentos',
-        'Ideal para testes com garotas'
-      ]
-    },
-    fr: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Plan de test',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Uniquement pour tests',
-      subtext: [
-        'Accès court pour valider les paiements',
-        'Idéal pour des tests avec des filles'
-      ]
-    },
-    de: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Testplan',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Nur für Tests',
-      subtext: [
-        'Kurzer Zugang zur Zahlungsprüfung',
-        'Ideal für Tests mit Mädchen'
-      ]
-    },
-    it: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Piano di test',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Solo per test',
-      subtext: [
-        'Accesso breve per validare i pagamenti',
-        'Ideale per test con ragazze'
-      ]
-    },
-    tr: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Test planı',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Sadece test için',
-      subtext: [
-        'Ödemeleri doğrulamak için kısa erişim',
-        'Kızlarla test için ideal'
-      ]
-    },
-    ru: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'Тестовый план',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'Только для тестов',
-      subtext: [
-        'Короткий доступ для проверки оплаты',
-        'Идеально для тестов с девушками'
-      ]
-    },
-    hi: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'टेस्ट प्लान',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'केवल टेस्ट के लिए',
-      subtext: [
-        'पेमेंट जांचने के लिए छोटा एक्सेस',
-        'लड़कियों के साथ टेस्ट के लिए आदर्श'
-      ]
-    },
-    ja: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: 'テストプラン',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: 'テスト専用',
-      subtext: [
-        '支払い確認の短時間アクセス',
-        '女の子とのテストに最適'
-      ]
-    },
-    zh: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: '测试计划',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: '仅用于测试',
-      subtext: [
-        '短时访问用于验证付款',
-        '适合与女生进行测试'
-      ]
-    },
-    ko: {
-      id: 'plan-test',
-      label: 'TEST',
-      name: '테스트 플랜',
-      minutes: 5,
-      priceLabel: '2000 COP',
-      highlight: '테스트 전용',
-      subtext: [
-        '결제 확인을 위한 짧은 이용',
-        '여자들과 테스트에 적합'
-      ]
-    }
-  };
-
   const priceByPlanId = {
     'plan-250': '$114.99 USD',
     'plan-500': '$209.99 USD',
@@ -1771,9 +1624,8 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
   };
 
   const basePlans = (localizedCopy[locale] || localizedCopy.es).plans;
-  const testPlan = testPlanByLocale[locale] || testPlanByLocale.es;
 
-  const minutesPlanDefinitions = basePlans.concat(testPlan).map((plan) => ({
+  const minutesPlanDefinitions = basePlans.map((plan) => ({
     ...plan,
     priceLabel: priceByPlanId[plan.id] || plan.priceLabel
   }));

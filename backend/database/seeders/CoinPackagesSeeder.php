@@ -141,22 +141,6 @@ class CoinPackagesSeeder extends Seeder
                 'sort_order' => 12
             ]
             ,
-            [
-                'name' => 'Test COP 2000',
-                'description' => 'Plan temporal de prueba',
-                'type' => 'minutes',
-                'minutes' => 5,
-                'coins' => 50,
-                'bonus_coins' => 0,
-                'price' => 0.50,
-                'regular_price' => 0.50,
-                'original_price' => 0.50,
-                'discount_percentage' => 0,
-                'is_first_time_only' => false,
-                'is_active' => true,
-                'is_popular' => false,
-                'sort_order' => 13
-            ]
         ];
 
         // PAQUETES DE REGALOS (1 moneda = 1 dólar: 20, 40, 80, 120 monedas)

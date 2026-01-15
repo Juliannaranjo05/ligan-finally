@@ -292,113 +292,81 @@ export default function InterfazCliente() {
 
   // Estado para rastrear pagos pendientes y polling
   const [pendingPurchaseId, setPendingPurchaseId] = useState(null);
-  const [paymentPollingActive, setPaymentPollingActive] = useState(false);
   const paymentPollingRef = useRef(null);
   const paymentPollingStartTimeRef = useRef(null);
 
-  // Función para verificar estado de pago
-  const checkPaymentStatus = useCallback(async (purchaseIdToCheck) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseIdToCheck}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await response.json();
-
-      if (data.success && data.purchase) {
-        if (data.purchase.status === 'completed') {
-          // Pago completado - detener polling y actualizar
-          setPendingPurchaseId(null);
-          setPaymentPollingActive(false);
-          if (paymentPollingRef.current) {
-            clearInterval(paymentPollingRef.current);
-            paymentPollingRef.current = null;
-          }
-          showNotification(`¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`, 'success');
-          // Actualizar balance - usar función helper directamente
-          try {
-            const token = localStorage.getItem('token');
-            const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            if (balanceResponse.ok) {
-              const balanceData = await balanceResponse.json();
-              if (balanceData.success) {
-                setUserBalance(balanceData.balance);
-                setBalanceDetails(balanceData);
-              }
-            }
-          } catch (error) {
-          }
-          return true; // Indica que el pago se completó
-        } else if (data.purchase.status === 'pending') {
-          // Sigue pendiente - continuar polling
-          return false;
-        } else {
-          // Pago fallido - detener polling
-          setPendingPurchaseId(null);
-          setPaymentPollingActive(false);
-          if (paymentPollingRef.current) {
-            clearInterval(paymentPollingRef.current);
-            paymentPollingRef.current = null;
-          }
-          showNotification('El pago no se completó. Por favor intenta nuevamente.', 'error');
-          return true; // Indica que terminó (aunque falló)
-        }
-      }
-      return false;
-    } catch (error) {
-      return false;
+  const stopPaymentPolling = useCallback(() => {
+    if (paymentPollingRef.current) {
+      clearInterval(paymentPollingRef.current);
+      paymentPollingRef.current = null;
     }
-  }, [API_BASE_URL, showNotification]);
+    setPendingPurchaseId(null);
+    paymentPollingStartTimeRef.current = null;
+  }, []);
 
-  // Polling automático para pagos pendientes
-  useEffect(() => {
-    if (paymentPollingActive && pendingPurchaseId) {
-      // Verificar si ha pasado más de 5 minutos (300 segundos)
-      const maxPollingTime = 5 * 60 * 1000; // 5 minutos en milisegundos
-      const elapsed = Date.now() - (paymentPollingStartTimeRef.current || Date.now());
-      
-      if (elapsed > maxPollingTime) {
-        // Detener polling después de 5 minutos
-        setPaymentPollingActive(false);
-        setPendingPurchaseId(null);
-        if (paymentPollingRef.current) {
-          clearInterval(paymentPollingRef.current);
-          paymentPollingRef.current = null;
+  const startPaymentPolling = useCallback((purchaseId) => {
+    if (!purchaseId) return;
+
+    stopPaymentPolling();
+    setPendingPurchaseId(purchaseId);
+    paymentPollingStartTimeRef.current = Date.now();
+
+    const pollOnce = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE_URL}/api/wompi/status/${purchaseId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await response.json();
+
+        if (data.success && data.purchase) {
+          if (data.purchase.status === 'completed') {
+            showNotification(`¡Pago completado! Se agregaron ${data.purchase.total_coins} monedas`, 'success');
+            try {
+              const balanceResponse = await fetch(`${API_BASE_URL}/api/videochat/coins/balance`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json();
+                if (balanceData.success) {
+                  setUserBalance(balanceData.balance);
+                  setBalanceDetails(balanceData);
+                }
+              }
+            } catch (error) {
+            }
+            stopPaymentPolling();
+            return;
+          }
+
+          if (data.purchase.status !== 'pending' && data.purchase.status !== 'pending_confirmation') {
+            showNotification('El pago no se completó. Por favor intenta nuevamente.', 'error');
+            stopPaymentPolling();
+            return;
+          }
         }
+      } catch (error) {
+      }
+    };
+
+    pollOnce();
+    paymentPollingRef.current = setInterval(() => {
+      const elapsed = Date.now() - (paymentPollingStartTimeRef.current || Date.now());
+      const maxPollingTime = 10 * 60 * 1000; // 10 minutos
+      if (elapsed > maxPollingTime) {
+        stopPaymentPolling();
         return;
       }
-
-      // Iniciar polling cada 5 segundos
-      paymentPollingRef.current = setInterval(async () => {
-        const completed = await checkPaymentStatus(pendingPurchaseId);
-        if (completed) {
-          // El pago se completó o falló, limpiar
-          setPaymentPollingActive(false);
-          setPendingPurchaseId(null);
-          if (paymentPollingRef.current) {
-            clearInterval(paymentPollingRef.current);
-            paymentPollingRef.current = null;
-          }
-        }
-      }, 5000); // Verificar cada 5 segundos
-
-      return () => {
-        if (paymentPollingRef.current) {
-          clearInterval(paymentPollingRef.current);
-          paymentPollingRef.current = null;
-        }
-      };
-    }
-  }, [paymentPollingActive, pendingPurchaseId, checkPaymentStatus]);
+      pollOnce();
+    }, 15000); // cada 15 segundos
+  }, [API_BASE_URL, showNotification, stopPaymentPolling]);
 
   // Verificar pago de Wompi cuando el usuario regresa
   useEffect(() => {
@@ -432,9 +400,7 @@ export default function InterfazCliente() {
             } else if (data.purchase.status === 'pending') {
               showNotification('Tu pago está siendo procesado. Las monedas se agregarán cuando se confirme.', 'info');
               // Iniciar polling automático
-              setPendingPurchaseId(data.purchase.id);
-              setPaymentPollingActive(true);
-              paymentPollingStartTimeRef.current = Date.now();
+              startPaymentPolling(data.purchase.id);
             }
           } else {
             // Si no se resuelve la compra localmente, avisar que está procesándose
@@ -456,15 +422,9 @@ export default function InterfazCliente() {
     if (payment === 'wompi' && purchaseId) {
       // Verificar el estado del pago inmediatamente
       const initialCheck = async () => {
-        const completed = await checkPaymentStatus(purchaseId);
-
-        if (!completed) {
-          // Si sigue pendiente, iniciar polling automático
+          // Iniciar polling automático
           showNotification('Tu pago está siendo procesado. Verificando automáticamente...', 'info');
-          setPendingPurchaseId(purchaseId);
-          setPaymentPollingActive(true);
-          paymentPollingStartTimeRef.current = Date.now();
-          }
+          startPaymentPolling(purchaseId);
 
           // Limpiar parámetros de la URL
           searchParams.delete('payment');
@@ -479,7 +439,7 @@ export default function InterfazCliente() {
       searchParams.delete('payment');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams, API_BASE_URL, showNotification, checkPaymentStatus]);
+  }, [searchParams, setSearchParams, API_BASE_URL, showNotification, startPaymentPolling]);
 
   const abrirModalCompraMinutos = () => {
     setShowBuyMinutes(true);
