@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wifi, WifiOff, User, Signal, Coins, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical, ArrowRightLeft } from 'lucide-react';
+import { Wifi, WifiOff, User, Signal, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical, ArrowRightLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
@@ -10,11 +10,14 @@ const TimeDisplayImprovedClient = ({
   connected, 
   otherUser, 
   roomName, 
+  tiempo = 0,
   t: propT,
   hardcodedTexts = {},
   userBalance,      // Balance de COINS (monedas generales)
   giftBalance,      // Balance de GIFTS (para regalos)
   remainingMinutes,
+  showMobile = true,
+  showDesktop = true,
   // 🔥 NUEVAS PROPS PARA CONTROLES
   micEnabled = true,
   setMicEnabled = () => {},
@@ -45,6 +48,7 @@ const TimeDisplayImprovedClient = ({
     info: getVideoChatText('info', currentLanguage, hardcodedTexts.info || "Info"),
     system: getVideoChatText('system', currentLanguage, hardcodedTexts.system || "Sistema")
   };
+
   
   // 🔥 DEBUG: Logs removidos para reducir ruido en consola
   // Los logs de debug se pueden habilitar temporalmente si es necesario para debugging
@@ -81,7 +85,8 @@ const TimeDisplayImprovedClient = ({
       <div className="time-display-container">
         
         {/* 🔥 VERSIÓN MÓVIL - FULL RESPONSIVE */}
-        <div className="mobile-version">
+        {showMobile && (
+        <div className="mobile-version lg:hidden">
           <div className="mobile-content">
             {/* 🔥 SALDO DE REGALOS */}
             <div className="balance-section gifts-section">
@@ -139,6 +144,7 @@ const TimeDisplayImprovedClient = ({
               </button>
             </div>
           </div>
+
           
           {/* 🔥 CONTROLES DE VIDEOLLAMADA EN MÓVIL - Debajo del botón de info */}
           <div className="mobile-controls-section">
@@ -212,9 +218,11 @@ const TimeDisplayImprovedClient = ({
               </div>
             </div>
         </div>
+        )}
 
         {/* 🔥 VERSIÓN DESKTOP */}
-        <div className="desktop-version">
+        {showDesktop && (
+        <div className="desktop-version hidden lg:flex">
           
           {/* Panel izquierdo - Balances */}
           <div className="left-panel">
@@ -382,6 +390,8 @@ const TimeDisplayImprovedClient = ({
             </div>
           </div>
         </div>
+        )}
+
       </div>
 
       {/* 🔥 MODAL DE INFORMACIÓN - VERSIÓN CLIENTE */}
@@ -394,7 +404,7 @@ const TimeDisplayImprovedClient = ({
                 <div className="modal-icon-wrapper">
                   <Info size={16} className="modal-icon" />
                 </div>
-                <h2 className="modal-title">{getVideoChatText('discountSystemTitle', currentLanguage, 'Sistema de Descuentos')}</h2>
+                <h2 className="modal-title">{getVideoChatText('discountSystemTitle', currentLanguage, 'Progreso de la llamada')}</h2>
               </div>
               <button
                 onClick={() => setShowInfoModal(false)}
@@ -421,27 +431,27 @@ const TimeDisplayImprovedClient = ({
 
               {/* Sistema de descuentos */}
               <div className="system-info">
-                <h3 className="section-title">{getVideoChatText('discountSystemSection', currentLanguage, '💰 Sistema de Descuentos')}</h3>
+                <h3 className="section-title">{getVideoChatText('discountSystemSection', currentLanguage, '✨ Cómo funciona')}</h3>
                 
                 <div className="discount-rules">
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">{getVideoChatText('rule1Title', currentLanguage, '10 monedas por minuto')}</span> - {getVideoChatText('rule1Desc', currentLanguage, 'Costo base por cada minuto de videollamada')}
+                      <span className="rule-highlight">{getVideoChatText('rule1Title', currentLanguage, 'La experiencia mejora con el tiempo')}</span> - {getVideoChatText('rule1Desc', currentLanguage, 'Mientras sigas conectado, desbloqueas mejores condiciones')}
                     </p>
                   </div>
                   
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">{getVideoChatText('rule2Title', currentLanguage, '20 monedas después del minuto')}</span> - {getVideoChatText('rule2Desc', currentLanguage, 'Tarifa incrementada tras el primer minuto')}
+                      <span className="rule-highlight">{getVideoChatText('rule2Title', currentLanguage, 'Si la llamada se corta')}</span> - {getVideoChatText('rule2Desc', currentLanguage, 'El progreso se reinicia de forma automática')}
                     </p>
                   </div>
 
                   <div className="rule-item">
                     <span className="rule-bullet">•</span>
                     <p className="rule-text">
-                      <span className="rule-highlight">{getVideoChatText('rule3Title', currentLanguage, 'Descuento cada 30 segundos')}</span> - {getVideoChatText('rule3Desc', currentLanguage, 'Se descuentan 5 monedas automáticamente')}
+                      <span className="rule-highlight">{getVideoChatText('rule3Title', currentLanguage, 'Más tiempo, mejor experiencia')}</span> - {getVideoChatText('rule3Desc', currentLanguage, 'Tu llamada se siente más completa mientras continúa')}
                     </p>
                   </div>
                 </div>
@@ -449,16 +459,16 @@ const TimeDisplayImprovedClient = ({
 
               {/* Información de balances */}
               <div className="balance-info-section">
-                <h3 className="section-title">{getVideoChatText('balanceInfoSection', currentLanguage, '💎 Información de Balances')}</h3>
+                <h3 className="section-title">{getVideoChatText('balanceInfoSection', currentLanguage, '💎 Tu tiempo y regalos')}</h3>
                 
                 <div className="balance-rules">
                   <div className="balance-rule">
                     <div className="balance-rule-icon coins-bg">
-                      <Coins size={16} className="coins-color" />
+                      <Timer size={16} className="coins-color" />
                     </div>
                     <div className="balance-rule-content">
-                      <h4 className="balance-rule-title">{getVideoChatText('coinsBalanceTitle', currentLanguage, 'Saldo de Monedas')}</h4>
-                      <p className="balance-rule-text">{getVideoChatText('coinsBalanceText', currentLanguage, 'Se usa para pagar videollamadas y servicios premium')}</p>
+                      <h4 className="balance-rule-title">{getVideoChatText('coinsBalanceTitle', currentLanguage, 'Tiempo disponible')}</h4>
+                      <p className="balance-rule-text">{getVideoChatText('coinsBalanceText', currentLanguage, 'Se usa para tus llamadas con chicas')}</p>
                     </div>
                   </div>
 
@@ -478,10 +488,10 @@ const TimeDisplayImprovedClient = ({
               <div className="recommendations">
                 <h4 className="recommendations-title">{getVideoChatText('recommendationsTitle', currentLanguage, '💡 Recomendaciones')}</h4>
                 <ul className="recommendations-list">
-                  <li>{getVideoChatText('recommendation1', currentLanguage, '• Recarga monedas antes de iniciar videollamadas')}</li>
-                  <li>{getVideoChatText('recommendation2', currentLanguage, '• Los regalos no afectan tu saldo de monedas')}</li>
-                  <li>{getVideoChatText('recommendation3', currentLanguage, '• Mantén conexión estable para evitar cobros extra')}</li>
-                  <li>{getVideoChatText('recommendation4', currentLanguage, '• Reporta cualquier descuento incorrecto')}</li>
+                  <li>{getVideoChatText('recommendation1', currentLanguage, '• Mantén la llamada continua para aprovechar la mejora')}</li>
+                  <li>{getVideoChatText('recommendation2', currentLanguage, '• Tu tiempo rinde más mientras sigas conectado')}</li>
+                  <li>{getVideoChatText('recommendation3', currentLanguage, '• Si se corta, vuelve cuando quieras sin penalizaciones')}</li>
+                  <li>{getVideoChatText('recommendation4', currentLanguage, '• Reporta cualquier problema para mejorar la experiencia')}</li>
                 </ul>
               </div>
             </div>
@@ -566,6 +576,7 @@ const TimeDisplayImprovedClient = ({
           box-sizing: border-box;
           padding: 0 4px;
         }
+
 
         .desktop-version {
           display: none;
@@ -794,7 +805,7 @@ const TimeDisplayImprovedClient = ({
         .mobile-controls-section {
           width: 100%;
           padding-top: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          border-top: none;
         }
 
         .mobile-controls-row {
@@ -1026,6 +1037,7 @@ const TimeDisplayImprovedClient = ({
             min-height: 70px;
             overflow: hidden;
           }
+
 
           /* Panels */
           .left-panel {

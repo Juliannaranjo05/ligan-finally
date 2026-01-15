@@ -926,7 +926,7 @@ const DesktopChatPanel = ({
   };
 
   return (
-    <div className="w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden" style={{ maxHeight: 'calc(100vh - 180px)', minHeight: 0 }}>
+    <div className="w-full h-full flex-shrink-0 bg-gradient-to-b from-[#0a0d10] to-[#131418] backdrop-blur-xl rounded-2xl flex flex-col justify-between relative border border-[#ff007a]/20 shadow-2xl overflow-hidden" style={{ height: '100%', maxHeight: '100%', minHeight: 0 }}>
       {/* Línea superior fucsia */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#ff007a]"></div>
       
@@ -995,11 +995,11 @@ const DesktopChatPanel = ({
       </div>
       
       {/* 🔥 ÁREA DE MENSAJES REDISEÑADA CON AUTO-SCROLL */}
-      <div className="flex-1 relative" style={{ minHeight: 0, maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
         <div 
           ref={messagesContainerRef}
           className="flex-1 p-3 space-y-3 overflow-y-auto custom-scroll flex flex-col"
-          style={{ maxHeight: 'calc(100vh - 280px)', minHeight: 0, height: '100%' }}
+          style={{ minHeight: 0, height: '100%' }}
         >
           {messages.length === 0 ? (
             <div className="flex items-center justify-center flex-1 min-h-0">

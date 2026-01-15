@@ -12,6 +12,8 @@ const TimeDisplayImproved = ({
  userBalance,
  remainingMinutes,
  giftBalance = 0,  // 🔥 SALDO DE REGALOS
+ showMobile = true,
+ showDesktop = true,
  // 🔥 NUEVAS PROPS PARA CONTROLES
  micEnabled = true,
  setMicEnabled = () => {},
@@ -65,7 +67,8 @@ const TimeDisplayImproved = ({
       <div className="time-display-container">
         
         {/* 🔥 VERSIÓN MÓVIL - FULL RESPONSIVE */}
-        <div className="mobile-version">
+        {showMobile && (
+        <div className="mobile-version lg:hidden">
           <div className="mobile-content">
             {/* 🔥 TIEMPO DE LLAMADA */}
             <div className="balance-section tiempo-section">
@@ -173,9 +176,11 @@ const TimeDisplayImproved = ({
                   </div>
               </div>
         </div>
+        )}
 
         {/* 🔥 VERSIÓN DESKTOP */}
-        <div className="desktop-version">
+        {showDesktop && (
+        <div className="desktop-version hidden lg:flex">
           
           {/* Panel izquierdo - Balances */}
           <div className="left-panel">
@@ -299,13 +304,15 @@ const TimeDisplayImproved = ({
                 <div className="info-details">
                   <div className="info-title">{getVideoChatText('info', currentLanguage, 'Info')}</div>
                   <div className="info-subtitle">{getVideoChatText('system', currentLanguage, 'Sistema')}</div>
-                  </div>
-              </div>
-                  </div>
                 </div>
               </div>
             </div>
-            
+          </div>
+        </div>
+        )}
+
+      </div>
+
       {/* 🔥 MODAL DE INFORMACIÓN - VERSIÓN MODELO */}
       {showInfoModal && (
         <div className="modal-overlay">
@@ -441,7 +448,7 @@ const TimeDisplayImproved = ({
             <div className="warning-content">
               <div className="warning-icon-wrapper">
                 <Info size={32} className="warning-icon" />
-          </div>
+              </div>
               <h3 className="warning-title">{getVideoChatText('important', currentLanguage, '¡Importante!')}</h3>
               <p className="warning-text">
                 {getVideoChatText('warningTextModel', currentLanguage, 'Lee las reglas de ganancias antes de comenzar. Haz clic en el botón de información (ℹ️) para más detalles.')}
@@ -452,7 +459,7 @@ const TimeDisplayImproved = ({
               >
                 {getVideoChatText('understood', currentLanguage, 'Entendido')}
               </button>
-        </div>
+            </div>
           </div>
         </div>
       )}
@@ -678,7 +685,7 @@ const TimeDisplayImproved = ({
         .mobile-controls-section {
           width: 100%;
           padding-top: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          border-top: none;
         }
 
         .mobile-controls-row {

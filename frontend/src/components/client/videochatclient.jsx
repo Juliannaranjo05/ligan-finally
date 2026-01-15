@@ -134,9 +134,42 @@ const RoomCapture = ({ onRoomReady }) => {
   return null;
 };
 
-// 🔥 FUNCIONES PARA ESPEJO
+// 🔥 FUNCIONES PARA ESPEJO (solo para video local)
+const isLocalVideoElement = (video) => {
+  if (!video) {
+    return false;
+  }
+  const lkLocal = video.getAttribute('data-lk-local-participant');
+  if (lkLocal !== null) {
+    return lkLocal === 'true';
+  }
+  const participant = video.getAttribute('data-participant');
+  if (participant !== null) {
+    return participant === 'local';
+  }
+  return true;
+};
+
+const applyMirrorToVideo = (video, shouldMirror) => {
+  if (!video || !video.style) {
+    return;
+  }
+  const shouldApplyMirror = shouldMirror && isLocalVideoElement(video);
+  const transformValue = shouldApplyMirror ? 'scaleX(-1)' : 'scaleX(1)';
+
+  video.style.transform = transformValue;
+  video.style.webkitTransform = transformValue;
+
+  if (shouldApplyMirror) {
+    video.classList.add('mirror-video');
+    video.classList.remove('normal-video');
+  } else {
+    video.classList.add('normal-video');
+    video.classList.remove('mirror-video');
+  }
+};
+
 const applyMirrorToAllVideos = (shouldMirror) => {
-    
   const selectors = [
     '[data-lk-participant-video]',
     'video[data-participant="local"]',
@@ -147,22 +180,11 @@ const applyMirrorToAllVideos = (shouldMirror) => {
     '.VideoTrack video',
     '[class*="VideoDisplay"] video'
   ];
-  
-  selectors.forEach(selector => {
+
+  selectors.forEach((selector) => {
     const videos = document.querySelectorAll(selector);
-    videos.forEach(video => {
-      if (video && video.style) {
-        video.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-        video.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-        
-        if (shouldMirror) {
-          video.classList.add('mirror-video');
-          video.classList.remove('normal-video');
-        } else {
-          video.classList.add('normal-video');
-          video.classList.remove('mirror-video');
-        }
-      }
+    videos.forEach((video) => {
+      applyMirrorToVideo(video, shouldMirror);
     });
   });
 };
@@ -179,14 +201,12 @@ const setupMirrorObserver = (shouldMirror) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === 1) {
           if (node.tagName === 'VIDEO') {
-            node.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-            node.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
+            applyMirrorToVideo(node, shouldMirror);
           }
-          
+
           const videos = node.querySelectorAll ? node.querySelectorAll('video') : [];
-          videos.forEach(video => {
-            video.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-            video.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
+          videos.forEach((video) => {
+            applyMirrorToVideo(video, shouldMirror);
           });
         }
       });
@@ -666,6 +686,9 @@ export default function VideoChatClient() {
   const isDisconnectingRef = useRef(false); // 🔥 REF PARA EVITAR QUE SE GUARDE roomName DURANTE DESCONEXIÓN
   const isFinalizingRef = useRef(false); // 🔥 REF ADICIONAL PARA PROTECCIÓN CONTRA MÚLTIPLES EJECUCIONES
   const tiempoIntervalRef = useRef(null); // 🔥 REF PARA CONTROLAR EL INTERVALO DEL TIEMPO DE SESIÓN (EVITA ReferenceError)
+  const tiempoStartRef = useRef(null);
+  const lastTiempoPersistRef = useRef(0);
+  const activeRoomNameRef = useRef(null);
   const hadRemoteParticipantsRef = useRef(false); // 🔥 REF PARA SABER SI YA HABÍA PARTICIPANTES REMOTOS (evita falsos positivos al inicio)
   const lastRenderStateKeyRef = useRef(''); // 🔥 REF PARA PREVENIR LOGS REPETIDOS DE RENDER
   const lastRenderLogTimeRef = useRef(0); // 🔥 REF PARA THROTTLING DE LOGS DE RENDER
@@ -685,6 +708,10 @@ export default function VideoChatClient() {
   const [cameraEnabled, setCameraEnabled] = useState(false); // Se actualizará cuando se detecte el rol
   const [volumeEnabled, setVolumeEnabled] = useState(true);
   const [camaraPrincipal, setCamaraPrincipal] = useState("remote");
+  const [isDesktopLayout, setIsDesktopLayout] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth >= 1024;
+  });
   
   // Estados para agregar segundo modelo
   const [showAddModelModal, setShowAddModelModal] = useState(false);
@@ -695,6 +722,16 @@ export default function VideoChatClient() {
   useEffect(() => {
     micEnabledRef.current = micEnabled;
   }, [micEnabled]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setIsDesktopLayout(window.innerWidth >= 1024);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Estados de UI
   const [tiempo, setTiempo] = useState(0);
@@ -2360,10 +2397,8 @@ export default function VideoChatClient() {
     setIsDetectingUser(false); // 🔥 DETENER ESTADO "CONECTANDO" INMEDIATAMENTE
     // Nota: En el cliente no hay detenerTiempoReal, pero podemos limpiar el tiempo
     setTiempo(0);
-    if (tiempoIntervalRef.current) {
-      clearInterval(tiempoIntervalRef.current);
-      tiempoIntervalRef.current = null;
-    }
+    tiempoStartRef.current = null;
+    activeRoomNameRef.current = null;
 
     // 🔥 DETERMINAR MENSAJES SEGÚN EL ROL
     const isModelo = userData?.role === 'modelo';
@@ -2454,10 +2489,8 @@ export default function VideoChatClient() {
     setLoading(false);
     setConnected(false);
     setTiempo(0);
-    if (tiempoIntervalRef.current) {
-      clearInterval(tiempoIntervalRef.current);
-      tiempoIntervalRef.current = null;
-    }
+    tiempoStartRef.current = null;
+    activeRoomNameRef.current = null;
 
     // Establecer el tipo de desconexión y razón PRIMERO
     if (reason === 'next') {
@@ -4631,8 +4664,23 @@ useEffect(() => {
 
   const sessionStartTime = getSessionStart();
 
+  const getCoinsForMinuteIndex = (minuteIndex) => {
+    if (minuteIndex <= 10) return 7;
+    if (minuteIndex <= 20) return minuteIndex % 2 === 0 ? 8 : 7;
+    if (minuteIndex <= 40) return 9;
+    return 10;
+  };
+
+  const getCoinsForMinuteRange = (startMinute, minutesCount) => {
+    let total = 0;
+    for (let i = 0; i < minutesCount; i += 1) {
+      total += getCoinsForMinuteIndex(startMinute + i);
+    }
+    return total;
+  };
+
   // ✅ FUNCIÓN DE DESCUENTO CON VALIDACIÓN MÚLTIPLE
-  const applySecureDeduction = async (amount, reason) => {
+  const applySecureDeduction = async (amount, reason, minutesToDeduct = 1) => {
     // Verificar que el sistema sigue activo
     if (!isSystemActive) {
       logDeduction('🛑 Sistema inactivo, cancelando descuento', { reason, amount });
@@ -4675,7 +4723,7 @@ useEffect(() => {
         },
         body: JSON.stringify({
           room_name: roomName,
-          session_duration_seconds: 60,
+          session_duration_seconds: Math.max(1, minutesToDeduct) * 60,
           manual_coins_amount: amount,
           reason: `${reason}_${UNIQUE_KEY.slice(-8)}` // Agregar ID único
         })
@@ -4742,7 +4790,7 @@ useEffect(() => {
     // Si ya pasó algún minuto completo, descontarlo inmediatamente
     if (completedMinutes > lastDeductedMinute) {
       const minutesToDeduct = completedMinutes - lastDeductedMinute;
-      const coinsToDeduct = minutesToDeduct * 10; // 10 coins por minuto
+      const coinsToDeduct = getCoinsForMinuteRange(lastDeductedMinute + 1, minutesToDeduct);
       
       logDeduction(`⏰ Descontando ${minutesToDeduct} minuto(s) acumulado(s)`, {
         minutesToDeduct,
@@ -4751,7 +4799,7 @@ useEffect(() => {
         lastDeductedMinute
       });
       
-      applySecureDeduction(coinsToDeduct, `minute_${completedMinutes}`).then(success => {
+      applySecureDeduction(coinsToDeduct, `minute_${completedMinutes}`, minutesToDeduct).then(success => {
         if (success) {
           lastDeductedMinute = completedMinutes;
         }
@@ -4771,7 +4819,7 @@ useEffect(() => {
       // Solo descontar si pasó un minuto completo nuevo
       if (currentCompletedMinutes > lastDeductedMinute) {
         const minutesToDeduct = currentCompletedMinutes - lastDeductedMinute;
-        const coinsToDeduct = minutesToDeduct * 10; // 10 coins por minuto
+        const coinsToDeduct = getCoinsForMinuteRange(lastDeductedMinute + 1, minutesToDeduct);
         
         logDeduction(`⏰ Minuto ${currentCompletedMinutes} completado - Descontando ${minutesToDeduct} minuto(s)`, {
           currentCompletedMinutes,
@@ -4780,7 +4828,7 @@ useEffect(() => {
           coinsToDeduct
         });
         
-        const success = await applySecureDeduction(coinsToDeduct, `minute_${currentCompletedMinutes}`);
+        const success = await applySecureDeduction(coinsToDeduct, `minute_${currentCompletedMinutes}`, minutesToDeduct);
         if (success) {
           lastDeductedMinute = currentCompletedMinutes;
         }
@@ -6064,99 +6112,61 @@ useEffect(() => {
     }
   }, [roomName, connected]); // 🔥 REMOVIDO isMonitoringBalance de dependencias para evitar loop
 
-  // 🔥 INICIAR TIEMPO AUTOMÁTICAMENTE CUANDO HAY roomName (tan pronto como se une a la sala)
+  // 🔥 INICIALIZAR START TIME CUANDO HAY roomName
   useEffect(() => {
-    // 🔥 INICIAR SI HAY roomName (no depende de otherUser, solo de estar en la sala)
-    const shouldStartTimer = !!roomName;
-    
-    console.log('⏱️ [TIEMPO] Verificando inicio de tiempo:', {
-      otherUserId: otherUser?.id,
-      roomName: roomName,
-      shouldStartTimer: shouldStartTimer,
-      tiempoActual: tiempo
-    });
-    
-    if (!shouldStartTimer) {
-      // Si no hay roomName, resetear pero no iniciar
-      if (tiempoIntervalRef.current) {
-        clearInterval(tiempoIntervalRef.current);
-        tiempoIntervalRef.current = null;
-      }
+    if (!roomName) {
       return;
     }
 
-    // 🔥 INICIAR CONTADOR DE TIEMPO AUTOMÁTICAMENTE
-    if (tiempoIntervalRef.current) {
-      clearInterval(tiempoIntervalRef.current);
+    if (activeRoomNameRef.current !== roomName) {
+      activeRoomNameRef.current = roomName;
+      const storedStart = localStorage.getItem(`videochat_tiempo_start_${roomName}`);
+      const storedElapsed = localStorage.getItem(`videochat_tiempo_${roomName}`);
+      const baseElapsed = storedElapsed ? parseInt(storedElapsed, 10) : 0;
+      const startTime = storedStart
+        ? parseInt(storedStart, 10)
+        : Date.now() - baseElapsed * 1000;
+
+      tiempoStartRef.current = startTime;
+      lastTiempoPersistRef.current = baseElapsed;
+      localStorage.setItem(`videochat_tiempo_start_${roomName}`, startTime.toString());
+      setTiempo(baseElapsed);
     }
-    
-    // 🔥 CARGAR TIEMPO DESDE localStorage O RESETEAR SI NO HAY
-    const storedTime = getStoredTime(roomName);
-    if (storedTime > 0) {
-      console.log('⏱️ [TIEMPO] Continuando desde tiempo guardado:', storedTime, 'segundos');
-      setTiempo(storedTime);
-    } else {
-      console.log('⏱️ [TIEMPO] Iniciando contador de tiempo desde 0');
-      // 🔥 No resetear a 0 si ya hay un tiempo cargado desde el useEffect anterior
-      if (tiempo === 0) {
-        setTiempo(0);
+  }, [roomName]);
+
+  // 🔥 INTERVALO UNICO PARA TIEMPO REAL
+  useEffect(() => {
+    const tick = () => {
+      if (!tiempoStartRef.current) return;
+      const elapsed = Math.max(0, Math.floor((Date.now() - tiempoStartRef.current) / 1000));
+      setTiempo((prev) => (elapsed >= prev ? elapsed : prev));
+      const activeRoomName = activeRoomNameRef.current;
+      if (activeRoomName && elapsed - lastTiempoPersistRef.current >= 5) {
+        localStorage.setItem(`videochat_tiempo_${activeRoomName}`, elapsed.toString());
+        lastTiempoPersistRef.current = elapsed;
       }
-    }
-    
-    tiempoIntervalRef.current = setInterval(() => {
-      setTiempo((prev) => {
-        const nuevoTiempo = prev + 1;
-        // 🔥 GUARDAR EN localStorage CADA SEGUNDO
-        if (roomName) {
-          const storageKey = `videochat_tiempo_${roomName}`;
-          localStorage.setItem(storageKey, nuevoTiempo.toString());
-        }
-        // 🔥 LOG CADA SEGUNDO EN LOS PRIMEROS 10 SEGUNDOS PARA DEBUG
-        if (nuevoTiempo <= 10) {
-          console.log('⏱️ [TIEMPO] Tiempo:', nuevoTiempo, 'segundos');
-        } else if (nuevoTiempo % 5 === 0) {
-          // 🔥 DESPUÉS DE 10 SEGUNDOS, LOG CADA 5 SEGUNDOS
-          console.log('⏱️ [TIEMPO] Tiempo transcurrido:', nuevoTiempo, 'segundos');
-        }
-        return nuevoTiempo;
-      });
-    }, 1000);
-    
-    // 🔥 VERIFICAR QUE EL INTERVALO SE CREÓ CORRECTAMENTE
-    console.log('⏱️ [TIEMPO] Intervalo configurado, ref:', tiempoIntervalRef.current);
-    
-    // 🔥 TEST: Verificar que el intervalo funciona después de 1 segundo
-    setTimeout(() => {
-      console.log('⏱️ [TIEMPO] TEST - Verificando intervalo después de 1 segundo, ref:', tiempoIntervalRef.current);
-      if (tiempoIntervalRef.current) {
-        console.log('⏱️ [TIEMPO] TEST - Intervalo todavía activo');
-      } else {
-        console.warn('⏱️ [TIEMPO] TEST - ⚠️ Intervalo fue limpiado prematuramente!');
+    };
+
+    tick();
+    tiempoIntervalRef.current = setInterval(tick, 1000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        tick();
       }
-    }, 1000);
-    
-    console.log('⏱️ [TIEMPO] Intervalo creado, tiempo iniciará en 1 segundo');
-    
+    };
+
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (tiempoIntervalRef.current) {
         clearInterval(tiempoIntervalRef.current);
         tiempoIntervalRef.current = null;
-        console.log('⏱️ [TIEMPO] Contador detenido');
-        // 🔥 GUARDAR TIEMPO FINAL EN localStorage AL LIMPIAR
-        if (roomName) {
-          const storageKey = `videochat_tiempo_${roomName}`;
-          // 🔥 Usar el valor actual del estado tiempo
-          setTiempo((currentTiempo) => {
-            if (currentTiempo > 0) {
-              localStorage.setItem(storageKey, currentTiempo.toString());
-              console.log('⏱️ [TIEMPO] Tiempo guardado en localStorage:', currentTiempo, 'segundos');
-            }
-            return currentTiempo;
-          });
-        }
       }
     };
-  }, [roomName]); // 🔥 SOLO DEPENDE DE roomName
+  }, []);
 
   useEffect(() => {
     if (otherUser?.id) {
@@ -7004,6 +7014,7 @@ const checkBalanceRealTime = useCallback(async () => {
               userData={userData} // ← AGREGADO (opcional)
             />
             
+            {!isDesktopLayout && (
             <div className="p-2 sm:p-4 lg:hidden mobile-video-container" style={{ 
               height: '100dvh', // 🔥 Usar dvh (dynamic viewport height) para adaptarse a la barra del navegador
               display: 'flex',
@@ -7032,6 +7043,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     giftBalance={clientGiftBalance}
                     remainingMinutes={clientRemainingMinutes}
                     t={t}
+                    showDesktop={false}
                     micEnabled={micEnabled}
                     setMicEnabled={handleSetMicEnabled}
                     cameraEnabled={cameraEnabled}
@@ -7056,6 +7068,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     remainingMinutes={remainingMinutes}
                     t={t}
                     hardcodedTexts={hardcodedTexts}
+                    showDesktop={false}
                     micEnabled={micEnabled}
                     setMicEnabled={handleSetMicEnabled}
                     cameraEnabled={cameraEnabled}
@@ -7120,13 +7133,13 @@ const checkBalanceRealTime = useCallback(async () => {
                 {/* 🔥 CONTENEDOR DE VIDEO - Después del tiempo/controles - ALTURA MÁXIMA */}
                 <div className="bg-[#1f2125] rounded-2xl overflow-hidden relative mt-4 video-main-container flex-1" 
                     style={{
-                      minHeight: 0, 
+                      minHeight: 0,
                       minWidth: 0,
-                      flex: '1 1 auto',
+                      flex: '0 1 auto',
                       display: 'flex',
                       flexDirection: 'column',
-                      height: '100%', // 🔥 Ocupar todo el espacio disponible
-                      maxHeight: '100%'
+                      height: '70%',
+                      maxHeight: '60vh'
                     }}>                
                   {/* VideoDisplay condicional basado en rol - CON CHAT INTEGRADO (igual para ambos roles) */}
                   {/* 🔥 EN LLAMADAS 2VS1, TODOS VEN VideoDisplayImprovedClient (incluso modelos) */}
@@ -7309,13 +7322,31 @@ const checkBalanceRealTime = useCallback(async () => {
                   </div>
                 </div>
               </div>
+            </div>
+            )}
               
               {/* DESKTOP - Layout principal con contenedor inferior */}
-              <div className="hidden lg:flex flex-col" style={{ height: 'calc(100vh - 120px)', minHeight: 0 }}>
+              {isDesktopLayout && (
+              <div className="flex flex-col items-center" style={{ height: 'calc(100vh - 80px)', minHeight: 0 }}>
+                <div className="w-full max-w-[1400px] px-4 mx-auto mb-1 flex-shrink-0">
+                  {userData?.role === 'modelo' ? (
+                    <HeaderModelo />
+                  ) : (
+                    <HeaderCliente />
+                  )}
+                </div>
                 {/* Área de Video y Chat - Ocupa el espacio disponible arriba */}
-                <div className="flex flex-row gap-6 mx-4 flex-1 mb-1" style={{ minHeight: 0, maxHeight: '100%', overflow: 'hidden' }}>
+                <div className="flex flex-row gap-6 w-full max-w-[1400px] px-4 flex-1 mb-1 items-stretch justify-center" style={{ minHeight: 0, maxHeight: '100%', height: '100%', overflow: 'hidden' }}>
                   {/* ZONA VIDEO */}
-                  <div className="flex-1 bg-[#1f2125] rounded-xl lg:rounded-2xl overflow-hidden relative flex items-center justify-center video-main-container" style={{ minHeight: 0, minWidth: 0, flex: '0 1 75%' }}>
+                  <div
+                    className="flex-1 bg-[#1f2125] rounded-xl lg:rounded-2xl overflow-hidden relative flex items-center justify-center video-main-container"
+                    style={{
+                      minHeight: 0,
+                      minWidth: 0,
+                      flex: userData?.role === 'modelo' ? '0 1 75%' : '0 1 72%',
+                      height: '100%'
+                    }}
+                  >
                       {/* VideoDisplay desktop condicional basado en rol */}
                       {/* 🔥 EN LLAMADAS 2VS1, TODOS VEN VideoDisplayImprovedClient (incluso modelos) */}
                       {/* 🔥 SOLO USAR 2VS1 SI HAY modelo_id_2 REAL Y is_dual_call explícito */}
@@ -7386,8 +7417,38 @@ const checkBalanceRealTime = useCallback(async () => {
                   </div>
                   
                   {/* PANEL DERECHO - Desktop condicional basado en rol */}
-                  {userData?.role === 'modelo' ? (
-                    <DesktopChatPanel
+                  <div
+                    className="flex"
+                    style={{
+                      flex: userData?.role === 'modelo' ? '0 1 25%' : '0 1 28%',
+                      maxWidth: userData?.role === 'modelo' ? '25%' : '28%',
+                      height: '100%',
+                      minHeight: 0
+                    }}
+                  >
+                    {userData?.role === 'modelo' ? (
+                      <DesktopChatPanel
+                        getDisplayName={getDisplayName}
+                        isDetectingUser={isDetectingUser}
+                        toggleFavorite={toggleFavorite}
+                        blockCurrentUser={blockCurrentUser}
+                        isFavorite={isFavorite}
+                        isAddingFavorite={isAddingFavorite}
+                        isBlocking={isBlocking}
+                        otherUser={otherUser}
+                        setShowGiftsModal={setShowGiftsModal}
+                        messages={messages || []}
+                        mensaje={mensaje || ''}
+                        setMensaje={setMensaje}
+                        enviarMensaje={enviarMensaje}
+                        handleKeyPress={(e) => e.key === 'Enter' && enviarMensaje()}
+                        userData={userData || {}}
+                        userBalance={userBalance || 0}
+                        playGiftSound={playGiftSound}
+                        t={t}
+                      />
+                    ) : (
+                      <DesktopChatPanelClient
                       getDisplayName={getDisplayName}
                       isDetectingUser={isDetectingUser}
                       toggleFavorite={toggleFavorite}
@@ -7397,46 +7458,26 @@ const checkBalanceRealTime = useCallback(async () => {
                       isBlocking={isBlocking}
                       otherUser={otherUser}
                       setShowGiftsModal={setShowGiftsModal}
-                      messages={messages || []}
-                      mensaje={mensaje || ''}
+                      messages={messages}
+                      mensaje={mensaje}
                       setMensaje={setMensaje}
                       enviarMensaje={enviarMensaje}
-                      handleKeyPress={(e) => e.key === 'Enter' && enviarMensaje()}
-                      userData={userData || {}}
-                      userBalance={userBalance || 0}
+                      handleKeyPress={handleKeyPress}
+                      userData={userData}
+                      userBalance={userBalance}
+                      giftBalance={giftBalance}           // Balance de GIFTS  
+                      handleAcceptGift={handleAcceptGift}
+                      handleRejectGift={handleRejectGift}
                       playGiftSound={playGiftSound}
                       t={t}
+                      hardcodedTexts={hardcodedTexts}
                     />
-                  ) : (
-                    <DesktopChatPanelClient
-                    getDisplayName={getDisplayName}
-                    isDetectingUser={isDetectingUser}
-                    toggleFavorite={toggleFavorite}
-                    blockCurrentUser={blockCurrentUser}
-                    isFavorite={isFavorite}
-                    isAddingFavorite={isAddingFavorite}
-                    isBlocking={isBlocking}
-                    otherUser={otherUser}
-                    setShowGiftsModal={setShowGiftsModal}
-                    messages={messages}
-                    mensaje={mensaje}
-                    setMensaje={setMensaje}
-                    enviarMensaje={enviarMensaje}
-                    handleKeyPress={handleKeyPress}
-                    userData={userData}
-                    userBalance={userBalance}
-                    giftBalance={giftBalance}           // Balance de GIFTS  
-                    handleAcceptGift={handleAcceptGift}
-                    handleRejectGift={handleRejectGift}
-                    playGiftSound={playGiftSound}
-                    t={t}
-                    hardcodedTexts={hardcodedTexts}
-                  />
-                  )}
+                    )}
+                  </div>
                 </div>
                 
                 {/* Tiempo/Balance mejorado - EN LA PARTE INFERIOR con controles integrados - condicional basado en rol */}
-                <div className="mx-4 mb-1 flex-shrink-0">
+                <div className="w-full max-w-[1400px] px-4 mx-auto flex-shrink-0">
                   {userData?.role === 'modelo' ? (
                     <TimeDisplayImproved
                       tiempo={tiempo}
@@ -7447,6 +7488,7 @@ const checkBalanceRealTime = useCallback(async () => {
                       giftBalance={clientGiftBalance}
                       remainingMinutes={clientRemainingMinutes}
                       t={t}
+                      showMobile={false}
                       // 🔥 PROPS PARA CONTROLES INTEGRADOS
                       micEnabled={micEnabled}
                       setMicEnabled={handleSetMicEnabled}
@@ -7472,6 +7514,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     remainingMinutes={remainingMinutes}
                     t={t}
                     hardcodedTexts={hardcodedTexts}
+                    showMobile={false}
                     // 🔥 PROPS PARA CONTROLES INTEGRADOS
                     micEnabled={micEnabled}
                     setMicEnabled={handleSetMicEnabled}
@@ -7488,7 +7531,7 @@ const checkBalanceRealTime = useCallback(async () => {
                   )}
                 </div>
               </div>
-            </div>
+              )}
           </LiveKitRoom>
           </>
         )}
