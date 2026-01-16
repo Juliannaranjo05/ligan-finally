@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "./headercliente.jsx";
 import { getUser } from "../../utils/auth.js";
@@ -127,6 +127,8 @@ export default function ChatPrivadoMobile() {
   const location = useLocation();
   const mensajesRef = useRef(null);
   const openChatWith = location.state?.openChatWith;
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const hasOpenedSpecificChatRef = useRef(false);
   
   // 🔍 LOG INICIAL AL MONTAR COMPONENTE
   useEffect(() => {
@@ -2223,6 +2225,126 @@ export default function ChatPrivadoMobile() {
       setTimeout(checkPendingChat, 500);
     }
   }, [conversaciones, usuario.id]);
+
+  // 🔗 Abrir chat con modelo desde URL (link de perfil)
+  useEffect(() => {
+    const modeloId = searchParams.get('modelo');
+    if (!modeloId) return;
+    if (!usuario.id || usuario.rol !== 'cliente') return;
+    if (hasOpenedSpecificChatRef.current) return;
+    if (conversaciones.length === 0 && loading) return;
+
+    const abrirChatConModelo = async () => {
+      hasOpenedSpecificChatRef.current = true;
+
+      try {
+        const targetModelId = parseInt(modeloId, 10);
+        if (!targetModelId) return;
+
+        const conversacionExistente = conversaciones.find(
+          conv => conv.other_user_id === targetModelId
+        );
+
+        if (conversacionExistente) {
+          await abrirConversacion(conversacionExistente);
+          setTimeout(() => {
+            navigate('/mensajesmobileclient', { replace: true });
+          }, 500);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/chat/start-conversation`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ other_user_id: targetModelId })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.room_name) {
+            await cargarConversaciones();
+            setTimeout(async () => {
+              await cargarConversaciones();
+
+              const conversacionTemporal = {
+                room_name: data.room_name,
+                other_user_id: targetModelId,
+                other_user_name: 'Modelo',
+                other_user_display_name: 'Modelo',
+                other_user_role: 'modelo',
+                last_message: '',
+                last_message_time: new Date().toISOString(),
+                unread_count: 0
+              };
+
+              setConversaciones(prev => {
+                const exists = prev.some(conv =>
+                  conv.room_name === conversacionTemporal.room_name ||
+                  conv.other_user_id === conversacionTemporal.other_user_id
+                );
+                if (!exists) {
+                  return [conversacionTemporal, ...prev];
+                }
+                return prev.map(conv =>
+                  conv.room_name === conversacionTemporal.room_name ||
+                  conv.other_user_id === conversacionTemporal.other_user_id
+                    ? conversacionTemporal
+                    : conv
+                );
+              });
+
+              setTimeout(async () => {
+                await abrirConversacion(conversacionTemporal);
+                setTimeout(() => {
+                  navigate('/mensajesmobileclient', { replace: true });
+                }, 500);
+              }, 100);
+            }, 300);
+          }
+        } else {
+          const conversacionLocal = {
+            room_name: `chat_user_${Math.min(usuario.id, targetModelId)}_${Math.max(usuario.id, targetModelId)}`,
+            other_user_id: targetModelId,
+            other_user_name: 'Modelo',
+            other_user_display_name: 'Modelo',
+            other_user_role: 'modelo',
+            createdLocally: true,
+            needsSync: true,
+            last_message: '',
+            last_message_time: new Date().toISOString(),
+            unread_count: 0
+          };
+
+          setConversaciones(prev => {
+            const exists = prev.some(conv =>
+              conv.room_name === conversacionLocal.room_name ||
+              conv.other_user_id === conversacionLocal.other_user_id
+            );
+            if (exists) {
+              return prev.map(conv => {
+                if (conv.room_name === conversacionLocal.room_name || conv.other_user_id === conversacionLocal.other_user_id) {
+                  return { ...conversacionLocal, id: conv.id };
+                }
+                return conv;
+              });
+            }
+            return [conversacionLocal, ...prev];
+          });
+
+          setTimeout(async () => {
+            await abrirConversacion(conversacionLocal);
+            setTimeout(() => {
+              navigate('/mensajesmobileclient', { replace: true });
+            }, 500);
+          }, 100);
+        }
+      } catch (error) {
+        hasOpenedSpecificChatRef.current = false;
+      }
+    };
+
+    abrirChatConModelo();
+  }, [searchParams, usuario.id, usuario.rol, conversaciones, loading, getAuthHeaders, navigate, cargarConversaciones, abrirConversacion]);
 
   // 🔥 MANEJAR openChatWith DESDE NAVEGACIÓN
   useEffect(() => {

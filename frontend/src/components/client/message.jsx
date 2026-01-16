@@ -58,15 +58,18 @@ export default function ChatPrivado() {
   // 🔥 VALIDACIÓN DE DISPOSITIVO: Solo desktop puede acceder
   useEffect(() => {
     // Verificar que no estemos ya en la ruta móvil para evitar loops
-    if (location.pathname === '/mensajesmobileclient') {
+    if (window.location.pathname === '/mensajesmobileclient') {
       return;
     }
     
     const checkDevice = () => {
       const isMobileDevice = window.innerWidth < 768;
-      if (isMobileDevice && location.pathname === '/message') {
-        // Redirigir inmediatamente sin mostrar pantalla de carga
-        navigate('/mensajesmobileclient', { replace: true });
+      if (isMobileDevice && window.location.pathname === '/message') {
+        // Redirigir inmediatamente sin mostrar pantalla de carga (preservar params)
+        const mobileTarget = window.location.search
+          ? `/mensajesmobileclient${window.location.search}`
+          : '/mensajesmobileclient';
+        navigate(mobileTarget, { replace: true });
         return;
       }
     };
@@ -77,8 +80,11 @@ export default function ChatPrivado() {
     // Verificar en resize (solo si cambia a móvil)
     const handleResize = () => {
       const isMobileDevice = window.innerWidth < 768;
-      if (isMobileDevice && location.pathname === '/message') {
-        navigate('/mensajesmobileclient', { replace: true });
+      if (isMobileDevice && window.location.pathname === '/message') {
+        const mobileTarget = window.location.search
+          ? `/mensajesmobileclient${window.location.search}`
+          : '/mensajesmobileclient';
+        navigate(mobileTarget, { replace: true });
       }
     };
     
@@ -86,7 +92,7 @@ export default function ChatPrivado() {
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [navigate, location.pathname]);
+  }, [navigate]);
   
 
   // 🔥 ESTADO PARA CONTROLAR REDIRECCIÓN MÓVIL
