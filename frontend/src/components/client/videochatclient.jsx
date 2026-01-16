@@ -1627,6 +1627,12 @@ export default function VideoChatClient() {
               
               setUserBalance(coinsData.total_coins || 0);
               setRemainingMinutes(coinsData.remaining_minutes || 0);
+
+              if (coinsData.remaining_minutes < 2 && connected && userData?.role !== 'modelo' && !hasAutoEndedRef.current) {
+                hasAutoEndedRef.current = true;
+                addNotification('warning', '⏰ Tiempo agotado', 'Tu tiempo disponible se agotó. La llamada se cerrará automáticamente.', 8000);
+                finalizarChat(true);
+              }
               
               console.log('💰 [BALANCE] Estados actualizados en React:', {
                 userBalance: coinsData.total_coins || 0,
@@ -1807,6 +1813,8 @@ export default function VideoChatClient() {
   }, [userData?.role, otherUser?.id, roomName, connected]); // 🔥 REMOVIDO loadClientBalance de dependencias
 
   const siguientePersona = useCallback(async () => {
+    addNotification('info', 'Ruleta deshabilitada', 'Por ahora solo puedes recibir llamadas.', 6000);
+    return;
     // 🔥 PROTECCIÓN CONTRA EJECUCIONES MÚLTIPLES
     if (isDisconnectingRef.current || isFinalizingRef.current) {
       console.log('⏸️ [SiguientePersona] Ya se está ejecutando, ignorando llamada');
@@ -1936,21 +1944,9 @@ export default function VideoChatClient() {
     });
     
     clearUserCache();
-    startSearching();
-    
-    // 🔥 NAVEGAR INMEDIATAMENTE
-    const userRole = currentUserData?.role || 'cliente';
-    const urlParams = new URLSearchParams({
-      role: userRole,
-      action: 'siguiente',
-      from: 'videochat_siguiente',
-      excludeUser: currentOtherUser?.id || '',
-      excludeUserName: currentOtherUser?.name || '',
-      selectedCamera: selectedCamera || selectedCameraDevice || '',
-      selectedMic: selectedMic || selectedMicrophoneDevice || ''
-    });
-    
-    navigate(`/usersearch?${urlParams}`, { replace: true });
+
+    const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
+    navigate(targetRoute, { replace: true });
     
     // 🔥 RESETEAR FLAG DESPUÉS DE UN DELAY
     setTimeout(() => {
@@ -2326,39 +2322,21 @@ export default function VideoChatClient() {
 
     let autoEndTimeout = null;
 
-    // 🔥 ADVERTENCIA A LOS 2 MINUTOS
-    if (remainingMinutes <= 2 && remainingMinutes > 0 && !warningShown) {
-      console.warn('⚠️ [BALANCE] Advertencia: Quedan 2 minutos o menos');
-      setWarningShown(true);
-      
-      // Mostrar notificación de advertencia
-      addNotification(
-        'warning',
-        '⚠️ Tiempo limitado',
-        `Te quedan ${remainingMinutes} minuto${remainingMinutes !== 1 ? 's' : ''}. La llamada se finalizará automáticamente cuando se acabe el tiempo.`,
-        10000 // 10 segundos de duración
-      );
-    }
-
-    // 🔥 DESACTIVADO: Ya no mostramos modal que fuerza desconexión automática
-    // El usuario puede seguir en la llamada y decidir cuándo finalizar
-    if (remainingMinutes <= 2 && remainingMinutes >= 0 && !showLowBalanceModal && connected) {
-      console.warn('⚠️ [BALANCE] Tiempo restante <= 2 minutos - Solo advertencia, NO se cortará automáticamente', { remainingMinutes });
-      // Solo mostrar advertencia, NO forzar desconexión
-      if (remainingMinutes <= 0 && !hasAutoEndedRef.current) {
-        hasAutoEndedRef.current = true;
-        addNotification('warning', '⏰ Saldo agotado', 'Tu saldo se ha agotado. Puedes recargar o finalizar la llamada cuando desees.', 10000);
-      }
+    if (remainingMinutes < 2 && remainingMinutes >= 0 && connected && !hasAutoEndedRef.current) {
+      console.warn('⚠️ [BALANCE] Tiempo restante < 2 minutos - Finalizando llamada automáticamente', { remainingMinutes });
+      hasAutoEndedRef.current = true;
+      addNotification('warning', '⏰ Tiempo agotado', 'Tu tiempo disponible se agotó. La llamada se cerrará automáticamente.', 8000);
+      finalizarChat(true);
     }
 
     // 🔥 RESETEAR ADVERTENCIA SI EL TIEMPO AUMENTA (por ejemplo, si recarga monedas)
     // 🔥 IMPORTANTE: NO resetear hasAutoEndedRef si ya se ejecutó el corte (para evitar que se resetee si el tiempo vuelve a subir temporalmente)
-    if (remainingMinutes > 2) {
+    if (remainingMinutes >= 2) {
       setWarningShown(false);
       // Solo resetear hasAutoEndedRef si realmente hay tiempo suficiente (más de 2 minutos)
       // y si no se ha ejecutado ya el corte
-      if (remainingMinutes > 3 && hasAutoEndedRef.current) {
-        // Solo resetear si hay tiempo suficiente (más de 3 minutos) para evitar resets accidentales
+      if (remainingMinutes > 2 && hasAutoEndedRef.current) {
+        // Solo resetear si hay tiempo suficiente (más de 2 minutos) para evitar resets accidentales
         hasAutoEndedRef.current = false;
       }
     }
@@ -2403,40 +2381,21 @@ export default function VideoChatClient() {
     // 🔥 DETERMINAR MENSAJES SEGÚN EL ROL
     const isModelo = userData?.role === 'modelo';
     const partnerName = isModelo ? t('videochat.disconnect.client') : t('videochat.disconnect.model');
-    const defaultNextMessage = isModelo 
-      ? t('videochat.disconnect.clientWentNext') 
-      : t('videochat.disconnect.modelSkipped');
     const defaultStopMessage = isModelo
       ? t('videochat.disconnect.clientEnded')
       : t('videochat.disconnect.modelEnded');
+    const partnerLeftMessage = t('videochat.disconnect.partnerLeftSession', { partner: partnerName });
 
     // 🔥 EXACTAMENTE IGUAL QUE LA MODELO - Simplificado
     // 🔥 IMPORTANTE: Actualizar TODOS los estados de una vez para forzar re-render
-    if (reason === 'next' || reason === 'partner_went_next') {
-      setDisconnectionReason(customMessage || defaultNextMessage);
-      setDisconnectionType('next');
-      setPendingRedirectAction('next');
-      setModeloDisconnected(true); // 🔥 AGREGADO: También poner en true para que se muestre el cartel
-    } else if (reason === 'partner_left_session') {
-      // 🔥 CAMBIO: Cuando el compañero cuelga, también ir a ruletear (no a home)
-      setModeloDisconnected(true);
-      setDisconnectionReason(customMessage || defaultStopMessage);
-      setDisconnectionType('partner_left_session'); // 🔥 USAR 'partner_left_session' PARA QUE EL MODAL MUESTRE EL MENSAJE CORRECTO
-      setPendingRedirectAction('next'); // 🔥 CAMBIO: Ir a ruletear en lugar de home
-    } else if (reason === 'stop') {
-      // 🔥 ACTUALIZAR TODOS LOS ESTADOS SIMULTÁNEAMENTE (solo cuando el usuario mismo cuelga)
-      setModeloDisconnected(true);
-      setDisconnectionReason(customMessage || defaultStopMessage);
-      setDisconnectionType('stop');
-      // Si es modelo, ir a ruletear; si es cliente, ir a homecliente
-      setPendingRedirectAction(isModelo ? 'next' : 'stop');
+    if (reason === 'partner_left_session' || reason === 'partner_went_next') {
+      setDisconnectionReason(customMessage || partnerLeftMessage);
     } else {
-      // 🔥 ACTUALIZAR TODOS LOS ESTADOS SIMULTÁNEAMENTE
-      setModeloDisconnected(true);
-      setDisconnectionReason(customMessage || t('videochat.disconnect.partnerLeftSession', { partner: partnerName }));
-      setDisconnectionType('stop');
-      setPendingRedirectAction('next'); // Por defecto, ir a ruletear si no se especifica
+      setDisconnectionReason(customMessage || defaultStopMessage);
     }
+    setDisconnectionType('stop');
+    setPendingRedirectAction('stop');
+    setModeloDisconnected(true);
 
     // 🔥 NOTA: Los setState son asíncronos, así que este log muestra el estado ANTES de actualizar
     // El render debería detectar el cambio después
@@ -2493,12 +2452,7 @@ export default function VideoChatClient() {
     activeRoomNameRef.current = null;
 
     // Establecer el tipo de desconexión y razón PRIMERO
-    if (reason === 'next') {
-      setDisconnectionType('next');
-      setDisconnectionReason(customMessage || t('videochat.disconnect.youWentNext'));
-      setPendingRedirectAction('next'); // Ir a ruletear
-      setModeloDisconnected(false); // No es desconexión de la modelo
-    } else if (reason === 'stop') {
+    if (reason === 'stop' || reason === 'next') {
       setDisconnectionType('stop');
       setDisconnectionReason(customMessage || 'Finalizaste la videollamada');
       setPendingRedirectAction('stop'); // Ir al inicio
@@ -5408,62 +5362,32 @@ useEffect(() => {
           // 🔥 NO DETENER EL POLLING - Continuar igual que el cliente
 
           if (notification.type === 'partner_went_next') {
-            // 🔥 USAR REFS PARA VALORES ACTUALES
             const currentUserData = userDataRef.current;
             const currentOtherUser = otherUserRef.current;
             const currentTiempo = tiempoRef.current;
             const isModelo = currentUserData?.role === 'modelo';
-            
-            console.log(`🔄 [VideoChat][${isModelo ? 'MODELO' : 'CLIENTE'}] ⚡ COMPAÑERO FUE A SIGUIENTE - Procesando inmediatamente...`, {
+
+            console.log(`🔄 [VideoChat][${isModelo ? 'MODELO' : 'CLIENTE'}] ⚡ COMPAÑERO FINALIZÓ - Procesando...`, {
               role: currentUserData?.role,
               hasOtherUser: !!currentOtherUser,
               tiempo: currentTiempo,
               timestamp: new Date().toISOString()
             });
-            
-            // 🔥 MARCAR INMEDIATAMENTE PARA EVITAR PROCESAMIENTO MÚLTIPLE
+
             isDisconnectingRef.current = true;
             isFinalizingRef.current = true;
-            
             localStorage.removeItem('sessionTime');
             localStorage.removeItem('sessionStartTime');
 
             if (currentTiempo > 0 && currentOtherUser?.id && currentUserData?.id) {
               try {
-                await processSessionEarningsRef.current(currentTiempo, 'partner_went_next');
+                await processSessionEarningsRef.current(currentTiempo, 'partner_left_session');
               } catch (error) {
                 console.error('Error procesando ganancias:', error);
               }
             }
 
-            // 🔥 EXACTAMENTE IGUAL QUE LA MODELO - Mostrar pantalla de desconexión primero
-            const nextMessage = isModelo 
-              ? t('videochat.disconnect.clientWentNext')
-              : t('videochat.disconnect.modelSkipped');
-            
-            handleModeloDisconnectedRef.current('next', nextMessage);
-            clearUserCacheRef.current();
-            startSearchingRef.current(); // 🔥 SÍ iniciar búsqueda cuando el usuario va a siguiente
-
-            // 🔥 EXACTAMENTE IGUAL QUE LA MODELO - Navegar después de 3 segundos
-            setTimeout(() => {
-              const userRole = isModelo ? 'modelo' : 'cliente';
-              const currentSelectedCamera = selectedCameraRef.current || selectedCameraDeviceRef.current || '';
-              const currentSelectedMic = selectedMicRef.current || selectedMicrophoneDeviceRef.current || '';
-              
-              const urlParams = new URLSearchParams({
-                role: userRole,
-                from: 'partner_went_next',
-                action: 'siguiente',
-                excludeUser: currentOtherUser?.id || '',
-                excludeUserName: currentOtherUser?.name || '',
-                selectedCamera: currentSelectedCamera,
-                selectedMic: currentSelectedMic
-                // 🔥 NO incluir autoSearch=false - Debe iniciar automáticamente cuando el usuario va a siguiente
-              });
-              
-              navigateRef.current(`/usersearch?${urlParams}`, { replace: true });
-            }, 3000); // 🔥 3 SEGUNDOS (igual que el countdown)
+            handleModeloDisconnectedRef.current('partner_left_session', null);
           }
 
           if (notification.type === 'call_replaced') {
@@ -5562,25 +5486,10 @@ useEffect(() => {
             // 🔥 NO LLAMAR A startSearching() - Solo navegar a /usersearch para que el usuario decida cuándo buscar
             // startSearchingRef.current();
             
-            // 🔥 NAVEGAR A USERSEARCH CON EXCLUSIÓN DEL USUARIO QUE COLGÓ (SIN INICIAR BÚSQUEDA AUTOMÁTICA)
             setTimeout(() => {
-              const userRole = isModelo ? 'modelo' : 'cliente';
-              const currentSelectedCamera = selectedCameraDeviceRef.current || selectedCameraRef.current || '';
-              const currentSelectedMic = selectedMicrophoneDeviceRef.current || selectedMicRef.current || '';
-              
-              const urlParams = new URLSearchParams({
-                role: userRole,
-                action: 'siguiente',
-                from: 'partner_left_session',
-                excludeUser: currentOtherUser?.id || '',
-                excludeUserName: currentOtherUser?.name || '',
-                selectedCamera: currentSelectedCamera,
-                selectedMic: currentSelectedMic,
-                autoSearch: 'false' // 🔥 NO iniciar búsqueda automáticamente
-              });
-              
-              navigateRef.current(`/usersearch?${urlParams}`, { replace: true });
-            }, 3000); // 3 segundos (igual que el countdown)
+              const targetRoute = isModelo ? '/homellamadas' : '/homecliente';
+              navigateRef.current(targetRoute, { replace: true });
+            }, 3000);
           }
 
           // 🔥 NUEVO: Procesar notificaciones de room_closed (cuando el compañero cuelga)
@@ -5641,7 +5550,6 @@ useEffect(() => {
             // Mostrar modal y redirigir a ruletear
             handleModeloDisconnectedRef.current('partner_left_session', disconnectMessage);
             clearUserCacheRef.current();
-            startSearchingRef.current();
           }
         } else {
           consecutiveEmpty++;
@@ -5814,25 +5722,10 @@ useEffect(() => {
             // 🔥 NO LLAMAR A startSearching() - Solo navegar a /usersearch para que el usuario decida cuándo buscar
             // startSearchingRef.current();
             
-            // 🔥 NAVEGAR A USERSEARCH CON EXCLUSIÓN DEL USUARIO QUE SE DESCONECTÓ (SIN INICIAR BÚSQUEDA AUTOMÁTICA)
             setTimeout(() => {
-              const userRole = isModelo ? 'modelo' : 'cliente';
-              const currentSelectedCamera = selectedCameraDeviceRef.current || selectedCameraRef.current || '';
-              const currentSelectedMic = selectedMicrophoneDeviceRef.current || selectedMicRef.current || '';
-              
-              const urlParams = new URLSearchParams({
-                role: userRole,
-                action: 'siguiente',
-                from: 'timeout_disconnection',
-                excludeUser: currentOtherUser?.id || '',
-                excludeUserName: currentOtherUser?.name || '',
-                selectedCamera: currentSelectedCamera,
-                selectedMic: currentSelectedMic,
-                autoSearch: 'false' // 🔥 NO iniciar búsqueda automáticamente
-              });
-              
-              navigateRef.current(`/usersearch?${urlParams}`, { replace: true });
-            }, 3000); // 3 segundos (igual que el countdown)
+              const targetRoute = isModelo ? '/homellamadas' : '/homecliente';
+              navigateRef.current(targetRoute, { replace: true });
+            }, 3000);
           } else {
             console.log('⏸️ [VideoChat] Timeout cancelado - ya hay participantes o se está desconectando');
           }
@@ -5925,43 +5818,8 @@ useEffect(() => {
     
     if (redirectCountdown === 0 && pendingRedirectAction && disconnectionReason) {
       
-      if (pendingRedirectAction === 'next') {
-        // Ir a ruletear
-        clearUserCache();
-        
-        // 🔥 LIMPIAR COMPLETAMENTE LA SALA ANTES DE REDIRIGIR
-        const currentRoomName = roomName || localStorage.getItem('roomName');
-        if (currentRoomName) {
-          localStorage.removeItem('roomName');
-          localStorage.removeItem('userName');
-          localStorage.removeItem('currentRoom');
-          localStorage.removeItem('inCall');
-          localStorage.removeItem('callToken');
-          localStorage.removeItem('videochatActive');
-          sessionStorage.removeItem('roomName');
-          sessionStorage.removeItem('userName');
-          sessionStorage.removeItem('currentRoom');
-          console.log('🧹 [VideoChat] Sala limpiada completamente antes de redirigir (countdown):', currentRoomName);
-        }
-        
-        // 🔥 NO LLAMAR A startSearching() - Solo navegar a /usersearch para que el usuario decida cuándo buscar
-        // startSearching();
-        
-        const userRole = userData?.role || 'cliente';
-        const urlParams = new URLSearchParams({
-          role: userRole,
-          action: 'siguiente',
-          from: 'videochat_siguiente',
-          excludeUser: otherUser?.id || '',
-          excludeUserName: otherUser?.name || '',
-          selectedCamera: selectedCamera || selectedCameraDevice || '',
-          selectedMic: selectedMic || selectedMicrophoneDevice || '',
-          autoSearch: 'false' // 🔥 NO iniciar búsqueda automáticamente
-        });
-        
-        navigate(`/usersearch?${urlParams}`, { replace: true });
-      } else if (pendingRedirectAction === 'stop') {
-        // Ir al inicio (homecliente)
+      if (pendingRedirectAction === 'stop' || pendingRedirectAction === 'next') {
+        // Ir al inicio (homecliente / homellamadas) - ruleta deshabilitada
         
         // 🔥 MARCAR QUE ESTAMOS DESCONECTANDO (ANTES DE LIMPIAR)
         isDisconnectingRef.current = true;
@@ -6027,8 +5885,8 @@ useEffect(() => {
         room.disconnect().catch(() => {});
       }
       
-      // Navegar inmediatamente
-      window.location.href = '/usersearch?role=cliente&action=emergency&from=manual';
+      const targetRoute = userData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
+      window.location.href = targetRoute;
     };
     
     // 🔥 DESACTIVADO: Desconexiones automáticas por visibilidad de página
@@ -6807,30 +6665,10 @@ const checkBalanceRealTime = useCallback(async () => {
               // 🔥 NO LLAMAR A startSearching() - Solo navegar a /usersearch para que el usuario decida cuándo buscar
               // startSearchingRef.current();
               
-              // 🔥 NAVEGAR A USERSEARCH CON EXCLUSIÓN DEL USUARIO QUE SE DESCONECTÓ (SIN INICIAR BÚSQUEDA AUTOMÁTICA)
               setTimeout(() => {
-                const userRole = currentUserData?.role === 'modelo' ? 'modelo' : 'cliente';
-                const currentSelectedCamera = selectedCameraDeviceRef.current || selectedCameraRef.current || '';
-                const currentSelectedMic = selectedMicrophoneDeviceRef.current || selectedMicRef.current || '';
-                
-                // Obtener el ID del participante desconectado desde su identity
-                const disconnectedParticipantId = participant?.identity ? 
-                  participant.identity.replace(/^user_(\d+)_(modelo|cliente)$/, '$1') : 
-                  (otherUserRef.current?.id || '');
-                
-                const urlParams = new URLSearchParams({
-                  role: userRole,
-                  action: 'siguiente',
-                  from: 'participant_disconnected',
-                  excludeUser: disconnectedParticipantId || otherUserRef.current?.id || '',
-                  excludeUserName: otherUserRef.current?.name || '',
-                  selectedCamera: currentSelectedCamera,
-                  selectedMic: currentSelectedMic,
-                  autoSearch: 'false' // 🔥 NO iniciar búsqueda automáticamente
-                });
-                
-                navigateRef.current(`/usersearch?${urlParams}`, { replace: true });
-              }, 3000); // 3 segundos (igual que el countdown)
+                const targetRoute = currentUserData?.role === 'modelo' ? '/homellamadas' : '/homecliente';
+                navigateRef.current(targetRoute, { replace: true });
+              }, 3000);
             }}
             onTrackPublished={(pub, participant) => {
               console.log('📹 [VideoChat-CLIENTE] Track publicado:', {

@@ -53,9 +53,9 @@ const ChatHeader = ({
 
         {/* Avatar */}
         <div className="relative flex-shrink-0">
-          {conversation.avatar_url ? (
+          {conversation.avatar_url || conversation.avatar ? (
             <img 
-              src={conversation.avatar_url} 
+              src={conversation.avatar_url || (conversation.avatar && conversation.avatar.startsWith('http') ? conversation.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conversation.avatar}`)} 
               alt={displayName} 
               className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-[#ff007a] transition-all duration-200 hover:border-[#ff3399] hover:scale-105 shadow-lg"
               loading="lazy"
@@ -67,7 +67,7 @@ const ChatHeader = ({
               }}
             />
           ) : null}
-          <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg ${conversation.avatar_url ? 'hidden' : ''}`}>
+          <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg ${conversation.avatar_url || conversation.avatar ? 'hidden' : ''}`}>
             {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
           </div>
           
@@ -172,5 +172,9 @@ const ChatHeader = ({
 };
 
 export default memo(ChatHeader);
+
+
+
+
 
 

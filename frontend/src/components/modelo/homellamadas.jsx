@@ -359,8 +359,13 @@ export default function InterfazCliente() {
     navigate('/mensajes', {
       state: {
         openChatWith: {
-          userName: usuario.name || usuario.alias,
-          userRole: usuario.role
+          userId: usuario.id, // 🔥 ID del usuario para abrir el chat
+          other_user_id: usuario.id, // También como other_user_id para compatibilidad
+          userName: usuario.name || usuario.alias || usuario.display_name,
+          other_user_name: usuario.name || usuario.alias || usuario.display_name,
+          userRole: usuario.role || usuario.rol || 'cliente',
+          role: usuario.role || usuario.rol || 'cliente',
+          avatar_url: usuario.avatar_url || usuario.avatar || null
         }
       }
     });
@@ -534,7 +539,7 @@ export default function InterfazCliente() {
         text: t("client.loading") || "Cargando...",
         icon: null,
         disabled: true,
-        className: "w-full bg-gray-500 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md opacity-50 cursor-not-allowed"
+        className: "w-full bg-gray-500 text-white px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md opacity-50 cursor-not-allowed"
       };
     }
 
@@ -544,16 +549,16 @@ export default function InterfazCliente() {
         if (uploadRestriction?.reason === 'pending_story') {
           return {
             text: t("client.restrictions.pendingApproval"),
-            icon: <Clock size={18} className="text-yellow-500 sm:w-5 sm:h-5" />,
+            icon: <Clock size={20} className="text-yellow-500 sm:w-6 sm:h-6" />,
             disabled: false,
-            className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-yellow-500/30 transition"
+            className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-yellow-500/30 transition"
           };
         } else if (uploadRestriction?.reason === 'active_story') {
           return {
             text: timeRemaining ? t("client.restrictions.waitTime", { hours: timeRemaining.hours, minutes: timeRemaining.minutes }) : t("client.restrictions.activeStory"),
-            icon: <AlertTriangle size={18} className="text-orange-400 sm:w-5 sm:h-5" />,
+            icon: <AlertTriangle size={20} className="text-orange-400 sm:w-6 sm:h-6" />,
             disabled: false,
-            className: "w-full bg-orange-500/20 border border-orange-500/50 text-orange-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-orange-500/30 transition"
+            className: "w-full bg-orange-500/20 border border-orange-500/50 text-orange-300 px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-orange-500/30 transition"
           };
         }
       }
@@ -562,7 +567,7 @@ export default function InterfazCliente() {
         text: t("client.uploadStory") || "Subir Historia",
         icon: null,
         disabled: false,
-        className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff9fcb] transition"
+        className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-[#ff9fcb] transition"
       };
     }
 
@@ -573,18 +578,18 @@ export default function InterfazCliente() {
     if (isPending) {
       return {
         text: t("client.storyPending") || "Historia Pendiente por Aprobación",
-        icon: <Clock size={18} className="text-yellow-500 sm:w-5 sm:h-5" />,
+        icon: <Clock size={20} className="text-yellow-500 sm:w-6 sm:h-6" />,
         disabled: false,
-        className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-yellow-500/30 transition"
+        className: "w-full bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-yellow-500/30 transition"
       };
     }
 
     if (isApproved) {
       return {
         text: t("client.viewApprovedStory") || "Ver Mi Historia",
-        icon: <CheckCircle size={18} className="text-[#ff007a] sm:w-5 sm:h-5" />,
+        icon: <CheckCircle size={20} className="text-[#ff007a] sm:w-6 sm:h-6" />,
         disabled: false,
-        className: "w-full bg-[#ff007a]/20 border border-[#ff007a]/50 text-[#ff007a] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff007a]/30 transition"
+        className: "w-full bg-[#ff007a]/20 border border-[#ff007a]/50 text-[#ff007a] px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-[#ff007a]/30 transition"
       };
     }
 
@@ -593,7 +598,7 @@ export default function InterfazCliente() {
         text: t("client.storyRejected") || "Historia Rechazada - Crear Nueva",
         icon: null,
         disabled: false,
-        className: "w-full bg-red-500/20 border border-red-500/50 text-red-300 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-red-500/30 transition"
+        className: "w-full bg-red-500/20 border border-red-500/50 text-red-300 px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-red-500/30 transition"
       };
     }
 
@@ -601,7 +606,7 @@ export default function InterfazCliente() {
       text: t("client.uploadStory") || "Subir Historia",
       icon: null,
       disabled: false,
-      className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-md hover:bg-[#ff9fcb] transition"
+      className: "w-full bg-[#ffb6d2] text-[#4b2e35] px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-md hover:bg-[#ff9fcb] transition"
     };
   };
 
@@ -1371,49 +1376,51 @@ useEffect(() => {
       blockIfInCall: true
     }}>
       <div className="min-h-screen max-h-screen bg-gradient-to-br from-[#1a1c20] via-[#1f2125] to-[#2b2d31] text-white p-4 sm:p-6 overflow-hidden flex flex-col">
-        <Header />
+        <div className="flex-shrink-0 mb-2 sm:mb-3 lg:mb-4">
+          <Header />
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col lg:grid lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 flex-1 min-h-0 overflow-hidden">
           {/* Panel central - Mejorado con gradientes y sombras */}
           <main 
-            className="lg:col-span-3 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-2 sm:p-3 lg:p-4 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-start overflow-hidden relative min-h-0 h-full"
+            className="flex-1 w-full lg:col-span-3 bg-gradient-to-br from-[#1f2125] via-[#25282c] to-[#1f2125] rounded-2xl p-3 sm:p-4 lg:p-4 shadow-2xl border border-[#ff007a]/10 flex flex-col items-center justify-center overflow-hidden relative min-h-[50vh] max-h-[60vh] lg:min-h-0 lg:max-h-none lg:h-full"
             role="main"
             aria-label="Panel principal de inicio"
           >
             {/* Efecto de brillo sutil en el fondo */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#ff007a]/5 via-transparent to-transparent pointer-events-none"></div>
-            <div className="relative z-10 w-full flex flex-col items-center justify-start min-h-0 py-1 sm:py-2">
-              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-center mb-2 sm:mb-3 bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent">
+            <div className="relative z-10 w-full flex flex-col items-center justify-center min-h-0 py-4 sm:py-6 lg:py-4 px-4 sm:px-6">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-center mb-3 sm:mb-4 lg:mb-3 bg-gradient-to-r from-white via-white/95 to-white/90 bg-clip-text text-transparent">
                 {t("client.greeting", { name: user?.display_name || user?.nickname || user?.name || t("client.defaultUser") || "Usuario" })}
               </h2>
-              <p className="text-center text-white/80 mb-3 sm:mb-4 max-w-md leading-relaxed text-xs sm:text-sm px-2" role="note">
+              <p className="text-center text-white/80 mb-4 sm:mb-5 lg:mb-5 max-w-lg leading-relaxed text-sm sm:text-base lg:text-base px-2" role="note">
                 {t("client.instructions")}
               </p>
 
-              <div className="flex flex-col items-center gap-2 sm:gap-3 w-full max-w-xs mb-2 sm:mb-3">
+              <div className="flex flex-col items-center gap-3 sm:gap-3.5 lg:gap-4 w-full max-w-md">
                 <button
-                  className="w-full bg-gradient-to-r from-[#ff007a] to-[#e6006e] hover:from-[#ff3399] hover:to-[#ff007a] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold shadow-lg shadow-[#ff007a]/30 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-[#ff007a]/50 relative overflow-hidden group"
+                  className="w-full bg-gradient-to-r from-[#ff007a] to-[#e6006e] hover:from-[#ff3399] hover:to-[#ff007a] text-white px-6 sm:px-8 py-3 sm:py-3.5 lg:py-4 rounded-full text-sm sm:text-base lg:text-lg font-bold shadow-lg shadow-[#ff007a]/30 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-[#ff007a]/50 relative overflow-hidden group flex-shrink-0"
                   onClick={() => navigate("/esperandocall")}
                   aria-label={t("client.startCall")}
                 >
                   {/* Efecto de brillo en hover */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <div className="flex items-center justify-center gap-2 relative z-10">
-                    <Video className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+                  <div className="flex items-center justify-center gap-2.5 sm:gap-3 relative z-10">
+                    <Video className="w-5 h-5 sm:w-6 sm:h-6 transition-transform duration-300 group-hover:scale-110" />
                     {t("client.startCall")}
                   </div>
                 </button>
 
                 {/* 👈 BOTÓN ACTUALIZADO CON NUEVA LÓGICA - Mejorado */}
                 <button
-                  className={`w-full ${storyButtonInfo.className} relative overflow-hidden group transition-all duration-300 transform hover:scale-105 active:scale-95`}
+                  className={`w-full ${storyButtonInfo.className} relative overflow-hidden group transition-all duration-300 transform hover:scale-105 active:scale-95 flex-shrink-0`}
                   onClick={handleStoryButtonClick}
                   disabled={storyButtonInfo.disabled}
                   aria-label={storyButtonInfo.text}
                 >
                   {/* Efecto ripple */}
                   <div className="absolute inset-0 bg-white/20 scale-0 group-active:scale-100 rounded-full transition-transform duration-300"></div>
-                  <div className="flex items-center justify-center gap-2 relative z-10">
+                  <div className="flex items-center justify-center gap-2.5 sm:gap-3 relative z-10">
                     {storyButtonInfo.icon}
                     <span>{storyButtonInfo.text}</span>
                   </div>
@@ -1444,7 +1451,7 @@ useEffect(() => {
           </main>
 
           {/* Panel lateral - Acordeón Mejorado */}
-          <aside className="flex flex-col min-h-0 h-full" role="complementary" aria-label="Panel de información">
+          <aside className="w-full lg:w-auto flex flex-col min-h-[50vh] max-h-[60vh] lg:min-h-0 lg:max-h-none lg:h-full flex-shrink-0" role="complementary" aria-label="Panel de información">
             <div className="bg-gradient-to-b from-[#2b2d31] to-[#1f2125] rounded-2xl border border-[#ff007a]/20 shadow-xl flex flex-col h-full flex-1 min-h-0">
               {/* Sección 1: Usuarios Activos - Usando componente ActiveUsersList */}
               <div className={`border-b border-[#ff007a]/10 flex flex-col transition-all duration-300 ${expandedSections.activeUsers ? '' : 'flex-shrink-0'}`}>
@@ -1453,13 +1460,13 @@ useEffect(() => {
                     activeUsers: !prev.activeUsers,
                     history: false
                   }))}
-                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
                   aria-expanded={expandedSections.activeUsers}
                   aria-label={t("client.activeUsers")}
                 >
-                  <div className="flex items-center gap-3">
-                    <Users className="w-5 h-5 text-[#ff007a]" />
-                    <h3 className="text-lg font-bold text-[#ff007a]">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5 text-[#ff007a]" />
+                    <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
                       {t("client.activeUsers")}
                     </h3>
                     {usuariosActivos.length > 0 && (
@@ -1491,19 +1498,19 @@ useEffect(() => {
               </div>
 
               {/* Sección 2: Historial - Usando componente ModelCallHistoryList */}
-              <div className={`flex flex-col transition-all duration-300 ${expandedSections.history ? 'flex-1 min-h-0 overflow-hidden' : 'flex-shrink-0'}`}>
+              <div className={`flex flex-col transition-all duration-300 ${expandedSections.history ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}>
                 <button
                   onClick={() => setExpandedSections(prev => ({
                     activeUsers: false,
                     history: !prev.history
                   }))}
-                  className="w-full flex items-center justify-between p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
+                  className="w-full flex items-center justify-between p-3 sm:p-4 hover:bg-[#1f2125] transition-colors group flex-shrink-0"
                   aria-expanded={expandedSections.history}
                   aria-label={t("client.yourHistory")}
                 >
                   <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-[#ff007a]" />
-                    <h3 className="text-lg font-bold text-[#ff007a]">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#ff007a]" />
+                    <h3 className="text-sm sm:text-base lg:text-lg font-bold text-[#ff007a]">
                       {t("client.yourHistory")}
                     </h3>
                   </div>

@@ -154,8 +154,23 @@ const ModelConversationList = ({
                   <div className="flex items-center gap-3">
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 group-hover:scale-105">
-                        {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 group-hover:scale-105 overflow-hidden relative">
+                        {conv.avatar_url || conv.avatar ? (
+                          <img 
+                            src={conv.avatar_url || (conv.avatar && conv.avatar.startsWith('http') ? conv.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conv.avatar}`)}
+                            alt={displayName}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              if (e.target.nextSibling) {
+                                e.target.nextSibling.style.display = 'flex';
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <div className={`absolute inset-0 flex items-center justify-center ${conv.avatar_url || conv.avatar ? 'hidden' : ''}`}>
+                          {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
+                        </div>
                       </div>
                       
                       {/* Indicador de estado: Online/Offline o Bloqueado */}
@@ -233,5 +248,9 @@ const ModelConversationList = ({
 };
 
 export default memo(ModelConversationList);
+
+
+
+
 
 

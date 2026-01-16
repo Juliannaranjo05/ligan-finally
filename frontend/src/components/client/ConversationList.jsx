@@ -145,9 +145,9 @@ const ConversationList = ({
                 <div className="flex items-center gap-3">
                   {/* Avatar */}
                   <div className="relative flex-shrink-0">
-                    {conv.avatar_url ? (
+                    {conv.avatar_url || conv.avatar ? (
                       <img 
-                        src={conv.avatar_url} 
+                        src={conv.avatar_url || (conv.avatar && conv.avatar.startsWith('http') ? conv.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conv.avatar}`)} 
                         alt={displayName} 
                         className="w-12 h-12 rounded-full object-cover border-2 border-[#ff007a] transition-all duration-200 group-hover:border-[#ff3399] group-hover:scale-105"
                         loading="lazy"
@@ -159,7 +159,7 @@ const ConversationList = ({
                         }}
                       />
                     ) : null}
-                    <div className={`w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg ${conv.avatar_url ? 'hidden' : ''}`}>
+                    <div className={`w-12 h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg ${conv.avatar_url || conv.avatar ? 'hidden' : ''}`}>
                       {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
                     </div>
                     
@@ -237,5 +237,9 @@ const ConversationList = ({
 };
 
 export default memo(ConversationList);
+
+
+
+
 
 

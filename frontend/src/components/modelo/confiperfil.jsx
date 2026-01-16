@@ -34,12 +34,15 @@ export default function ModeloConfiguracion() {
 
   // 🎨 Render principal
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0d10] to-[#131418] text-white p-6">
-      <Header />
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0d10] to-[#131418] text-white p-4 sm:p-6">
+      <div className="flex-shrink-0 mb-2 sm:mb-3 lg:mb-4">
+        <Header />
+      </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-2xl font-semibold mb-8 border-b border-[#ff007a] pb-2">
-          ⚙️ {t("settings.title")}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <h1 className="text-xl sm:text-2xl font-semibold mb-6 sm:mb-8 border-b border-[#ff007a] pb-2 flex items-center gap-2">
+          <span className="text-[#ff007a]">⚙️</span>
+          <span>{t("settings.title")}</span>
         </h1>
 
         {/* Cuenta y seguridad */}
@@ -131,9 +134,9 @@ export default function ModeloConfiguracion() {
 
 function Seccion({ titulo, children }) {
   return (
-    <div className="mb-8">
-      <h2 className="text-lg font-semibold text-[#ff007a] mb-4">{titulo}</h2>
-      <div className="grid gap-3">{children}</div>
+    <div className="mb-6 sm:mb-8">
+      <h2 className="text-base sm:text-lg font-semibold text-[#ff007a] mb-3 sm:mb-4">{titulo}</h2>
+      <div className="grid gap-2 sm:gap-3">{children}</div>
     </div>
   );
 }
@@ -142,10 +145,10 @@ function ConfigBoton({ icon, texto, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-3 bg-[#131418] hover:bg-[#1c1f25] transition px-4 py-2 rounded-lg text-left border border-white/10"
+      className="flex items-center gap-3 bg-gradient-to-r from-[#131418] to-[#1a1c20] hover:from-[#1c1f25] hover:to-[#25282c] transition-all duration-200 px-4 py-3 sm:py-3.5 rounded-xl text-left border border-[#ff007a]/20 hover:border-[#ff007a]/40 shadow-md hover:shadow-lg"
     >
-      <span className="text-[#ff007a]">{icon}</span>
-      <span className="text-sm">{texto}</span>
+      <span className="text-[#ff007a] flex-shrink-0">{icon}</span>
+      <span className="text-sm sm:text-base text-white/90">{texto}</span>
     </button>
   );
 }

@@ -35,14 +35,17 @@ import IncomingCallOverlay from '../IncomingCallOverlay.jsx';
 import { useGiftSystem, GiftMessageComponent, GiftNotificationOverlay, GiftsModal, giftSystemStyles } from '../GiftSystem/index.jsx';
 import { useGlobalCall } from '../../contexts/GlobalCallContext.jsx';
 
+// 🔥 COMPONENTES MODULARES MEJORADOS
+import ModelConversationList from './ModelConversationList';
+import ModelChatHeader from './ModelChatHeader';
+import ModelMessageBubble from './ModelMessageBubble';
+import ModelMessageInput from './ModelMessageInput';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function ChatPrivado() {
   // 🔥 DEBUG: Log para verificar que el componente se monta
   useEffect(() => {
-    console.log('🟢 [MENSAJES] Componente montado');
-    console.log('🟢 [MENSAJES] User Agent:', navigator.userAgent);
-    console.log('🟢 [MENSAJES] Es móvil:', window.innerWidth < 768);
   }, []);
   
   // 🔥 VALIDACIÓN DE SESIÓN: Solo modelos pueden acceder
@@ -133,24 +136,19 @@ export default function ChatPrivado() {
 
   const playIncomingCallSound = useCallback(async () => {
     try {
-      console.log('📞 [MENSAJES] Iniciando reproducción de sonido de llamada entrante');
       
       // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
       if (typeof window !== 'undefined' && window.AudioContext) {
         try {
           const audioContext = new (window.AudioContext || window.webkitAudioContext)();
           if (audioContext.state === 'suspended') {
-            console.log('📞 [MENSAJES] AudioContext suspendido, resumiendo...');
             await audioContext.resume();
-            console.log('✅ [MENSAJES] AudioContext resumido');
           }
         } catch (ctxError) {
-          console.warn('⚠️ [MENSAJES] Error con AudioContext:', ctxError);
         }
       }
       
       if (audioRef.current) {
-        console.log('📞 [MENSAJES] Ya hay un sonido reproduciéndose, deteniendo...');
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
         audioRef.current = null;
@@ -163,38 +161,28 @@ export default function ChatPrivado() {
       
       // Agregar event listeners para debugging
       audio.addEventListener('loadstart', () => {
-        console.log('📞 [MENSAJES] Audio: loadstart');
       });
       audio.addEventListener('canplay', () => {
-        console.log('📞 [MENSAJES] Audio: canplay');
       });
       audio.addEventListener('play', () => {
-        console.log('✅ [MENSAJES] Audio: play iniciado');
       });
       audio.addEventListener('error', (e) => {
-        console.error('❌ [MENSAJES] Error en audio element:', e);
       });
       
       audioRef.current = audio;
       
       try {
-        console.log('📞 [MENSAJES] Intentando reproducir audio...');
         await audio.play();
-        console.log('✅ [MENSAJES] Sonido de llamada entrante reproducido exitosamente');
       } catch (playError) {
-        console.warn('⚠️ [MENSAJES] Error reproduciendo sonido de llamada entrante:', playError);
-        console.warn('⚠️ [MENSAJES] Detalles del error:', {
+        console.error('Error al reproducir audio:', {
           name: playError.name,
           message: playError.message,
           stack: playError.stack
         });
         if (playError.name === 'NotAllowedError') {
-          console.warn('⚠️ [MENSAJES] Reproducción de audio bloqueada por el navegador - se requiere interacción del usuario');
         }
       }
     } catch (error) {
-      console.error('❌ [MENSAJES] Error en playIncomingCallSound:', error);
-      console.error('❌ [MENSAJES] Stack:', error.stack);
     }
   }, []);
 
@@ -233,7 +221,6 @@ const redirigirAVideochat = useCallback((callData) => {
   // Redirigir al videochat
   navigate('/videochat', {
     state: {
-      roomName: callData.room_name,
       userName: usuario.name || 'Usuario',
       callId: callData.call_id || callData.id,
       from: 'call',
@@ -354,27 +341,21 @@ useEffect(() => {
       playNote(783.99, now + 0.2, 0.15, 0.6);  // Sol
       playNote(1046.5, now + 0.3, 0.2, 0.7);   // Do (octava alta)
       
-      console.log('✅ [MENSAJES] Sonido alternativo de regalo reproducido');
     } catch (error) {
-      console.error('❌ [MENSAJES] Error en playAlternativeGiftSound:', error);
     }
   }, []);
 
   const playGiftReceivedSound = useCallback(async () => {
     try {
-      console.log('🔊 [MENSAJES] Iniciando reproducción de sonido de regalo recibido');
       
       // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
       if (typeof window !== 'undefined' && window.AudioContext) {
         try {
           const audioContext = new (window.AudioContext || window.webkitAudioContext)();
           if (audioContext.state === 'suspended') {
-            console.log('🔊 [MENSAJES] AudioContext suspendido, resumiendo...');
             await audioContext.resume();
-            console.log('✅ [MENSAJES] AudioContext resumido');
           }
         } catch (ctxError) {
-          console.warn('⚠️ [MENSAJES] Error con AudioContext:', ctxError);
         }
       }
       
@@ -385,38 +366,23 @@ useEffect(() => {
       
       // Agregar event listeners para debugging
       audio.addEventListener('loadstart', () => {
-        console.log('🔊 [MENSAJES] Audio: loadstart');
       });
       audio.addEventListener('canplay', () => {
-        console.log('🔊 [MENSAJES] Audio: canplay');
       });
       audio.addEventListener('play', () => {
-        console.log('✅ [MENSAJES] Audio: play iniciado');
       });
       audio.addEventListener('error', (e) => {
-        console.error('❌ [MENSAJES] Error en audio element:', e);
       });
       
       try {
-        console.log('🔊 [MENSAJES] Intentando reproducir audio...');
         await audio.play();
-        console.log('✅ [MENSAJES] Sonido de regalo reproducido exitosamente');
         return true;
       } catch (playError) {
-        console.warn('⚠️ [MENSAJES] Error reproduciendo sonido de regalo:', playError);
-        console.warn('⚠️ [MENSAJES] Detalles del error:', {
-          name: playError.name,
-          message: playError.message,
-          stack: playError.stack
-        });
         // Sonido alternativo más corto
-        console.log('🔊 [MENSAJES] Intentando reproducir sonido alternativo...');
         await playAlternativeGiftSound();
         return false;
       }
     } catch (error) {
-      console.error('❌ [MENSAJES] Error en playGiftReceivedSound:', error);
-      console.error('❌ [MENSAJES] Stack:', error.stack);
       await playAlternativeGiftSound();
       return false;
     }
@@ -425,12 +391,9 @@ useEffect(() => {
   // 🎁 FUNCIÓN PARA REPRODUCIR NOTIFICACIÓN DE REGALO
   const playGiftNotification = useCallback(async (giftName) => {
     try {
-      console.log('🎁 [MENSAJES] playGiftNotification llamado con giftName:', giftName);
       
       // Reproducir sonido
-      console.log('🔊 [MENSAJES] Llamando a playGiftReceivedSound...');
       const soundPlayed = await playGiftReceivedSound();
-      console.log('🔊 [MENSAJES] Resultado de playGiftReceivedSound:', soundPlayed);
       
       // Mostrar notificación visual si está permitido
       if (Notification.permission === 'granted') {
@@ -448,7 +411,6 @@ useEffect(() => {
       }
       
     } catch (error) {
-      console.error('❌ [MENSAJES] Error en playGiftNotification:', error);
     }
   }, [playGiftReceivedSound]);
 
@@ -522,7 +484,6 @@ useEffect(() => {
       });
       setInitialLoading(false); // 🔥 Marcar como cargado
     } catch (error) {
-            console.error('Error cargando usuario:', error);
             // 🔥 USAR DATOS DE EJEMPLO COMO FALLBACK
             setUsuario({
         id: 1,
@@ -684,6 +645,21 @@ const cargarMensajes = useCallback(async (roomName) => {
     // 3. Ordenar por fecha
     allMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     
+    // 🔍 DEBUG: Verificar mensajes cargados
+    console.log('📥 [mensajes.jsx] Mensajes cargados:', {
+      total: allMessages.length,
+      room_name: roomName,
+      messages_with_avatar: allMessages.filter(m => m.avatar || m.avatar_url).length,
+      sample_messages: allMessages.slice(0, 5).map(m => ({
+        id: m.id,
+        user_id: m.user_id,
+        user_name: m.user_name,
+        avatar: m.avatar,
+        avatar_url: m.avatar_url,
+        type: m.type
+      }))
+    });
+    
         setMensajes(allMessages);
 
   } catch (error) {
@@ -715,7 +691,6 @@ const cargarMensajes = useCallback(async (roomName) => {
       body: JSON.stringify({
         room_name: conversacionActiva,
         message: mensaje,
-        type: tipo,
         extra_data: tipo === 'gift' ? { gift_type: mensaje } : null
       })
     });
@@ -729,7 +704,6 @@ const cargarMensajes = useCallback(async (roomName) => {
           user_name: usuario.name,
           user_role: usuario.rol,
           message: mensaje,
-          type: tipo,
           created_at: new Date().toISOString()
         };
         
@@ -962,7 +936,6 @@ const cargarMensajes = useCallback(async (roomName) => {
           id: otherUserId,
           name: otherUserName,
           callId: data.call_id,
-          roomName: data.room_name,
           status: 'calling'
         });
       }
@@ -994,10 +967,16 @@ const cargarMensajes = useCallback(async (roomName) => {
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
     
     // Limpiar imagePath de barras escapadas
-    const cleanImagePath = imagePath.replace(/\\/g, '');
-    // Si comienza con storage/
+    const cleanImagePath = imagePath.replace(/\\/g, '/');
+    
+    // Si comienza con storage/ (ya incluye storage/)
     if (cleanImagePath.startsWith('storage/')) {
       return `${cleanBaseUrl}/${cleanImagePath}`;
+    }
+    
+    // Si comienza con avatars/ (imagen personalizada del cliente)
+    if (cleanImagePath.startsWith('avatars/')) {
+      return `${cleanBaseUrl}/storage/${cleanImagePath}`;
     }
     
     // Si comienza con / es ruta absoluta
@@ -1005,7 +984,7 @@ const cargarMensajes = useCallback(async (roomName) => {
       return `${cleanBaseUrl}${cleanImagePath}`;
     }
     
-    // Si es solo el nombre del archivo
+    // Si es solo el nombre del archivo, asumir que está en storage/gifts/
     return `${cleanBaseUrl}/storage/gifts/${cleanImagePath}`;
   };
 
@@ -1044,7 +1023,7 @@ const cargarMensajes = useCallback(async (roomName) => {
             conv.room_name === roomName
               ? {
                   ...conv,
-                  last_message: `🎁 Solicitud: ${processedExtraData.gift_name || 'Regalo'}`,
+                  last_message: `🎁 ${t("chat.gifts.giftRequest") || "Solicitud:"} ${processedExtraData.gift_name || t("chat.gift") || 'Regalo'}`,
                   last_message_time: new Date().toISOString(),
                   last_message_sender_id: usuario.id
                 }
@@ -1360,7 +1339,7 @@ const cargarMensajes = useCallback(async (roomName) => {
       return (
         <div className="flex items-center gap-2 text-yellow-400">
           <Gift size={16} />
-          <span>Envió: {textoMensaje}</span>
+          <span>{t("chat.gifts.sentBy") || "Envió:"} {textoMensaje}</span>
         </div>
       );
 
@@ -1377,39 +1356,26 @@ const cargarMensajes = useCallback(async (roomName) => {
         }
       }
       
-      // Construir URL de imagen
+      // Construir URL de imagen usando la función buildCompleteImageUrl
       let imageUrl = null;
       if (finalGiftData.gift_image) {
-        const imagePath = finalGiftData.gift_image;
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
-        const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-        
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          imageUrl = imagePath.includes('?') ? imagePath : `${imagePath}?t=${Date.now()}`;
-        } else {
+        imageUrl = buildCompleteImageUrl(finalGiftData.gift_image);
+        // Si la URL no incluye parámetros de versión, agregarlos
+        if (imageUrl && !imageUrl.includes('?') && !imageUrl.includes('v=')) {
+          const imagePath = finalGiftData.gift_image;
           const cleanPath = imagePath.replace(/\\/g, '');
-          let finalUrl;
           let fileName;
           if (cleanPath.startsWith('storage/')) {
             const pathParts = cleanPath.split('/');
             fileName = pathParts.pop();
-            const directory = pathParts.join('/');
-            const encodedFileName = encodeURIComponent(fileName);
-            finalUrl = `${cleanBaseUrl}/${directory}/${encodedFileName}`;
           } else if (cleanPath.startsWith('/')) {
             const pathParts = cleanPath.split('/');
             fileName = pathParts.pop();
-            const directory = pathParts.join('/');
-            const encodedFileName = encodeURIComponent(fileName);
-            finalUrl = `${cleanBaseUrl}${directory}/${encodedFileName}`;
           } else {
             fileName = cleanPath;
-            const encodedFileName = encodeURIComponent(cleanPath);
-            finalUrl = `${cleanBaseUrl}/storage/gifts/${encodedFileName}`;
           }
-          // Agregar nombre del archivo como versión para invalidar caché cuando cambie
           const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
-          imageUrl = `${finalUrl}?v=${version}`;
+          imageUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}v=${version}`;
         }
       }
       
@@ -1447,7 +1413,7 @@ const cargarMensajes = useCallback(async (roomName) => {
           
           <div className="text-center space-y-2">
             <p className="text-white font-bold text-base">
-              {finalGiftData.gift_name || 'Regalo Especial'}
+              {finalGiftData.gift_name || t("chat.gifts.specialGift") || 'Regalo Especial'}
             </p>
             
             {finalGiftData.gift_price && (
@@ -1482,24 +1448,26 @@ const cargarMensajes = useCallback(async (roomName) => {
         }
       }
       
-      // Construir URL de imagen
+      // Construir URL de imagen usando la función buildCompleteImageUrl
       let receivedImageUrl = null;
       if (finalReceivedGiftData.gift_image) {
-        const imagePath = finalReceivedGiftData.gift_image;
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
-        const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-        
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          receivedImageUrl = imagePath;
-        } else {
+        receivedImageUrl = buildCompleteImageUrl(finalReceivedGiftData.gift_image);
+        // Si la URL no incluye parámetros de versión, agregarlos
+        if (receivedImageUrl && !receivedImageUrl.includes('?') && !receivedImageUrl.includes('v=')) {
+          const imagePath = finalReceivedGiftData.gift_image;
           const cleanPath = imagePath.replace(/\\/g, '');
+          let fileName;
           if (cleanPath.startsWith('storage/')) {
-            receivedImageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
           } else if (cleanPath.startsWith('/')) {
-            receivedImageUrl = `${cleanBaseUrl}${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
           } else {
-            receivedImageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            fileName = cleanPath;
           }
+          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+          receivedImageUrl = `${receivedImageUrl}${receivedImageUrl.includes('?') ? '&' : '?'}v=${version}`;
         }
       }
       
@@ -1534,7 +1502,7 @@ const cargarMensajes = useCallback(async (roomName) => {
           
           <div className="text-center space-y-2">
             <p className="text-white font-bold text-base">
-              {finalReceivedGiftData.gift_name || 'Regalo Especial'}
+              {finalReceivedGiftData.gift_name || t("chat.gifts.specialGift") || 'Regalo Especial'}
             </p>
             
             <div className="bg-black/20 rounded-lg p-2 mt-3 border-l-4 border-green-400">
@@ -1559,24 +1527,26 @@ const cargarMensajes = useCallback(async (roomName) => {
         }
       }
       
-      // Construir URL de imagen
+      // Construir URL de imagen usando la función buildCompleteImageUrl
       let sentImageUrl = null;
       if (finalSentGiftData.gift_image) {
-        const imagePath = finalSentGiftData.gift_image;
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
-        const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-        
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          sentImageUrl = imagePath;
-        } else {
+        sentImageUrl = buildCompleteImageUrl(finalSentGiftData.gift_image);
+        // Si la URL no incluye parámetros de versión, agregarlos
+        if (sentImageUrl && !sentImageUrl.includes('?') && !sentImageUrl.includes('v=')) {
+          const imagePath = finalSentGiftData.gift_image;
           const cleanPath = imagePath.replace(/\\/g, '');
+          let fileName;
           if (cleanPath.startsWith('storage/')) {
-            sentImageUrl = `${cleanBaseUrl}/${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
           } else if (cleanPath.startsWith('/')) {
-            sentImageUrl = `${cleanBaseUrl}${cleanPath}`;
+            const pathParts = cleanPath.split('/');
+            fileName = pathParts.pop();
           } else {
-            sentImageUrl = `${cleanBaseUrl}/storage/gifts/${cleanPath}`;
+            fileName = cleanPath;
           }
+          const version = fileName ? encodeURIComponent(fileName).substring(0, 20) : Date.now();
+          sentImageUrl = `${sentImageUrl}${sentImageUrl.includes('?') ? '&' : '?'}v=${version}`;
         }
       }
       
@@ -1635,7 +1605,7 @@ const cargarMensajes = useCallback(async (roomName) => {
       }
       return <span className="text-white break-words overflow-wrap-anywhere whitespace-pre-wrap">{textoMensaje}</span>;
   }
-  }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation]);
+  }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation, buildCompleteImageUrl]);
   
   const formatearTiempo = useCallback((timestamp) => {
     const fecha = new Date(timestamp);
@@ -1681,7 +1651,6 @@ const cargarMensajes = useCallback(async (roomName) => {
           try {
             changeGlobalLanguage(lng);
           } catch (error) {
-            console.warn('Error cambiando idioma global:', error);
           }
         }
         
@@ -1929,20 +1898,12 @@ const cargarMensajes = useCallback(async (roomName) => {
             const newGiftMessages = newMessages.filter(msg => {
               const isGiftReceived = msg.type === 'gift_received' && msg.user_id !== usuario.id;
               if (isGiftReceived) {
-                console.log('🎁 [MENSAJES] Regalo recibido detectado:', {
-                  messageId: msg.id,
-                  type: msg.type,
-                  userId: msg.user_id,
-                  usuarioId: usuario.id,
-                  giftData: msg.gift_data,
-                  extraData: msg.extra_data
-                });
+                // Gift received
               }
               return isGiftReceived;
             });
             
             if (newGiftMessages.length > 0) {
-              console.log(`🎁 [MENSAJES] ${newGiftMessages.length} regalo(s) recibido(s), reproduciendo sonido...`);
               
               // Reproducir sonido para cada regalo
               for (const giftMsg of newGiftMessages) {
@@ -1955,13 +1916,11 @@ const cargarMensajes = useCallback(async (roomName) => {
                     try {
                       giftData = JSON.parse(giftData);
                     } catch (e) {
-                      console.warn('⚠️ [MENSAJES] Error parseando gift_data:', e);
-                      giftData = { gift_name: 'Regalo Especial' };
+                      giftData = { gift_name: t("chat.gifts.specialGift") || 'Regalo Especial' };
                     }
                   }
                   
-                  const giftName = giftData.gift_name || 'Regalo Especial';
-                  console.log('🔊 [MENSAJES] Reproduciendo sonido para regalo:', giftName);
+                  const giftName = giftData.gift_name || t("chat.gifts.specialGift") || 'Regalo Especial';
                                     
                   // Reproducir notificación con sonido
                   await playGiftNotification(giftName);
@@ -1971,7 +1930,6 @@ const cargarMensajes = useCallback(async (roomName) => {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                   }
                 } catch (error) {
-                  console.error('❌ [MENSAJES] Error procesando regalo recibido:', error);
                 }
               }
             }
@@ -2183,7 +2141,6 @@ const cargarMensajes = useCallback(async (roomName) => {
           }
         }
       } catch (error) {
-        console.error('Error abriendo chat con modelo:', error);
       }
     };
 
@@ -2258,7 +2215,6 @@ const cargarMensajes = useCallback(async (roomName) => {
           }
         }
       } catch (error) {
-        console.error('Error abriendo chat con usuario:', error);
         hasOpenedSpecificChat.current = true;
       }
     };
@@ -2277,23 +2233,11 @@ const cargarMensajes = useCallback(async (roomName) => {
   }, [openChatWith]);
 
   
-  // 🔥 DEBUG: Log del estado
-  useEffect(() => {
-    console.log('🟡 [MENSAJES] Estado actual:', {
-      initialLoading,
-      usuarioId: usuario.id,
-      usuarioRol: usuario.rol,
-      conversacionesCount: conversaciones.length,
-      isMobile
-    });
-  }, [initialLoading, usuario.id, usuario.rol, conversaciones.length, isMobile]);
   
   // 🔥 Mostrar loading mientras se carga el usuario inicialmente
   if (initialLoading) {
-    console.log('🟡 [MENSAJES] Mostrando pantalla de carga');
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white flex items-center justify-center" style={{
-        minHeight: '100vh',
         minHeight: '-webkit-fill-available',
         position: 'fixed',
         top: 0,
@@ -2304,13 +2248,12 @@ const cargarMensajes = useCallback(async (roomName) => {
       }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#ff007a] mx-auto mb-4"></div>
-          <p className="text-white/60">Cargando mensajes...</p>
+          <p className="text-white/60">{t("chat.loading") || "Cargando mensajes..."}</p>
         </div>
       </div>
     );
   }
   
-  console.log('🟢 [MENSAJES] Renderizando componente principal');
   
   // 🔥 TEST: Renderizar versión simplificada primero para debug
   if (isMobile && !usuario.id) {
@@ -2343,9 +2286,7 @@ const cargarMensajes = useCallback(async (roomName) => {
   <div 
     className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white" 
     style={isMobile ? {
-      minHeight: '100vh',
       minHeight: '-webkit-fill-available',
-      height: '100vh',
       height: '-webkit-fill-available',
       position: 'relative',
       width: '100%',
@@ -2358,7 +2299,6 @@ const cargarMensajes = useCallback(async (roomName) => {
     }}
   >
     {/* 🔥 DEBUG: Verificar que el contenido se renderiza */}
-    {console.log('🟢 [MENSAJES] Renderizando contenido principal')}
     
     {/* 🔥 HEADER CON Z-INDEX ALTO PARA QUE NO SE SUPERPONGA */}
     <div className="relative" style={{ zIndex: 100, position: 'relative' }}>
@@ -2404,134 +2344,36 @@ const cargarMensajes = useCallback(async (roomName) => {
         backgroundColor: '#2b2d31'
       } : {}}>
         
-        {/* Sidebar de conversaciones - ARREGLADO */}
-        <aside className={`${
-          isMobile
-            ? `fixed inset-0 z-50 bg-[#2b2d31] transform transition-transform duration-300 ease-in-out ${
-                showSidebar ? 'translate-x-0' : '-translate-x-full'
-              }`
-            : 'w-1/3 bg-[#2b2d31]'
-        } flex flex-col overflow-hidden`}>
-          
-          {/* Header sidebar móvil */}
-          {isMobile && (
-            <div className="flex justify-between items-center p-4 border-b border-[#ff007a]/20">
-              <h2 className="text-lg font-semibold text-white">Conversaciones</h2>
-              <button
-                onClick={() => setShowSidebar(false)}
-                className="text-white/60 hover:text-white p-2 hover:bg-[#3a3d44] rounded-lg transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-          )}
+        {/* Sidebar de conversaciones - MODULARIZADO */}
+        <ModelConversationList
+          conversations={conversaciones}
+          filteredConversations={conversacionesFiltradas}
+          searchQuery={busquedaConversacion}
+          onSearchChange={setBusquedaConversacion}
+          activeConversation={conversacionActiva}
+          onSelectConversation={abrirConversacion}
+          loading={loading}
+          onlineUsers={onlineUsers}
+          favoritos={favoritos}
+          bloqueados={bloqueados}
+          bloqueadoPor={bloqueadoPor}
+          unreadCounts={calculateUnreadCount}
+          getDisplayName={getDisplayName}
+          getInitial={getInitial}
+          getBlockStatus={getBlockStatus}
+          formatearTiempo={formatearTiempo}
+          currentUser={usuario}
+          isMobile={isMobile}
+          onCloseSidebar={() => setShowSidebar(false)}
+          showSidebar={showSidebar}
+        />
 
-          {/* Contenido del sidebar */}
-          <div className="flex-1 overflow-hidden flex flex-col p-4">
-            {/* Búsqueda */}
-            <div className="relative mb-4 flex-shrink-0">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-white/50" />
-              <input
-                type="text"
-                placeholder={t("chat.searchPlaceholder")}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
-                value={busquedaConversacion}
-                onChange={(e) => setBusquedaConversacion(e.target.value)}
-              />
-            </div>
-
-            {/* Lista de conversaciones - SCROLL ARREGLADO */}
-            <div className="flex-1 overflow-y-auto space-y-2" style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#ff007a #2b2d31'
-            }}>
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ff007a] mx-auto mb-2"></div>
-                  <p className="text-xs text-white/60">Cargando...</p>
-                </div>
-              ) : conversacionesFiltradas.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare size={32} className="text-white/30 mx-auto mb-2" />
-                  <p className="text-sm text-white/60">No hay conversaciones</p>
-                </div>
-              ) : (
-                conversacionesFiltradas.map((conv) => {
-                  const isOnline = onlineUsers.has(conv.other_user_id);
-                  const unreadCount = calculateUnreadCount(conv);
-                  const blockStatus = getBlockStatus(conv.other_user_id);
-
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => abrirConversacion(conv)}
-                      className={`p-3 hover:bg-[#3a3d44] rounded-lg cursor-pointer transition-colors border ${
-                        conversacionActiva === conv.room_name
-                          ? 'bg-[#ff007a]/20 border-[#ff007a]'
-                          : 'border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="relative flex-shrink-0">
-                          <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                            {getInitial(getDisplayName(conv.other_user_id, conv.other_user_name))}
-                          </div>
-                          
-                          {/* Indicador de estado */}
-                          {(() => {
-                            if (blockStatus === 'yo_bloquee') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.blockedByYou")} />;
-                            } else if (blockStatus === 'me_bloquearon') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.blockedYou")} />;
-                            } else if (blockStatus === 'mutuo') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title={t("chat.status.mutualBlock")} />;
-                            } else {
-                              return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
-                                isOnline ? 'bg-green-500' : 'bg-gray-500'
-                              }`} title={isOnline ? t("chat.online") : t("chat.offline")} />;
-                            }
-                          })()}
-                          
-                          {unreadCount > 0 && (
-                            <div className="absolute -top-1 -left-1 bg-[#ff007a] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                              {unreadCount}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">
-                            {getDisplayName(conv.other_user_id, conv.other_user_name)}
-                          </p>
-                          <div className="text-xs text-white/60 truncate">
-                            {conv.last_message_sender_id === usuario.id ? (
-                              <span><span className="text-white/40">Tú:</span> {conv.last_message}</span>
-                            ) : (
-                              conv.last_message
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="text-right flex-shrink-0">
-                          <span className="text-xs text-white/40">
-                            {formatearTiempo(conv.last_message_time)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* Panel de chat - ARREGLADO PARA MÓVIL */}
+        {/* Panel de chat - MEJORADO CON GRADIENTES */}
         <section className={`${
           isMobile
             ? `${showSidebar ? 'hidden' : 'w-full h-full'}`
             : 'w-2/3'
-        } bg-[#0a0d10] flex flex-col relative overflow-hidden`}>
+        } bg-gradient-to-br from-[#0a0d10] via-[#1a1c20] to-[#0a0d10] flex flex-col relative overflow-hidden shadow-xl`}>
           
           {!conversacionActiva ? (
             !isMobile && (
@@ -2545,201 +2387,136 @@ const cargarMensajes = useCallback(async (roomName) => {
             )
           ) : (
             <>
-              {/* Header de conversación - ARREGLADO */}
-              <div className="bg-[#2b2d31] px-4 py-3 flex justify-between items-center border-b border-[#ff007a]/20 flex-shrink-0">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {/* Botón volver en móvil */}
-                  {isMobile && (
+              {/* Header de conversación - MODULARIZADO */}
+              <ModelChatHeader
+                conversation={conversacionSeleccionada}
+                isOnline={onlineUsers.has(conversacionSeleccionada?.other_user_id)}
+                blockStatus={conversacionSeleccionada ? getBlockStatus(conversacionSeleccionada.other_user_id) : null}
+                isFavorite={conversacionSeleccionada ? favoritos.has(conversacionSeleccionada.other_user_id) : false}
+                loadingActions={loadingActions}
+                isChatBlocked={isChatBlocked()}
+                onGiftClick={() => setShowGiftsModal(true)}
+                onToggleFavorite={() => {
+                  if (conversacionSeleccionada) {
+                    toggleFavorito(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name);
+                  }
+                }}
+                onOpenSettings={() => setShowMainSettings(!showMainSettings)}
+                onOpenNickname={() => {
+                  if (conversacionSeleccionada) {
+                    abrirModalApodo(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name);
+                  }
+                }}
+                onToggleBlock={() => {
+                  if (conversacionSeleccionada) {
+                    toggleBloquear(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name);
+                  }
+                }}
+                getDisplayName={getDisplayName}
+                getInitial={getInitial}
+                isMobile={isMobile}
+                onBackToConversations={() => setShowSidebar(true)}
+                bloqueados={bloqueados}
+              />
+
+              {/* Menú de settings */}
+              {showMainSettings && (
+                <div className="relative">
+                  <div className={`absolute ${isMobile ? 'right-0' : 'right-0'} mt-2 bg-[#1f2125] border border-[#ff007a]/30 rounded-xl shadow-lg z-50 ${
+                    isMobile ? 'w-56' : 'w-64'
+                  }`}>
                     <button
-                      onClick={() => setShowSidebar(true)}
-                      className="text-white hover:text-[#ff007a] transition-colors p-1 mr-2"
+                      onClick={() => {
+                        setShowTranslationSettings(true);
+                        setShowMainSettings(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-[#2b2d31] transition text-left group"
                     >
-                      <ArrowLeft size={20} />
-                    </button>
-                  )}
-                  
-                  <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      {getInitial(conversacionSeleccionada?.other_user_name)}
-                    </div>
-                    {/* Indicador estado en header */}
-                    {(() => {
-                      const blockStatus = getBlockStatus(conversacionSeleccionada?.other_user_id);
-                      if (blockStatus === 'yo_bloquee') {
-                        return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" />;
-                      } else if (blockStatus === 'me_bloquearon') {
-                        return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" />;
-                      } else if (blockStatus === 'mutuo') {
-                        return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" />;
-                      } else {
-                        return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
-                          onlineUsers.has(conversacionSeleccionada?.other_user_id) ? 'bg-green-500' : 'bg-gray-500'
-                        }`} />;
-                      }
-                    })()}
-                  </div>
-                  
-                  <div className="min-w-0 flex-1">
-                    <span className="font-semibold block truncate">
-                      {getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_name)}
-                    </span>
-                    {/* Estado de bloqueo */}
-                    {conversacionSeleccionada && (() => {
-                      const blockStatus = getBlockStatus(conversacionSeleccionada.other_user_id);
-                      if (blockStatus === 'yo_bloquee') {
-                        return (
-                          <span className="text-xs text-red-400 flex items-center">
-                            <Ban size={12} className="mr-1" />
-                            Bloqueado por ti
-                          </span>
-                        );
-                      } else if (blockStatus === 'me_bloquearon') {
-                        return (
-                          <span className="text-xs text-orange-400 flex items-center">
-                            <Ban size={12} className="mr-1" />
-                            Te bloqueó
-                          </span>
-                        );
-                      } else if (blockStatus === 'mutuo') {
-                        return (
-                          <span className="text-xs text-red-600 flex items-center">
-                            <Ban size={12} className="mr-1" />
-                            Bloqueo mutuo
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                </div>
-
-                {/* Botones de acción - RESPONSIVE */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-
-                  {usuario.rol === 'modelo' && (
-                    <button
-                      onClick={() => setShowGiftsModal(true)}
-                      disabled={conversacionSeleccionada && bloqueados.has(conversacionSeleccionada.other_user_id)}
-                      className={`px-2 py-2 rounded-lg text-xs hover:scale-105 transition-transform flex items-center gap-1 ${
-                        conversacionSeleccionada && bloqueados.has(conversacionSeleccionada.other_user_id)
-                          ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-purple-500 to-pink-500'
-                      }`}
-                    >
-                      <Gift size={14} />
-                      {!isMobile && 'Regalo'}
-                    </button>
-                  )}
-
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowMainSettings(!showMainSettings)}
-                      className="text-white hover:text-[#ff007a] transition-colors p-2 hover:bg-[#3a3d44] rounded-lg"
-                    >
-                      <Settings size={18} />
-                    </button>
-
-                    {/* Menú settings responsivo */}
-                    {showMainSettings && (
-                      <div className={`absolute ${isMobile ? 'right-0' : 'right-0'} mt-2 bg-[#1f2125] border border-[#ff007a]/30 rounded-xl shadow-lg z-50 ${
-                        isMobile ? 'w-56' : 'w-64'
-                      }`}>
-                        {/* Contenido del menú igual pero más compacto en móvil */}
-                        <button
-                          onClick={() => {
-                            setShowTranslationSettings(true);
-                            setShowMainSettings(false);
-                          }}
-                          className="w-full flex items-center gap-3 p-3 hover:bg-[#2b2d31] transition text-left group"
-                        >
-                          <Globe className="text-[#ff007a]" size={18} />
-                          <div className="flex-1">
-                            <span className="text-white text-sm font-medium">Traducción</span>
-                            <div className="text-xs text-gray-400">
-                              {translationSettings?.enabled ? 'Activa' : 'Inactiva'}
-                            </div>
-                          </div>
-                          <ArrowRight className="text-gray-400" size={14} />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            toggleFavorito(
-                              conversacionSeleccionada?.other_user_id,
-                              conversacionSeleccionada?.other_user_name
-                            );
-                            setShowMainSettings(false);
-                          }}
-                          disabled={loadingActions}
-                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#2b2d31] text-sm text-white"
-                        >
-                          {loadingActions ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#ff007a]"></div>
-                          ) : (
-                            <Star 
-                              size={16} 
-                              className={favoritos.has(conversacionSeleccionada?.other_user_id) ? 'fill-yellow-400 text-yellow-400' : 'text-white'} 
-                            />
-                          )}
-                          {favoritos.has(conversacionSeleccionada?.other_user_id)
-                            ? 'Quitar Favorito'
-                            : 'Agregar Favorito'
-                          }
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (conversacionSeleccionada) {
-                              abrirModalApodo(
-                                conversacionSeleccionada.other_user_id,
-                                conversacionSeleccionada.other_user_name
-                              );
-                            }
-                            setShowMainSettings(false);
-                          }}
-                          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-[#2b2d31] text-sm text-white transition-colors"
-                        >
-                          <Pencil size={14} />
-                          Cambiar apodo
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (conversacionSeleccionada) {
-                              toggleBloquear(
-                                conversacionSeleccionada.other_user_id,
-                                conversacionSeleccionada.other_user_name
-                              );
-                            }
-                            setShowMainSettings(false);
-                          }}
-                          disabled={loadingActions}
-                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#2b2d31] text-sm text-red-400"
-                        >
-                          {loadingActions ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-400"></div>
-                          ) : (
-                            <Ban size={14} />
-                          )}
-                          {bloqueados.has(conversacionSeleccionada?.other_user_id)
-                            ? 'Desbloquear'
-                            : 'Bloquear'
-                          }
-                        </button>
+                      <Globe className="text-[#ff007a]" size={18} />
+                      <div className="flex-1">
+                        <span className="text-white text-sm font-medium">{t("chat.menu.translation") || "Traducción"}</span>
+                        <div className="text-xs text-gray-400">
+                          {translationSettings?.enabled ? (t("chat.menu.translationActive") || "Activa") : (t("chat.menu.translationInactive") || "Inactiva")}
+                        </div>
                       </div>
-                    )}
+                      <ArrowRight className="text-gray-400" size={14} />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        toggleFavorito(
+                          conversacionSeleccionada?.other_user_id,
+                          conversacionSeleccionada?.other_user_name
+                        );
+                        setShowMainSettings(false);
+                      }}
+                      disabled={loadingActions}
+                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#2b2d31] text-sm text-white"
+                    >
+                      {loadingActions ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#ff007a]"></div>
+                      ) : (
+                        <Star 
+                          size={16} 
+                          className={favoritos.has(conversacionSeleccionada?.other_user_id) ? 'fill-yellow-400 text-yellow-400' : 'text-white'} 
+                        />
+                      )}
+                      {favoritos.has(conversacionSeleccionada?.other_user_id)
+                        ? (t("chat.menu.removeFavorite") || "Quitar Favorito")
+                        : (t("chat.menu.addFavorite") || "Agregar Favorito")
+                      }
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (conversacionSeleccionada) {
+                          abrirModalApodo(
+                            conversacionSeleccionada.other_user_id,
+                            conversacionSeleccionada.other_user_name
+                          );
+                        }
+                        setShowMainSettings(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-[#2b2d31] text-sm text-white transition-colors"
+                    >
+                      <Pencil size={14} />
+                      {t("chat.menu.changeNickname") || "Cambiar apodo"}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (conversacionSeleccionada) {
+                          toggleBloquear(
+                            conversacionSeleccionada.other_user_id,
+                            conversacionSeleccionada.other_user_name
+                          );
+                        }
+                        setShowMainSettings(false);
+                      }}
+                      disabled={loadingActions}
+                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#2b2d31] text-sm text-red-400"
+                    >
+                      {loadingActions ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-400"></div>
+                      ) : (
+                        <Ban size={14} />
+                      )}
+                      {bloqueados.has(conversacionSeleccionada?.other_user_id)
+                        ? (t("chat.menu.unblock") || "Desbloquear")
+                        : (t("chat.menu.block") || "Bloquear")
+                      }
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Mensajes - SCROLL ARREGLADO PARA MÓVIL */}
+              {/* Mensajes - MEJORADO CON SCROLLBAR PERSONALIZADO */}
               <div
                 ref={mensajesRef}
-                className="flex-1 overflow-y-auto p-4 space-y-3"
+                className="flex-1 overflow-y-auto p-4 space-y-3 chat-scroll-transparent"
                 style={{
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#ff007a #2b2d31',
-                  // 🔥 IMPORTANTE: Webkit scroll para móviles
                   WebkitOverflowScrolling: 'touch'
                 }}
               >
@@ -2749,13 +2526,13 @@ const cargarMensajes = useCallback(async (roomName) => {
                     <div className="flex items-center gap-3">
                       <Ban size={20} className="text-red-400 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="text-red-300 font-semibold">🚫 Usuario Bloqueado</p>
+                        <p className="text-red-300 font-semibold">{t("chat.status.userBlocked") || "🚫 Usuario Bloqueado"}</p>
                         <p className="text-red-200 text-sm mb-3">
-                          Has bloqueado a <span className="font-bold">{getDisplayName(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name)}</span>.
+                          {t("chat.status.userBlockedDesc", { name: getDisplayName(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name) }) || `Has bloqueado a ${getDisplayName(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name)}.`}
                         </p>
                         <button
                           onClick={() => {
-                            if (confirm(`¿Desbloquear a ${conversacionSeleccionada.other_user_name}?`)) {
+                            if (confirm(t("chat.status.confirmUnblock", { name: conversacionSeleccionada.other_user_name }) || `¿Desbloquear a ${conversacionSeleccionada.other_user_name}?`)) {
                               toggleBloquear(conversacionSeleccionada.other_user_id, conversacionSeleccionada.other_user_name);
                             }
                           }}
@@ -2765,14 +2542,14 @@ const cargarMensajes = useCallback(async (roomName) => {
                           {loadingActions ? (
                             <>
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              Desbloqueando...
+                              {t("chat.status.unblocking") || "Desbloqueando..."}
                             </>
                           ) : (
                             <>
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
                               </svg>
-                              Desbloquear Usuario
+                              {t("chat.status.unblockUser") || "Desbloquear Usuario"}
                             </>
                           )}
                         </button>
@@ -2783,92 +2560,53 @@ const cargarMensajes = useCallback(async (roomName) => {
 
                 {mensajes.length === 0 ? (
                   <div className="flex-1 flex items-center justify-center">
-                    <p className="text-white/60">No hay mensajes aún</p>
+                    <p className="text-white/60">{t("chat.noMessages") || "No hay mensajes aún"}</p>
                   </div>
                 ) : (
-                  mensajes.map((mensaje) => {
+                  mensajes.map((mensaje, index) => {
                     const esUsuarioActual = mensaje.user_id === usuario.id;
 
+                    // 🔍 DEBUG: Verificar datos del mensaje antes de renderizar
+                    if (!esUsuarioActual && mensaje.user_id) {
+                      console.log('📨 [mensajes.jsx] Preparando mensaje para renderizar:', {
+                        message_id: mensaje.id,
+                        user_id: mensaje.user_id,
+                        user_name: mensaje.user_name,
+                        avatar: mensaje.avatar,
+                        avatar_url: mensaje.avatar_url,
+                        has_avatar: !!(mensaje.avatar || mensaje.avatar_url),
+                        message_type: mensaje.type
+                      });
+                    }
+
                     return (
-                      <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
-                        <div className={`flex flex-col ${isMobile ? 'max-w-[280px]' : 'max-w-sm md:max-w-md lg:max-w-lg'}`}>
-                          {!esUsuarioActual && (
-                            <div className="flex items-center gap-2 mb-1 px-2">
-                              <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
-                                {getInitial(mensaje.user_name)}
-                              </div>
-                              <span className="text-xs text-white/60">{mensaje.user_name}</span>
-                            </div>
-                          )}
-                          <div
-                            className={`relative px-4 py-2 rounded-2xl text-sm break-words overflow-wrap-anywhere ${
-                              mensaje.type === 'gift_request' || mensaje.type === 'gift_sent' || mensaje.type === 'gift_received'
-                                ? '' // Sin fondo para regalos
-                                : esUsuarioActual
-                                  ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
-                                  : mensaje.type === 'gift'
-                                    ? "bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-bl-md shadow-lg"
-                                    : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
-                            }`}
-                          >
-                            {renderMensaje(mensaje)}
-                            <div className="text-xs opacity-70 mt-1">
-                              {formatearTiempo(mensaje.created_at)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <ModelMessageBubble
+                        key={mensaje.id}
+                        message={mensaje}
+                        isOwnMessage={esUsuarioActual}
+                        userName={mensaje.user_name}
+                        getInitial={getInitial}
+                        formatearTiempo={formatearTiempo}
+                        renderMessageContent={renderMensaje}
+                        index={index}
+                      />
                     );
                   })
                 )}
               </div>
 
-              {/* Input mensaje - ARREGLADO PARA MÓVIL */}
-              <div className={`bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-2 flex-shrink-0 ${
-                isMobile ? 'p-3 safe-area-inset-bottom' : 'p-4'
-              }`}>
-                <input
-                  type="text"
-                  placeholder={
-                    isChatBlocked()
-                      ? bloqueados.has(conversacionSeleccionada?.other_user_id)
-                        ? t("chat.status.cannotSendBlocked")
-                        : t("chat.status.userBlockedYou")
-                      : t("chat.messagePlaceholder")
-                  }
-                  className={`flex-1 px-4 py-3 rounded-full outline-none placeholder-white/60 text-sm ${
-                    isChatBlocked()
-                      ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                      : 'bg-[#1a1c20] text-white focus:ring-2 focus:ring-[#ff007a]/50'
-                  }`}
-                  value={nuevoMensaje}
-                  onChange={(e) => {
-                    if (!isChatBlocked()) {
-                      setNuevoMensaje(e.target.value);
-                    }
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && !isChatBlocked() && enviarMensaje()}
-                  disabled={isChatBlocked()}
-                />
-                <button
-                  onClick={() => enviarMensaje()}
-                  disabled={!nuevoMensaje.trim() || isChatBlocked()}
-                  className={`px-4 py-3 rounded-full font-semibold transition-colors flex items-center gap-2 flex-shrink-0 ${
-                    isChatBlocked()
-                      ? 'bg-gray-600 cursor-not-allowed text-gray-400'
-                      : !nuevoMensaje.trim()
-                        ? 'bg-gray-600 cursor-not-allowed text-gray-400'
-                        : 'bg-[#ff007a] hover:bg-[#e6006e] text-white'
-                  }`}
-                >
-                  <Send size={16} />
-                  {!isMobile && (
-                    isChatBlocked() 
-                      ? 'Bloqueado'
-                      : 'Enviar'
-                  )}
-                </button>
-              </div>
+              {/* Input mensaje - MODULARIZADO */}
+              <ModelMessageInput
+                message={nuevoMensaje}
+                onMessageChange={setNuevoMensaje}
+                onSend={enviarMensaje}
+                onGiftClick={() => setShowGiftsModal(true)}
+                isChatBlocked={isChatBlocked()}
+                hasConversation={!!conversacionActiva}
+                isMobile={isMobile}
+                disabled={false}
+                sending={false}
+              />
             </>
           )}
         </section>

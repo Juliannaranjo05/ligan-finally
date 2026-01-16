@@ -16,10 +16,10 @@ return [
     'currency' => env('WOMPI_CURRENCY', 'COP'),
     'verify_webhooks' => env('WOMPI_VERIFY_WEBHOOKS', true),
     
-    // Conversión USD a COP
+    // Conversión USD a COP (tasa fija)
     'usd_to_cop_rate' => env('WOMPI_USD_TO_COP_RATE', 4000),
     
-    // Conversión USD a EUR
+    // Conversión USD a EUR (tasa fija - fallback)
     'usd_to_eur_rate' => env('WOMPI_USD_TO_EUR_RATE', 0.92),
     
     // Límites

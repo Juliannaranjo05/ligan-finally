@@ -609,7 +609,9 @@ export async function verificarCodigo(email, code) {
 
 // ✅ Reenviar código
 export async function reenviarCodigo(email) {
-  return await axios.post(`${API_BASE_URL}/api/resend-code`, { email });
+  // Usar axiosDirect para evitar interceptores que podrían requerir autenticación
+  const response = await axiosDirect.post(`${API_BASE_URL}/api/resend-code`, { email });
+  return response.data;
 }
 
 export const asignarRol = async ({ rol, nombre }) => {

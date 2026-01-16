@@ -59,6 +59,15 @@ export default function Register({ onClose, onShowLogin }) {
       }
       
       localStorage.setItem("emailToVerify", email);
+      // Guardar información sobre el estado del correo
+      if (result.email_sent === false) {
+        localStorage.setItem("email_not_sent", "true");
+        localStorage.setItem("email_warning", result.email_warning || "El correo de verificación no se pudo enviar. Usa 'Reenviar código' para recibirlo.");
+      } else {
+        localStorage.removeItem("email_not_sent");
+        localStorage.removeItem("email_warning");
+      }
+      
       // Marcar que acabamos de registrar para evitar que los hooks redirijan antes de tiempo
       localStorage.setItem("just_registered", "true");
       // No limpiar la bandera aquí, dejarla para que el hook la maneje

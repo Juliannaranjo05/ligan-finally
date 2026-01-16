@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\UserCoins;
 use App\Models\CoinTransaction;
 use App\Models\CoinConsumption;
+use App\Services\CallPricingService;
 use App\Models\CoinPurchase;
 use Exception;
 use Carbon\Carbon;
@@ -175,48 +176,35 @@ class VideoChatCoinController extends Controller
 
             $user = Auth::user();
             $minutesConsumed = $request->minutes_consumed;
-            
-            // 🔥 CALCULAR COSTO DINÁMICO: Verificar si hay segundo modelo
+
+            $chargeableMinutes = $minutesConsumed >= 1.5
+                ? (int) ceil($minutesConsumed)
+                : (int) floor($minutesConsumed);
+
+            $chargeableMinutes = max(0, $chargeableMinutes);
+
+            $completedMinutes = (int) floor(
+                CoinConsumption::where('user_id', $user->id)
+                    ->where('room_name', $request->room_name)
+                    ->sum('minutes_consumed')
+            );
+
+            $baseMinuteValueUsd = CallPricingService::getBaseMinuteValueUsd();
+            $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+            $coinsToConsume = CallPricingService::calculateProgressiveCoins(
+                $completedMinutes + 1,
+                $chargeableMinutes,
+                $baseMinuteValueUsd,
+                $coinsPerMinute
+            );
+
             $call = \App\Models\ChatSession::where('room_name', $request->room_name)
                 ->where('session_type', 'call')
                 ->first();
-            
+
             $hasSecondModel = $call && $call->modelo_id_2 && $call->modelo_2_status === 'accepted';
-            $secondModelJoinedAt = $hasSecondModel && $call->modelo_2_answered_at 
-                ? \Carbon\Carbon::parse($call->modelo_2_answered_at) 
-                : null;
-            
-            // Calcular costo basado en períodos
-            $coinsToConsume = 0;
-            if ($hasSecondModel && $secondModelJoinedAt && $call->started_at) {
-                // Llamada con segundo modelo: calcular períodos
-                $callStart = \Carbon\Carbon::parse($call->started_at);
-                $now = now();
-                $totalMinutes = $callStart->diffInSeconds($now) / 60;
-                
-                // Tiempo antes de que se uniera el segundo modelo
-                $minutesBeforeSecondModel = max(0, $secondModelJoinedAt->diffInSeconds($callStart) / 60);
-                // Tiempo después de que se unió el segundo modelo
-                $minutesAfterSecondModel = max(0, $secondModelJoinedAt->diffInSeconds($now) / 60);
-                
-                // Aplicar costo proporcional
-                $costBefore = $minutesBeforeSecondModel * self::COST_PER_MINUTE;
-                $costAfter = $minutesAfterSecondModel * self::COST_PER_MINUTE_2VS1;
-                $coinsToConsume = $costBefore + $costAfter;
-                
-                // Redondear según la lógica original
-                if ($minutesConsumed >= 1.5) {
-                    $coinsToConsume = ceil($coinsToConsume);
-                } else {
-                    $coinsToConsume = floor($coinsToConsume);
-                }
-            } else {
-                // Llamada normal 1vs1
-                if ($minutesConsumed >= 1.5) {
-                    $coinsToConsume = ceil($minutesConsumed * self::COST_PER_MINUTE);
-                } else {
-                    $coinsToConsume = floor($minutesConsumed * self::COST_PER_MINUTE);
-                }
+            if ($hasSecondModel) {
+                $coinsToConsume *= 2;
             }
             
             Log::info('💳 [DEBUG] Iniciando consumo de monedas', [
@@ -224,8 +212,9 @@ class VideoChatCoinController extends Controller
                 'room_name' => $request->room_name,
                 'minutes_consumed' => round($minutesConsumed, 3),
                 'minutes_consumed_raw' => $minutesConsumed,
+                'chargeable_minutes' => $chargeableMinutes,
+                'completed_minutes' => $completedMinutes,
                 'coins_to_consume' => $coinsToConsume,
-                'redondeo_aplicado' => $minutesConsumed >= 1.5 ? 'ceil (>=1.5)' : 'floor (<1.5)',
                 'balance_antes' => $this->getUserCoins($user->id)->purchased_balance
             ]);
 

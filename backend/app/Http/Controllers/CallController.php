@@ -2056,7 +2056,7 @@ class CallController extends Controller
                       // O llamadas que tienen ended_at (terminaron de alguna forma)
                       ->orWhereNotNull('ended_at');
             })
-            ->with(['cliente:id,name', 'modelo:id,name'])
+            ->with(['cliente:id,name,avatar', 'modelo:id,name,avatar'])
             ->where(function($query) {
                 // Solo incluir si tiene al menos cliente_id o modelo_id definido (no solo waiting)
                 $query->whereNotNull('cliente_id')
@@ -2076,11 +2076,20 @@ class CallController extends Controller
                 // Determinar la fecha de la llamada
                 $callDate = $call->ended_at ?? $call->started_at ?? now();
                 
+                // Generar URL del avatar si existe
+                $avatarUrl = null;
+                if ($otherUser && $otherUser->avatar) {
+                    $profileController = new \App\Http\Controllers\ProfileSettingsController();
+                    $avatarUrl = $profileController->generateAvatarUrl($otherUser->avatar);
+                }
+                
                 return [
                     'id' => $call->id,
                     'type' => 'call',
                     'user_id' => $otherUser->id ?? null,
                     'user_name' => $otherUser->name ?? 'Usuario desconocido',
+                    'avatar' => $otherUser->avatar ?? null,
+                    'avatar_url' => $avatarUrl,
                     'call_type' => $call->call_type,
                     'status' => $call->status,
                     'ended_at' => $call->ended_at ? $call->ended_at->toISOString() : null,
@@ -2100,7 +2109,8 @@ class CallController extends Controller
                     'user_favorites.id',
                     'user_favorites.user_id',
                     'user_favorites.created_at',
-                    'users.name as user_name'
+                    'users.name as user_name',
+                    'users.avatar as user_avatar'
                 )
                 ->orderBy('user_favorites.created_at', 'DESC')
                 ->limit(5)
@@ -2108,11 +2118,20 @@ class CallController extends Controller
 
             // Formatear las notificaciones de favoritos
             $favoriteHistory = $favorites->map(function($favorite) {
+                // Generar URL del avatar si existe
+                $avatarUrl = null;
+                if ($favorite->user_avatar) {
+                    $profileController = new \App\Http\Controllers\ProfileSettingsController();
+                    $avatarUrl = $profileController->generateAvatarUrl($favorite->user_avatar);
+                }
+                
                 return [
                     'id' => 'favorite_' . $favorite->id,
                     'type' => 'favorite',
                     'user_id' => $favorite->user_id,
                     'user_name' => $favorite->user_name ?? 'Usuario desconocido',
+                    'avatar' => $favorite->user_avatar ?? null,
+                    'avatar_url' => $avatarUrl,
                     'timestamp' => \Carbon\Carbon::parse($favorite->created_at)->toISOString(),
                     'formatted_date' => $this->formatCallDate(\Carbon\Carbon::parse($favorite->created_at))
                 ];

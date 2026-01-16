@@ -36,6 +36,12 @@ import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
 import { createLogger } from '../../utils/logger';
 import { useSessionValidation } from '../hooks/useSessionValidation';
 
+// 🔥 COMPONENTES MODULARES MEJORADOS
+import ConversationList from './ConversationList';
+import ChatHeader from './ChatHeader';
+import MessageBubble from './MessageBubble';
+import MessageInput from './MessageInput';
+
 const logger = createLogger('MessageClient');
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -125,6 +131,10 @@ export default function ChatPrivado() {
   // Estados de regalos
   const [showGiftsModal, setShowGiftsModal] = useState(false);
   const [loadingGift, setLoadingGift] = useState(false);
+  
+  // 🔥 DEBUG: Monitorear cambios en showGiftsModal
+  useEffect(() => {
+  }, [showGiftsModal]);
 
   // Estados de apodos SIMPLIFICADOS
   const [showNicknameModal, setShowNicknameModal] = useState(false);
@@ -193,7 +203,6 @@ const iniciarPollingLlamada = useCallback((callId) => {
                 
         if (callStatus === 'active') {
           // ✅ ¡Llamada aceptada por la modelo!
-          console.log('✅ [message] Llamada ACEPTADA, redirigiendo', { callId, roomName: data.call.room_name });
           logger.info('Llamada ACEPTADA, redirigiendo');
           
           // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
@@ -204,9 +213,7 @@ const iniciarPollingLlamada = useCallback((callId) => {
           
           // 🔥 CRITICAL: Asegurar que tenemos room_name
           const roomName = data.call.room_name || data.room_name;
-          console.log('🔍 [message] Room name obtenido:', roomName);
           if (!roomName) {
-            console.error('❌ [message] No se recibió room_name en la respuesta', data);
             logger.error('No se recibió room_name en la respuesta');
             alert('Error: No se pudo obtener información de la sala');
             setIsCallActive(false);
@@ -214,7 +221,6 @@ const iniciarPollingLlamada = useCallback((callId) => {
             return;
           }
           
-          console.log('🚀 [message] Llamando a redirigirAVideochatCliente', { roomName, callId });
           redirigirAVideochatCliente({
             ...data.call,
             room_name: roomName,
@@ -302,7 +308,6 @@ const iniciarPollingLlamada = useCallback((callId) => {
 // ============================================================================
 
 const redirigirAVideochatCliente = useCallback((callData) => {
-  console.log('🚀 [message] redirigirAVideochatCliente ejecutado', callData);
   logger.debug('Redirigiendo a videochat CLIENTE', callData);
   
   // 🔥 DETENER SONIDO DE LLAMADA SALIENTE ANTES DE REDIRIGIR
@@ -310,7 +315,6 @@ const redirigirAVideochatCliente = useCallback((callData) => {
   
   // Verificar que tenemos datos mínimos
   if (!callData.room_name) {
-    console.error('❌ [message] No room_name en callData', callData);
     logger.error('Error: No room_name en callData');
     alert('Error: Información de llamada incompleta');
     return;
@@ -346,13 +350,11 @@ const redirigirAVideochatCliente = useCallback((callData) => {
     setIncomingCallPollingInterval(null);
   }
   
-  console.log('🧭 [message] Navegando a /videochatclient', { roomName: callData.room_name });
   logger.debug('Navegando a videochatclient');
   
   // 🔥 CRÍTICO: Redirigir al videochat DEL CLIENTE, NO de la modelo
   navigate('/videochatclient', {
     state: {
-      roomName: callData.room_name,
       userName: usuario.name || 'Cliente',
       callId: callData.call_id || callData.id,
       from: 'call',
@@ -388,7 +390,6 @@ const iniciarLlamadaRealMejorada = useCallback(async (otherUserId, otherUserName
         id: otherUserId,
         name: otherUserName,
         callId: data.call_id,
-        roomName: data.room_name,
         status: 'calling'
       });
       
@@ -681,11 +682,27 @@ useEffect(() => {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.messages) {
+          // 🔍 DEBUG: Verificar mensajes cargados
+          console.log('📥 [message.jsx Client] Mensajes cargados:', {
+            total: data.messages.length,
+            room_name: roomName,
+            messages_with_avatar: data.messages.filter(m => m.avatar || m.avatar_url).length,
+            sample_messages: data.messages.slice(0, 5).map(m => ({
+              id: m.id,
+              user_id: m.user_id,
+              user_name: m.user_name,
+              avatar: m.avatar,
+              avatar_url: m.avatar_url,
+              type: m.type
+            }))
+          });
+          
           setMensajes(data.messages);
           localStorage.setItem(`messages_${roomName}`, JSON.stringify(data.messages));
         }
       }
     } catch (error) {
+      console.error('❌ [message.jsx Client] Error cargando mensajes:', error);
     }
   }, [getAuthHeaders]);
 
@@ -715,7 +732,6 @@ useEffect(() => {
       body: JSON.stringify({
         room_name: conversacionActiva,
         message: mensaje,
-        type: tipo,
         extra_data: tipo === 'gift' ? { gift_type: mensaje } : null
       })
     });
@@ -729,7 +745,6 @@ useEffect(() => {
           user_name: usuario.name,
           user_role: usuario.rol,
           message: mensaje,
-          type: tipo,
           created_at: new Date().toISOString()
         };
         
@@ -1254,7 +1269,6 @@ useEffect(() => {
         }, 100);
       }
     } catch (error) {
-      console.error('Error creando conversación:', error);
       // En caso de error, usar conversación local
       const conversacionLocal = {
         ...openChatWith,
@@ -1457,7 +1471,6 @@ useEffect(() => {
         }
       }
     } catch (error) {
-      console.error('Error abriendo chat con modelo:', error);
       hasOpenedSpecificChat.current = false; // Permitir reintentar en caso de error
     }
   };
@@ -1470,19 +1483,15 @@ useEffect(() => {
   // 🔥 FUNCIÓN PARA REPRODUCIR SONIDO DE LLAMADA SALIENTE
   const playOutgoingCallSound = useCallback(async () => {
     try {
-      console.log('📞 [MESSAGE-CLIENT] Iniciando reproducción de sonido de llamada saliente');
       
       // 🔥 SOLICITAR PERMISOS DE AUDIO PRIMERO (activar AudioContext)
       if (typeof window !== 'undefined' && window.AudioContext) {
         try {
           const audioContext = new (window.AudioContext || window.webkitAudioContext)();
           if (audioContext.state === 'suspended') {
-            console.log('📞 [MESSAGE-CLIENT] AudioContext suspendido, resumiendo...');
             await audioContext.resume();
-            console.log('✅ [MESSAGE-CLIENT] AudioContext resumido');
           }
         } catch (ctxError) {
-          console.warn('⚠️ [MESSAGE-CLIENT] Error con AudioContext:', ctxError);
         }
       }
       
@@ -1501,40 +1510,30 @@ useEffect(() => {
       
       // Agregar event listeners para debugging
       audio.addEventListener('loadstart', () => {
-        console.log('📞 [MESSAGE-CLIENT] Audio saliente: loadstart');
       });
       audio.addEventListener('canplay', () => {
-        console.log('📞 [MESSAGE-CLIENT] Audio saliente: canplay');
       });
       audio.addEventListener('play', () => {
-        console.log('✅ [MESSAGE-CLIENT] Audio saliente: play iniciado');
       });
       audio.addEventListener('error', (e) => {
-        console.error('❌ [MESSAGE-CLIENT] Error en audio element saliente:', e);
       });
       
       outgoingCallAudioRef.current = audio;
       
       try {
-        console.log('📞 [MESSAGE-CLIENT] Intentando reproducir audio saliente...');
         await audio.play();
-        console.log('✅ [MESSAGE-CLIENT] Sonido de llamada saliente reproducido exitosamente');
         logger.debug('Sonido de llamada saliente iniciado');
       } catch (playError) {
-        console.warn('⚠️ [MESSAGE-CLIENT] Error reproduciendo sonido de llamada saliente:', playError);
-        console.warn('⚠️ [MESSAGE-CLIENT] Detalles del error:', {
+        logger.error('Error al reproducir audio:', {
           name: playError.name,
           message: playError.message,
           stack: playError.stack
         });
         if (playError.name === 'NotAllowedError') {
           logger.warn('Permiso de audio no concedido');
-          console.warn('⚠️ [MESSAGE-CLIENT] Reproducción de audio bloqueada por el navegador - se requiere interacción del usuario');
         }
       }
     } catch (error) {
-      console.error('❌ [MESSAGE-CLIENT] Error en playOutgoingCallSound:', error);
-      console.error('❌ [MESSAGE-CLIENT] Stack:', error.stack);
       logger.error('Error al reproducir sonido de llamada', error);
     }
   }, []);
@@ -1635,7 +1634,6 @@ useEffect(() => {
           id: otherUserId,
           name: otherUserName,
           callId: callId,
-          roomName: roomName,
           status: 'calling'
         });
         
@@ -1684,7 +1682,6 @@ useEffect(() => {
           id: otherUserId,
           name: otherUserName,
           callId: null,
-          roomName: roomName,
           status: 'initiating'
         });
         // Intentar polling con un ID temporal o esperar
@@ -2141,11 +2138,9 @@ useEffect(() => {
   try {
     const authToken = localStorage.getItem('token');
     if (!authToken) {
-      console.warn('⚠️ No hay token de autenticación');
       return;
     }
 
-    console.log('💰 [BALANCE] Iniciando carga de balance...');
 
     // OBTENER BALANCE DE GIFTS (regalos específicos) - Este endpoint devuelve el balance total
     const giftsResponse = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
@@ -2156,7 +2151,6 @@ useEffect(() => {
     if (giftsResponse.ok) {
       const giftsData = await giftsResponse.json();
 
-      console.log('💰 [BALANCE] Respuesta completa de gift balance:', giftsData);
       
       if (giftsData.success && giftsData.balance) {
         // 🔥 FIX: Acceder correctamente a los datos
@@ -2164,24 +2158,14 @@ useEffect(() => {
         const purchasedBalanceValue = giftsData.balance.purchased_balance ?? 0;
         const totalBalanceValue = giftsData.balance.total_balance ?? (purchasedBalanceValue + giftBalanceValue);
         
-        console.log('💰 [BALANCE] Valores obtenidos:', {
-          gift_balance: giftBalanceValue,
-          purchased_balance: purchasedBalanceValue,
-          total_balance: totalBalanceValue,
-          estructura_completa: giftsData.balance
-        });
-        
         // 🔥 ACTUALIZAR AMBOS BALANCES
         setGiftBalance(giftBalanceValue);
         setUserBalance(totalBalanceValue); // 🔥 SIEMPRE actualizar con el total
         
-        console.log('✅ [BALANCE] Balance actualizado - Total:', totalBalanceValue, 'Gift:', giftBalanceValue);
       } else {
-        console.error('❌ [BALANCE] Error en respuesta de gift balance:', giftsData.error || 'No success');
       }
     } else {
       const errorText = await giftsResponse.text().catch(() => 'No se pudo leer el error');
-      console.error('❌ [BALANCE] Error HTTP al obtener gift balance:', giftsResponse.status, errorText);
     }
 
     // OBTENER BALANCE DE COINS (monedas generales) como respaldo
@@ -2193,7 +2177,6 @@ useEffect(() => {
     if (coinsResponse.ok) {
       const coinsData = await coinsResponse.json();
       if (coinsData.success && coinsData.total_coins) {
-        console.log('💰 [BALANCE] Balance de coins obtenido:', coinsData.total_coins);
         // Si userBalance sigue en 0, usar este valor
         if (userBalance === 0) {
           setUserBalance(coinsData.total_coins);
@@ -2202,7 +2185,6 @@ useEffect(() => {
     }
 
   } catch (error) {
-    console.error('❌ [BALANCE] Excepción al obtener balance:', error);
   }
   }, [getAuthHeaders, userBalance]);
 
@@ -2552,7 +2534,6 @@ const renderMensaje = useCallback((mensaje) => {
                   key={`gift-request-${mensaje.id}-${finalGiftData.gift_name}`}
                   style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    console.warn('⚠️ Error cargando imagen de regalo:', imageUrl);
                     // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
                     if (fallback) {
@@ -2664,7 +2645,6 @@ const renderMensaje = useCallback((mensaje) => {
                   key={`gift-received-${mensaje.id}-${finalReceivedGiftData.gift_name}`}
                   style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    console.warn('⚠️ Error cargando imagen de regalo recibido:', receivedImageUrl);
                     // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
                     if (fallback) {
@@ -2766,7 +2746,6 @@ const renderMensaje = useCallback((mensaje) => {
                   key={`gift-sent-${mensaje.id}-${finalSentGiftData.gift_name}`}
                   style={{ display: 'block', minHeight: '48px', minWidth: '48px' }}
                   onError={(e) => {
-                    console.warn('⚠️ Error cargando imagen de regalo enviado:', sentImageUrl);
                     // No ocultar la imagen, solo mostrar fallback
                     const fallback = e.target.parentNode.querySelector('.gift-fallback');
                     if (fallback) {
@@ -2878,7 +2857,6 @@ const renderMensaje = useCallback((mensaje) => {
           try {
             changeGlobalLanguage(lng);
           } catch (error) {
-            console.warn('Error cambiando idioma global:', error);
           }
         }
         
@@ -3272,9 +3250,7 @@ const renderMensaje = useCallback((mensaje) => {
     <div 
       className="bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white overflow-hidden flex flex-col p-4 sm:p-6"
       style={isMobile ? {
-        height: '100vh',
         height: '-webkit-fill-available',
-        minHeight: '100vh',
         minHeight: '-webkit-fill-available'
       } : {
         height: '100vh'
@@ -3305,141 +3281,36 @@ const renderMensaje = useCallback((mensaje) => {
           isMobile ? '' : ''
         } border border-[#ff007a]/10 relative`}>
           
-          {/* Sidebar de conversaciones */}
-          <aside className={`${
-            isMobile
-              ? `fixed inset-y-0 left-0 z-40 w-full bg-[#2b2d31] transform transition-transform ${
-                  showSidebar ? 'translate-x-0' : '-translate-x-full'
-                }`
-              : 'w-1/3 bg-[#2b2d31]'
-          } p-4 overflow-y-auto`}>
-            
-            {isMobile && (
-              <button
-                onClick={() => setShowSidebar(false)}
-                className="absolute top-4 right-4 text-white/60 hover:text-white"
-              >
-                <X size={20} />
-              </button>
-            )}
+          {/* Sidebar de conversaciones - Componente modular mejorado */}
+          <ConversationList
+            conversations={conversaciones}
+            filteredConversations={conversacionesFiltradas}
+            searchQuery={busquedaConversacion}
+            onSearchChange={setBusquedaConversacion}
+            activeConversation={conversacionActiva}
+            onSelectConversation={abrirConversacion}
+            loading={loading}
+            onlineUsers={onlineUsers}
+            favoritos={favoritos}
+            bloqueados={bloqueados}
+            bloqueadoPor={bloqueadoPor}
+            unreadCounts={calculateUnreadCount}
+            getDisplayName={getDisplayName}
+            getInitial={getInitial}
+            getBlockStatus={getBlockStatus}
+            formatearTiempo={formatearTiempo}
+            currentUser={usuario}
+            isMobile={isMobile}
+            onCloseSidebar={() => setShowSidebar(false)}
+            showSidebar={showSidebar}
+          />
 
-            {/* Búsqueda */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-white/50" />
-              <input
-                type="text"
-                placeholder={t('chat.searchPlaceholder')}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
-                value={busquedaConversacion}
-                onChange={(e) => setBusquedaConversacion(e.target.value)}
-              />
-            </div>
-
-            {/* Lista de conversaciones */}
-            <div className="space-y-2">
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#ff007a] mx-auto mb-2"></div>
-                  <p className="text-xs text-white/60">{t('chat.loading')}</p>
-                </div>
-              ) : conversacionesFiltradas.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare size={32} className="text-white/30 mx-auto mb-2" />
-                  <p className="text-sm text-white/60">{t('chat.noConversations')}</p>
-                </div>
-              ) : (
-                conversacionesFiltradas.map((conv) => {
-                  const isOnline = onlineUsers.has(conv.other_user_id);
-                  const unreadCount = calculateUnreadCount(conv);
-
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => abrirConversacion(conv)}
-                      className={`p-3 hover:bg-[#3a3d44] rounded-lg cursor-pointer transition-colors border ${
-                        conversacionActiva === conv.room_name
-                          ? 'bg-[#ff007a]/20 border-[#ff007a]'
-                          : 'border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          {conv.avatar_url ? (
-                            <img 
-                              src={conv.avatar_url} 
-                              alt={conv.other_user_display_name || conv.other_user_name} 
-                              className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextElementSibling.style.display = 'flex';
-                              }}
-                            />
-                          ) : null}
-                          <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conv.avatar_url ? 'hidden' : ''}`}>
-                            {getInitial(getDisplayName(conv.other_user_id, conv.other_user_display_name || conv.other_user_name))}
-                          </div>
-                          
-                          {/* Indicador de estado: Online/Offline o Bloqueado */}
-                          {(() => {
-                            const blockStatus = getBlockStatus(conv.other_user_id);
-                            if (blockStatus === 'yo_bloquee') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" title="Bloqueado por ti" />;
-                            } else if (blockStatus === 'me_bloquearon') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" title="Te bloqueó" />;
-                            } else if (blockStatus === 'mutuo') {
-                              return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title="Bloqueo mutuo" />;
-                            } else {
-                              // Usar is_online de la conversación si está disponible, sino verificar onlineUsers
-                              const userIsOnline = conv.is_online !== undefined 
-                                ? conv.is_online 
-                                : onlineUsers.has(conv.other_user_id);
-                              return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
-                                userIsOnline ? 'bg-green-500' : 'bg-gray-500'
-                              }`} title={userIsOnline ? 'En línea' : 'Desconectado'} />;
-                            }
-                          })()}
-                          
-                          {unreadCount > 0 && (
-                            <div className="absolute -top-1 -left-1 bg-[#ff007a] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                              {unreadCount}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">
-                            {getDisplayName(conv.other_user_id, conv.other_user_display_name || conv.other_user_name)}
-                          </p>
-                          <div className="text-xs text-white/60 truncate">
-                            {conv.last_message_sender_id === usuario.id ? (
-                              <span><span className="text-white/40">{t('chat.you')}:</span> {conv.last_message}</span>
-                            ) : (
-                              conv.last_message
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          {conv.last_message_time && formatearTiempo(conv.last_message_time) && (
-                            <span className="text-xs text-white/40">
-                              {formatearTiempo(conv.last_message_time)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </aside>
-
-          {/* Panel de chat */}
+          {/* Panel de chat - Mejorado */}
           <section className={`${
             isMobile
               ? `${showSidebar ? 'hidden' : 'w-full h-full'}`
               : 'w-2/3'
-          } bg-[#0a0d10] flex flex-col relative overflow-hidden`}>
+          } bg-gradient-to-b from-[#0a0d10] via-[#131418] to-[#0a0d10] flex flex-col relative overflow-hidden shadow-inner`}>
             
             {!conversacionActiva ? (
               !isMobile && (
@@ -3453,138 +3324,42 @@ const renderMensaje = useCallback((mensaje) => {
               )
             ) : (
               <>
-                {/* Header de conversación */}
-                <div className="bg-[#2b2d31] px-5 py-3 flex justify-between items-center border-b border-[#ff007a]/20">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      {conversacionSeleccionada?.avatar_url ? (
-                        <img 
-                          src={conversacionSeleccionada.avatar_url} 
-                          alt={conversacionSeleccionada.other_user_display_name || conversacionSeleccionada.other_user_name} 
-                          className="w-10 h-10 rounded-full object-cover border-2 border-[#ff007a]"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextElementSibling.style.display = 'flex';
-                          }}
-                        />
-                      ) : null}
-                      <div className={`w-10 h-10 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm ${conversacionSeleccionada?.avatar_url ? 'hidden' : ''}`}>
-                        {getInitial(getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name))}
-                      </div>
-                      {/* Indicador de estado en header */}
-                      {(() => {
-                        const blockStatus = getBlockStatus(conversacionSeleccionada?.other_user_id);
-                        if (blockStatus === 'yo_bloquee') {
-                          return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#2b2d31]" title={t('chat.status.blockedByYou')} />;
-                        } else if (blockStatus === 'me_bloquearon') {
-                          return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-[#2b2d31]" title={t('chat.status.blockedYou')} />;
-                        } else if (blockStatus === 'mutuo') {
-                          return <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-red-700 rounded-full border-2 border-[#2b2d31]" title={t('chat.status.mutualBlock')} />;
-                        } else {
-                          return <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${
-                            onlineUsers.has(conversacionSeleccionada?.other_user_id) ? 'bg-green-500' : 'bg-gray-500'
-                          }`} title={onlineUsers.has(conversacionSeleccionada?.other_user_id) ? t('chat.online') : t('chat.offline')} />;
-                        }
-                      })()}
-                    </div>
-                    <div>
-                      <span className="font-semibold block">
-                        {getDisplayName(conversacionSeleccionada?.other_user_id, conversacionSeleccionada?.other_user_display_name || conversacionSeleccionada?.other_user_name)}
-                      </span>
-                      {/* Mostrar estado de bloqueo */}
-                      {conversacionSeleccionada && (() => {
-                        const blockStatus = getBlockStatus(conversacionSeleccionada.other_user_id);
-                        if (blockStatus === 'yo_bloquee') {
-                          return (
-                            <span className="text-xs text-red-400">
-                              <Ban size={12} className="inline mr-1" />
-                              {t('chat.status.blockedByYou')}
-                            </span>
-                          );
-                        } else if (blockStatus === 'me_bloquearon') {
-                          return (
-                            <span className="text-xs text-orange-400">
-                              <Ban size={12} className="inline mr-1" />
-                              {t('chat.status.blockedYou')}
-                            </span>
-                          );
-                        } else if (blockStatus === 'mutuo') {
-                          return (
-                            <span className="text-xs text-red-600">
-                              <Ban size={12} className="inline mr-1" />
-                              {t('chat.status.mutualBlock')}
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </div>
+                {/* Header de conversación - Componente modular mejorado */}
+                <ChatHeader
+                  conversation={conversacionSeleccionada}
+                  isOnline={onlineUsers.has(conversacionSeleccionada?.other_user_id)}
+                  blockStatus={conversacionSeleccionada ? getBlockStatus(conversacionSeleccionada.other_user_id) : null}
+                  isFavorite={conversacionSeleccionada ? favoritos.has(conversacionSeleccionada.other_user_id) : false}
+                  isCallActive={isCallActive}
+                  isReceivingCall={isReceivingCall}
+                  loadingActions={loadingActions}
+                  isChatBlocked={isChatBlocked()}
+                  onVideoCall={() => {
+                    if (conversacionSeleccionada?.other_user_id) {
+                      iniciarLlamadaReal(
+                        conversacionSeleccionada.other_user_id,
+                        conversacionSeleccionada.other_user_name
+                      );
+                    }
+                  }}
+                  onToggleFavorite={() => {
+                    if (conversacionSeleccionada?.other_user_id) {
+                      toggleFavorito(
+                        conversacionSeleccionada.other_user_id,
+                        conversacionSeleccionada.other_user_name
+                      );
+                    }
+                  }}
+                  onOpenSettings={() => setShowMainSettings(!showMainSettings)}
+                  getDisplayName={getDisplayName}
+                  getInitial={getInitial}
+                  isMobile={isMobile}
+                  onBackToConversations={isMobile ? () => setShowSidebar(true) : undefined}
+                />
 
-                  <div className="flex items-center gap-2">
-                    {/* 🔥 BOTÓN DE VIDEOLLAMADA */}
-                    {conversacionSeleccionada && !isChatBlocked() && (
-                      <button
-                        onClick={() => {
-                          if (conversacionSeleccionada?.other_user_id) {
-                            iniciarLlamadaReal(
-                              conversacionSeleccionada.other_user_id,
-                              conversacionSeleccionada.other_user_name
-                            );
-                          }
-                        }}
-                        disabled={isCallActive || isReceivingCall || loadingActions}
-                        className={`text-white hover:text-[#ff007a] transition-colors p-2 hover:bg-[#3a3d44] rounded-lg ${
-                          isCallActive || isReceivingCall || loadingActions
-                            ? 'opacity-50 cursor-not-allowed'
-                            : ''
-                        }`}
-                        title={t('chat.videoCall', 'Videollamada')}
-                      >
-                        <Video size={20} />
-                      </button>
-                    )}
-
-                    {/* 🔥 BOTÓN DE FAVORITOS */}
-                    {conversacionSeleccionada && (
-                      <button
-                        onClick={() => {
-                          if (conversacionSeleccionada?.other_user_id) {
-                            toggleFavorito(
-                              conversacionSeleccionada.other_user_id,
-                              conversacionSeleccionada.other_user_name
-                            );
-                          }
-                        }}
-                        disabled={loadingActions}
-                        className={`transition-colors p-2 hover:bg-[#3a3d44] rounded-lg ${
-                          favoritos.has(conversacionSeleccionada?.other_user_id)
-                            ? 'text-[#ff007a] fill-[#ff007a]'
-                            : 'text-white hover:text-[#ff007a]'
-                        } ${loadingActions ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title={
-                          favoritos.has(conversacionSeleccionada?.other_user_id)
-                            ? t('chat.removeFromFavorites', 'Quitar de favoritos')
-                            : t('chat.addToFavorites', 'Agregar a favoritos')
-                        }
-                      >
-                        <Star 
-                          size={20} 
-                          className={favoritos.has(conversacionSeleccionada?.other_user_id) ? 'fill-current' : ''}
-                        />
-                      </button>
-                    )}
-
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowMainSettings(!showMainSettings)}
-                        className="text-white hover:text-[#ff007a] transition-colors p-2 hover:bg-[#3a3d44] rounded-lg"
-                      >
-                        <Settings size={20} />
-                      </button>
-
-                      {showMainSettings && (
-                        <div className="absolute right-0 mt-2 bg-[#1f2125] border border-[#ff007a]/30 rounded-xl shadow-lg z-50 w-64">
+                {/* Menú de configuración (mantener existente) */}
+                {showMainSettings && (
+                  <div className="absolute right-4 top-16 bg-[#1f2125] border border-[#ff007a]/30 rounded-xl shadow-lg z-50 w-64">
                           <button
                             onClick={() => {
                               setShowTranslationSettings(true);
@@ -3666,20 +3441,15 @@ const renderMensaje = useCallback((mensaje) => {
                               : t('chat.menu.block')
                             }
                           </button>
-                        </div>
-                      )}
-                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Mensajes + Indicador de bloqueo */}
+                {/* Mensajes + Indicador de bloqueo - Mejorado */}
                 <div
                   ref={mensajesRef}
-                  className="flex-1 overflow-y-auto p-4 space-y-3"
-                  style={{
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: '#ff007a #2b2d31'
-                  }}
+                  className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 custom-scrollbar bg-gradient-to-b from-[#0a0d10] via-[#131418] to-[#0a0d10]"
+                  role="log"
+                  aria-label={t('chat.messages') || "Mensajes"}
                 >
                   {/* INDICADOR DE USUARIO BLOQUEADO */}
                   {conversacionSeleccionada && bloqueados.has(conversacionSeleccionada.other_user_id) && (
@@ -3728,42 +3498,42 @@ const renderMensaje = useCallback((mensaje) => {
                   )}
 
                   {mensajes.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-white/60">{t('chat.noMessages')}</p>
+                    <div className="flex-1 flex items-center justify-center min-h-[200px]">
+                      <div className="text-center">
+                        <MessageSquare size={48} className="text-white/20 mx-auto mb-3" />
+                        <p className="text-white/60 font-medium">{t('chat.noMessages') || "No hay mensajes aún"}</p>
+                        <p className="text-white/40 text-sm mt-1">{t('chat.startConversation') || "Comienza la conversación enviando un mensaje"}</p>
+                      </div>
                     </div>
                   ) : (
-                    mensajes.map((mensaje) => {
+                    mensajes.map((mensaje, index) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
 
+                      // 🔍 DEBUG: Verificar datos del mensaje antes de renderizar
+                      if (!esUsuarioActual && mensaje.user_id) {
+                        console.log('📨 [message.jsx Client] Preparando mensaje para renderizar:', {
+                          message_id: mensaje.id,
+                          user_id: mensaje.user_id,
+                          user_name: mensaje.user_name,
+                          avatar: mensaje.avatar,
+                          avatar_url: mensaje.avatar_url,
+                          has_avatar: !!(mensaje.avatar || mensaje.avatar_url),
+                          message_type: mensaje.type,
+                          is_own: esUsuarioActual
+                        });
+                      }
+
                       return (
-                        <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
-                          <div className="flex flex-col max-w-sm md:max-w-md lg:max-w-lg">
-                            {!esUsuarioActual && (
-                              <div className="flex items-center gap-2 mb-1 px-2">
-                                <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
-                                  {getInitial(mensaje.user_name)}
-                                </div>
-                                <span className="text-xs text-white/60">{mensaje.user_name}</span>
-                              </div>
-                            )}
-                            <div
-                              className={`relative px-4 py-2 rounded-2xl text-sm break-words overflow-wrap-anywhere ${
-                                mensaje.type === 'gift_request' || mensaje.type === 'gift_sent'
-                                  ? '' // Sin fondo para gift_request
-                                  : esUsuarioActual
-                                    ? "bg-[#ff007a] text-white rounded-br-md shadow-lg"
-                                    : mensaje.type === 'gift'
-                                      ? "bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-bl-md shadow-lg"
-                                      : "bg-[#2b2d31] text-white/80 rounded-bl-md shadow-lg"
-                              }`}
-                            >
-                              {renderMensaje(mensaje)}
-                              <div className="text-xs opacity-70 mt-1">
-                                {formatearTiempo(mensaje.created_at)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <MessageBubble
+                          key={mensaje.id || `${mensaje.created_at}_${index}`}
+                          message={mensaje}
+                          isOwnMessage={esUsuarioActual}
+                          userName={mensaje.user_name}
+                          getInitial={getInitial}
+                          formatearTiempo={formatearTiempo}
+                          renderMessageContent={renderMensaje}
+                          index={index}
+                        />
                       );
                     })
                   )}
@@ -3790,54 +3560,32 @@ const renderMensaje = useCallback((mensaje) => {
                   )}
                 </div>
 
-                {/* Input mensaje */}
-                <div className={`bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-3 ${
-                  isMobile ? 'p-3 pb-safe-area-inset-bottom sticky bottom-0 z-10' : 'p-4'
-                }`}>
-                  <input
-                    type="text"
-                    placeholder={
-                      isChatBlocked()
-                        ? bloqueados.has(conversacionSeleccionada?.other_user_id)
-                          ? t('chat.status.cannotSendBlocked')
-                          : t('chat.status.userBlockedYou')
-                        : t('chat.messagePlaceholder')
-                    }
-                    className={`flex-1 px-4 py-2 rounded-full outline-none placeholder-white/60 ${
-                      isChatBlocked()
-                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'bg-[#1a1c20] text-white focus:ring-2 focus:ring-[#ff007a]/50'
-                    }`}
-                    value={nuevoMensaje}
-                    onChange={(e) => {
-                      if (!isChatBlocked()) {
-                        setNuevoMensaje(e.target.value);
-                      }
-                    }}
-                    onKeyDown={(e) => e.key === "Enter" && !isChatBlocked() && enviarMensaje()}
-                    disabled={isChatBlocked()}
-                  />
-                  {/* Botón de regalos */}
-                  <button
-                    onClick={async (e) => {
+                {/* Input mensaje - Componente modular mejorado */}
+                <MessageInput
+                  message={nuevoMensaje}
+                  onMessageChange={setNuevoMensaje}
+                  onSend={enviarMensaje}
+                  onGiftClick={async (e) => {
+                    if (e) {
                       e.preventDefault();
                       e.stopPropagation();
-                      if (!conversacionSeleccionada) {
-                        alert("Selecciona una conversación para enviar regalos");
-                        return;
-                      }
-                      if (isChatBlocked()) {
-                        alert("No puedes enviar regalos (chat bloqueado)");
-                        return;
-                      }
-                      // Recargar regalos y balance antes de abrir el modal
-                      console.log('🔄 Recargando regalos y balance antes de abrir modal...');
-                      console.log('📦 Regalos ANTES de recargar:', gifts.length, gifts);
-                      console.log('💰 Gift Balance ANTES de recargar:', giftBalance);
-                      
+                    }
+                    
+                    
+                    if (!conversacionSeleccionada) {
+                      alert("Selecciona una conversación para enviar regalos");
+                      return;
+                    }
+                    if (isChatBlocked()) {
+                      alert("No puedes enviar regalos (chat bloqueado)");
+                      return;
+                    }
+                    
+                    // Recargar regalos y balance antes de abrir el modal
+                    
+                    try {
                       // Recargar regalos
                       const giftsResult = await loadGifts();
-                      console.log('📦 Resultado de carga de regalos:', giftsResult);
                       
                       // Actualizar balance
                       await updateBalance();
@@ -3845,58 +3593,20 @@ const renderMensaje = useCallback((mensaje) => {
                       // Esperar un momento para que los estados se actualicen
                       await new Promise(resolve => setTimeout(resolve, 100));
                       
-                      console.log('📦 Regalos DESPUÉS de recargar:', gifts.length, gifts);
-                      console.log('💰 Gift Balance DESPUÉS de recargar:', giftBalance);
+                      
                       setShowGiftsModal(true);
-                    }}
-                    className={`
-                      flex-shrink-0 px-4 py-2 rounded-full font-semibold transition-all duration-300 flex items-center gap-2 relative z-10
-                      ${!conversacionSeleccionada || !giftBalance || giftBalance <= 0 || isChatBlocked()
-                        ? 'bg-gray-800/50 text-gray-500 opacity-50'
-                        : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white hover:scale-105 shadow-lg border border-amber-400/30'
-                      }
-                    `}
-                    title={
-                      !conversacionSeleccionada 
-                        ? "Selecciona una conversación para enviar regalos"
-                        : !giftBalance || giftBalance <= 0
-                          ? "Necesitas gift coins para enviar regalos"
-                          : isChatBlocked()
-                            ? "No puedes enviar regalos (chat bloqueado)"
-                            : "Enviar regalo"
+                    } catch (error) {
+                      // Aún así, intentar abrir el modal
+                      setShowGiftsModal(true);
                     }
-                  >
-                    <Gift size={16} />
-                    {!isMobile && (
-                      <span className="hidden sm:inline">
-                        {!conversacionSeleccionada || !giftBalance || giftBalance <= 0 
-                          ? "" 
-                          : "Regalo"
-                        }
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => enviarMensaje()}
-                    disabled={!nuevoMensaje.trim() || isChatBlocked()}
-                    className={`px-6 py-2 rounded-full font-semibold transition-colors flex items-center gap-2 ${
-                      isChatBlocked()
-                        ? 'bg-gray-600 cursor-not-allowed text-gray-400'
-                        : !nuevoMensaje.trim()
-                          ? 'bg-gray-600 cursor-not-allowed text-gray-400'
-                          : 'bg-[#ff007a] hover:bg-[#e6006e] text-white'
-                    }`}
-                  >
-                    <Send size={16} />
-                    {!isMobile && (
-                      isChatBlocked() 
-                        ? bloqueados.has(conversacionSeleccionada?.other_user_id) 
-                          ? t('chat.status.blocked')
-                          : t('chat.status.blockedYou')
-                        : t('chat.send')
-                    )}
-                  </button>
-                </div>
+                  }}
+                  isChatBlocked={isChatBlocked()}
+                  hasGiftBalance={giftBalance > 0}
+                  hasConversation={!!conversacionSeleccionada}
+                  isMobile={isMobile}
+                  disabled={false}
+                  sending={false}
+                />
               </>
             )}
           </section>

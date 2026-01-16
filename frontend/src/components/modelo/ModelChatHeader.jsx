@@ -52,8 +52,23 @@ const ModelChatHeader = ({
 
         {/* Avatar */}
         <div className="relative flex-shrink-0">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 hover:scale-105">
-            {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 hover:scale-105 overflow-hidden relative">
+            {conversation.avatar_url || conversation.avatar ? (
+              <img 
+                src={conversation.avatar_url || (conversation.avatar && conversation.avatar.startsWith('http') ? conversation.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conversation.avatar}`)}
+                alt={displayName}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  if (e.target.nextSibling) {
+                    e.target.nextSibling.style.display = 'flex';
+                  }
+                }}
+              />
+            ) : null}
+            <div className={`absolute inset-0 flex items-center justify-center ${conversation.avatar_url || conversation.avatar ? 'hidden' : ''}`}>
+              {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
+            </div>
           </div>
           
           {/* Indicador de estado */}
@@ -142,5 +157,9 @@ const ModelChatHeader = ({
 };
 
 export default memo(ModelChatHeader);
+
+
+
+
 
 

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\PlatformSettingsService;
+use App\Services\CallPricingService;
 
 class SessionEarningsController extends Controller
 {
@@ -658,27 +659,27 @@ class SessionEarningsController extends Controller
 
     private function calculateTimeEarnings($durationSeconds)
     {
-        $durationMinutes = $durationSeconds / 60;
-        $payableMinutes = floor($durationSeconds / 60); // Solo minutos completos
+        $payableMinutes = (int) floor($durationSeconds / 60); // Solo minutos completos
         $qualifyingSession = $payableMinutes >= 1;
 
-        // 🔥 Obtener valores dinámicos desde PlatformSettingsService
-        // 30 USD/hora = 0.50 USD/minuto total
-        // 20 USD/hora para modelo = 0.333 USD/minuto
-        // 10 USD/hora para plataforma = 0.167 USD/minuto
-        $earningsPerMinute = PlatformSettingsService::getDecimal('earnings_per_minute', 0.333);
-        $platformEarningsPerMinute = PlatformSettingsService::getDecimal('platform_earnings_per_minute', 0.167);
-        $coinsPerMinute = PlatformSettingsService::getInteger('coins_per_minute', 10);
-        
-        $modelEarnings = $qualifyingSession ? round($payableMinutes * $earningsPerMinute, 2) : 0;
-        $platformEarnings = $qualifyingSession ? round($payableMinutes * $platformEarningsPerMinute, 2) : 0;
-        $theoreticalCoinsConsumed = ceil($payableMinutes * $coinsPerMinute);
+        if (!$qualifyingSession) {
+            return [
+                'qualifying' => false,
+                'payable_minutes' => $payableMinutes,
+                'model_earnings' => 0,
+                'platform_earnings' => 0,
+                'theoretical_coins' => 0
+            ];
+        }
+
+        $progressiveEarnings = CallPricingService::calculateProgressiveEarnings($payableMinutes);
+        $theoreticalCoinsConsumed = CallPricingService::calculateProgressiveCoins(1, $payableMinutes);
         
         return [
             'qualifying' => $qualifyingSession,
             'payable_minutes' => $payableMinutes,
-            'model_earnings' => $modelEarnings,
-            'platform_earnings' => $platformEarnings,
+            'model_earnings' => $progressiveEarnings['model_earnings'],
+            'platform_earnings' => $progressiveEarnings['platform_earnings'],
             'theoretical_coins' => $theoreticalCoinsConsumed
         ];
     }

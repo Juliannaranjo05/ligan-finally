@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, Info, X, Mic, MicOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, Gift, Timer } from 'lucide-react';
+import { Clock, Info, X, Mic, MicOff, PhoneOff, Settings, Volume2, VolumeX, Gift, Timer } from 'lucide-react';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
 
@@ -154,16 +154,6 @@ const TimeDisplayImproved = ({
                 <Settings size={16} />
               </button>
 
-              {/* ⏭️ SIGUIENTE PERSONA */}
-              <button
-                onClick={siguientePersona}
-                disabled={loading}
-                className={`mobile-control-button mobile-control-skip ${loading ? 'mobile-control-disabled' : ''}`}
-                title="Buscar siguiente persona"
-              >
-                <SkipForward size={16} />
-              </button>
-
               {/* ☎️ COLGAR */}
               <button
                 onClick={finalizarChat}
@@ -245,18 +235,6 @@ const TimeDisplayImproved = ({
               </button>
 
               {/* 🔥 SEPARADOR */}
-              <div className="controls-separator-small"></div>
-
-              {/* ⏭️ SIGUIENTE PERSONA */}
-              <button
-                onClick={siguientePersona}
-                disabled={loading}
-                className={`control-button control-button-skip ${loading ? 'control-button-disabled' : ''}`}
-                title="Buscar siguiente persona"
-              >
-                <SkipForward size={18} />
-              </button>
-
               {/* ☎️ COLGAR */}
               <button
                 onClick={finalizarChat}

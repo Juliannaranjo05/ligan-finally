@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Models\UserOnlineStatus;     // ← Línea 67 (o donde esté el modelo)
 use App\Models\ChatSession;
 
@@ -21,12 +22,14 @@ class HeartbeatController extends Controller
             $activityType = $request->input('activity_type', 'browsing');
             $roomName = $request->input('room');
             
-            Log::info('💓 Heartbeat recibido', [
-                'user_id' => $user->id,
-                'activity_type' => $activityType,
-                'room' => $roomName,
-                'timestamp' => now()->toISOString()
-            ]);
+            if (config('app.debug')) {
+                Log::info('💓 Heartbeat recibido', [
+                    'user_id' => $user->id,
+                    'activity_type' => $activityType,
+                    'room' => $roomName,
+                    'timestamp' => now()->toISOString()
+                ]);
+            }
 
             // 🔥 VALIDACIONES ESPECÍFICAS PARA VIDEOCHAT (con manejo de errores)
             if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
@@ -127,14 +130,17 @@ class HeartbeatController extends Controller
 
             // 🔥 CLEANUP AUTOMÁTICO: Finalizar sesiones de usuarios inactivos (con manejo de errores)
             if (in_array($activityType, ['videochat', 'videochat_client', 'videochat_model'])) {
-                try {
-                    $this->cleanupInactiveVideoSessions($roomName, $user->id);
-                } catch (\Exception $cleanupError) {
-                    // No fallar el heartbeat por errores en cleanup
-                    Log::warning('⚠️ Error en cleanup de sesiones inactivas', [
-                        'error' => $cleanupError->getMessage(),
-                        'user_id' => $user->id
-                    ]);
+                $cleanupKey = "heartbeat_cleanup_{$user->id}";
+                if (Cache::add($cleanupKey, true, 60)) {
+                    try {
+                        $this->cleanupInactiveVideoSessions($roomName, $user->id);
+                    } catch (\Exception $cleanupError) {
+                        // No fallar el heartbeat por errores en cleanup
+                        Log::warning('⚠️ Error en cleanup de sesiones inactivas', [
+                            'error' => $cleanupError->getMessage(),
+                            'user_id' => $user->id
+                        ]);
+                    }
                 }
             }
 
@@ -180,10 +186,12 @@ class HeartbeatController extends Controller
     private function cleanupInactiveVideoSessions($currentRoomName, $currentUserId)
     {
         try {
-            Log::info('🧹 Iniciando cleanup automático de sesiones inactivas', [
-                'current_room' => $currentRoomName,
-                'current_user' => $currentUserId
-            ]);
+            if (config('app.debug')) {
+                Log::info('🧹 Iniciando cleanup automático de sesiones inactivas', [
+                    'current_room' => $currentRoomName,
+                    'current_user' => $currentUserId
+                ]);
+            }
 
             // Buscar sesiones activas donde hay usuarios sin heartbeat reciente
             $activeSessions = ChatSession::where('status', 'active')

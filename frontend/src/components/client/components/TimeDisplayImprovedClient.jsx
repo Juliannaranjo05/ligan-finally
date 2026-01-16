@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wifi, WifiOff, User, Signal, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, SkipForward, MoreVertical, ArrowRightLeft } from 'lucide-react';
+import { Wifi, WifiOff, User, Signal, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, MoreVertical, ArrowRightLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
@@ -181,16 +181,6 @@ const TimeDisplayImprovedClient = ({
                 {volumeEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
               </button>
 
-              {/* ⏭️ SIGUIENTE PERSONA */}
-              <button
-                onClick={siguientePersona}
-                disabled={loading}
-                className={`mobile-control-button mobile-control-skip ${loading ? 'mobile-control-disabled' : ''}`}
-                title="Buscar siguiente persona"
-              >
-                <SkipForward size={16} />
-              </button>
-
               {/* ☎️ COLGAR */}
               <button
                 onClick={finalizarChat}
@@ -297,18 +287,6 @@ const TimeDisplayImprovedClient = ({
               </button>
 
               {/* 🔥 SEPARADOR */}
-              <div className="controls-separator-small"></div>
-
-              {/* ⏭️ SIGUIENTE PERSONA */}
-              <button
-                onClick={siguientePersona}
-                disabled={loading}
-                className={`control-button control-button-skip ${loading ? 'control-button-disabled' : ''}`}
-                title="Buscar siguiente persona"
-              >
-                <SkipForward size={18} />
-              </button>
-
               {/* ☎️ COLGAR */}
               <button
                 onClick={finalizarChat}

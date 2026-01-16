@@ -21,6 +21,8 @@ use App\Models\VideoChatSession;
 use App\Models\SessionEarning;
 use App\Http\Controllers\SessionEarningsController;
 use App\Services\PlatformSettingsService;
+use App\Services\CallPricingService;
+use App\Models\CoinConsumption;
 use App\Helpers\VideoChatLogger;
 
 class LiveKitController extends Controller
@@ -4883,29 +4885,31 @@ private function getNotificationMessage($endReason)
                 ], 403);
             }
 
-            // 🔥 USAR CANTIDAD MANUAL SI SE PROPORCIONA
-            if ($manualCoinsAmount) {
-                $coinsToDeduct = $manualCoinsAmount;
-                $minutesConsumed = $coinsToDeduct / VideoChatCoinController::COST_PER_MINUTE;
-                
-                Log::info('💰 [DEBUG] Usando cantidad manual de coins', [
-                    'user_id' => $user->id,
-                    'manual_coins' => $manualCoinsAmount,
-                    'calculated_minutes' => round($minutesConsumed, 3),
-                    'source' => 'frontend_deduction_system'
-                ]);
-            } else {
-                // Lógica automática original
-                $minutesConsumed = $durationSeconds / 60;
-                $coinsToDeduct = ceil($minutesConsumed * VideoChatCoinController::COST_PER_MINUTE);
-                
-                Log::info('💰 [DEBUG] Usando cálculo automático', [
-                    'user_id' => $user->id,
-                    'duration_seconds' => $durationSeconds,
-                    'minutes_consumed' => round($minutesConsumed, 3),
-                    'coins_to_deduct' => $coinsToDeduct
-                ]);
-            }
+            $minutesConsumed = max(1, (int) floor($durationSeconds / 60));
+
+            $completedMinutes = (int) floor(
+                CoinConsumption::where('user_id', $user->id)
+                    ->where('room_name', $roomName)
+                    ->sum('minutes_consumed')
+            );
+
+            $baseMinuteValueUsd = CallPricingService::getBaseMinuteValueUsd();
+            $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+            $coinsToDeduct = CallPricingService::calculateProgressiveCoins(
+                $completedMinutes + 1,
+                $minutesConsumed,
+                $baseMinuteValueUsd,
+                $coinsPerMinute
+            );
+
+            Log::info('💰 [DEBUG] Cálculo progresivo de coins', [
+                'user_id' => $user->id,
+                'duration_seconds' => $durationSeconds,
+                'minutes_consumed' => $minutesConsumed,
+                'completed_minutes' => $completedMinutes,
+                'coins_to_deduct' => $coinsToDeduct,
+                'manual_coins_amount' => $manualCoinsAmount
+            ]);
 
             if (!$this->coinController) {
                 return response()->json([

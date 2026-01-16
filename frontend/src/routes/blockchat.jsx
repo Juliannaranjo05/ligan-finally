@@ -79,7 +79,7 @@ const RouteGuard = ({ children }) => {
                                   currentPath.startsWith('/videochat?');
         
         if (!isVideoChatRoute) {
-          console.log('🚫 RUTA BLOQUEADA POR GUARD (session active):', currentPath, 'role:', userRole);
+          console.log('Redirigiendo a videochat desde:', currentPath, 'role:', userRole);
           
           // 🔥 REDIRIGIR A LA RUTA CORRECTA SEGÚN EL ROL
           const videochatRoute = userRole === 'cliente' ? '/videochatclient' : '/videochat';

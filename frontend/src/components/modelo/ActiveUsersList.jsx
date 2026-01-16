@@ -37,7 +37,7 @@ const ActiveUsersList = ({
 
   if (loadingUsers) {
     return (
-      <div className="px-4 pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
         <div className="flex items-center justify-center py-8">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#ff007a] border-t-transparent"></div>
@@ -52,7 +52,7 @@ const ActiveUsersList = ({
 
   if (usuariosActivos.length === 0) {
     return (
-      <div className="px-4 pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
         <div className="flex flex-col items-center justify-center text-center py-8">
           <Users size={48} className="text-white/20 mb-3" />
           <p className="text-sm text-white/60 font-medium">
@@ -67,9 +67,9 @@ const ActiveUsersList = ({
   }
 
   return (
-    <div className="px-4 pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
       {/* Barra de búsqueda y vista */}
-      <div className="sticky top-0 bg-[#2b2d31] pt-3 pb-2 z-10 -mx-4 px-4">
+      <div className="sticky top-0 bg-[#2b2d31] pt-2 pb-2 z-10 -mx-3 sm:-mx-4 px-3 sm:px-4">
         {/* Búsqueda y controles en una fila */}
         <div className="flex items-center gap-2 mb-2">
           {/* Búsqueda */}

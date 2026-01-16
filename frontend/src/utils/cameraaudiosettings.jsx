@@ -8,8 +8,33 @@ import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
  */
 
 
- const applyMirrorToAllVideos = (shouldMirror) => {
-    
+const isLocalVideoElement = (video) => {
+  if (!video) {
+    return false;
+  }
+  const lkLocal = video.getAttribute('data-lk-local-participant');
+  if (lkLocal !== null) {
+    return lkLocal === 'true';
+  }
+  const participant = video.getAttribute('data-participant');
+  if (participant !== null) {
+    return participant === 'local';
+  }
+  return true;
+};
+
+const applyMirrorToVideo = (video, shouldMirror) => {
+  if (!video || !video.style) {
+    return;
+  }
+  const shouldApplyMirror = shouldMirror && isLocalVideoElement(video);
+  const transformValue = shouldApplyMirror ? 'scaleX(-1)' : 'scaleX(1)';
+
+  video.style.transform = transformValue;
+  video.style.webkitTransform = transformValue;
+};
+
+const applyMirrorToAllVideos = (shouldMirror) => {
   const selectors = [
     '[data-lk-participant-video]',
     'video[data-participant="local"]',
@@ -18,14 +43,11 @@ import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
     'video[autoplay][muted]',
     '.participant-video video'
   ];
-  
-  selectors.forEach(selector => {
+
+  selectors.forEach((selector) => {
     const videos = document.querySelectorAll(selector);
-    videos.forEach(video => {
-      if (video && video.style) {
-        video.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-        video.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-      }
+    videos.forEach((video) => {
+      applyMirrorToVideo(video, shouldMirror);
     });
   });
 };
@@ -41,14 +63,12 @@ const setupMirrorObserver = (shouldMirror) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === 1) {
           if (node.tagName === 'VIDEO') {
-            node.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-            node.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
+            applyMirrorToVideo(node, shouldMirror);
           }
-          
+
           const videos = node.querySelectorAll ? node.querySelectorAll('video') : [];
-          videos.forEach(video => {
-            video.style.transform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
-            video.style.webkitTransform = shouldMirror ? 'scaleX(-1)' : 'scaleX(1)';
+          videos.forEach((video) => {
+            applyMirrorToVideo(video, shouldMirror);
           });
         }
       });

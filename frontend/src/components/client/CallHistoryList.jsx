@@ -136,12 +136,25 @@ const CallHistoryList = ({
                   item.type === 'favorite' 
                     ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' 
                     : 'bg-gradient-to-br from-[#ff007a] to-[#e6006e]'
-                } text-white font-bold rounded-full flex items-center justify-center text-sm shadow-lg`}>
-                  {item.type === 'favorite' ? (
-                    <Star size={16} className="text-white" fill="white" />
-                  ) : (
-                    getInitial(item.user_name)
-                  )}
+                } text-white font-bold rounded-full flex items-center justify-center text-sm shadow-lg overflow-hidden relative`}>
+                  {item.avatar_url || item.avatar ? (
+                    <img 
+                      src={item.avatar_url || (item.avatar && item.avatar.startsWith('http') ? item.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${item.avatar}`)}
+                      alt={item.user_name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div className={`absolute inset-0 flex items-center justify-center ${item.avatar_url || item.avatar ? 'hidden' : ''}`}>
+                    {item.type === 'favorite' ? (
+                      <Star size={16} className="text-white" fill="white" />
+                    ) : (
+                      getInitial(item.user_name)
+                    )}
+                  </div>
                 </div>
                 <div className="text-sm min-w-0 flex-1">
                   <p className="font-medium text-white truncate">{item.user_name}</p>

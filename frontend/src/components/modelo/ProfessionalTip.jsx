@@ -61,19 +61,19 @@ const ProfessionalTip = ({ className = '' }) => {
   }, []); // Solo se ejecuta una vez al montar
 
   return (
-    <div className={`w-full bg-gradient-to-br from-[#2b2d31] to-[#1f2125] border border-[#ff007a]/30 rounded-xl p-2 sm:p-3 md:p-4 text-center transition-all duration-500 flex-shrink-0 ${className}`}>
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-        <Lightbulb className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#ff007a]" />
-        <p className="text-white text-[10px] sm:text-xs md:text-sm font-semibold">
+    <div className={`w-full bg-gradient-to-br from-[#2b2d31] to-[#1f2125] border border-[#ff007a]/30 rounded-xl p-4 sm:p-5 lg:p-4 text-center transition-all duration-500 flex-shrink-0 shadow-lg ${className}`}>
+      <div className="flex items-center justify-center gap-2 sm:gap-2.5 mb-2 sm:mb-2.5">
+        <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 lg:w-4 lg:sm:w-5 text-[#ff007a]" />
+        <p className="text-white text-xs sm:text-sm lg:text-xs lg:sm:text-sm font-semibold">
           {t("client.restrictions.professionalTip")?.replace(/🌟\s*/g, '').trim() || "Consejo Profesional"}
         </p>
       </div>
       {selectedTip ? (
-        <p className="text-white/80 text-[10px] sm:text-xs md:text-sm italic leading-relaxed animate-fadeIn line-clamp-3">
+        <p className="text-white/80 text-xs sm:text-sm lg:text-xs lg:sm:text-sm italic leading-relaxed animate-fadeIn px-2">
           {selectedTip}
         </p>
       ) : (
-        <p className="text-white/60 text-[10px] sm:text-xs md:text-sm italic leading-relaxed">
+        <p className="text-white/60 text-xs sm:text-sm lg:text-xs lg:sm:text-sm italic leading-relaxed">
           Cargando consejo...
         </p>
       )}

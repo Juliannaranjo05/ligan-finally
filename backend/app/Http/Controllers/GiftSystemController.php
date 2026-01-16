@@ -724,6 +724,28 @@ class GiftSystemController extends Controller
             try {
                 Log::info('🚀 Creando mensaje modelo...');
                 
+                // 🔥 Priorizar imagen personalizada del cliente (avatar) sobre imagen del regalo estándar
+                // Recargar el usuario para asegurar que tenemos el avatar más reciente
+                $user->refresh();
+                
+                $giftImage = null;
+                Log::info('🔍 Verificando avatar del cliente', [
+                    'user_id' => $user->id,
+                    'avatar' => $user->avatar,
+                    'avatar_exists' => !empty($user->avatar),
+                    'gift_image_path' => $giftRequest->gift->image_path ?? null
+                ]);
+                
+                if ($user->avatar && !empty(trim($user->avatar))) {
+                    // Si el cliente tiene avatar personalizado, usarlo
+                    $giftImage = $user->avatar;
+                    Log::info('✅ Usando avatar personalizado del cliente', ['avatar' => $giftImage]);
+                } else {
+                    // Si no, usar la imagen del regalo estándar
+                    $giftImage = $giftRequest->gift->image_path ?? null;
+                    Log::info('⚠️ Usando imagen del regalo estándar', ['gift_image' => $giftImage]);
+                }
+                
                 $modeloMessage = ChatMessage::create([
                 'room_name' => ($giftRequest->room_name ?? 'chat_default') . '_modelo',
                 'user_id' => $user->id,
@@ -733,7 +755,7 @@ class GiftSystemController extends Controller
                 'type' => 'gift_received',
                 'extra_data' => json_encode([
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
-                    'gift_image' => $giftRequest->gift->image_path ?? null, // ← 🔥 AGREGAR ESTA LÍNEA
+                    'gift_image' => $giftImage, // ← 🔥 USAR IMAGEN PERSONALIZADA DEL CLIENTE SI EXISTE
                     'gift_price' => $giftRequest->amount ?? 0,
                     'client_name' => $user->name ?? 'Cliente',
                     'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
@@ -1867,10 +1889,32 @@ class GiftSystemController extends Controller
             try {
                 Log::info('🚀 [SIMPLE] Creando mensaje modelo...');
                 
+                // 🔥 Priorizar imagen personalizada del cliente (avatar) sobre imagen del regalo estándar
+                // Recargar el usuario para asegurar que tenemos el avatar más reciente
+                $user->refresh();
+                
+                $giftImage = null;
+                Log::info('🔍 [SIMPLE] Verificando avatar del cliente', [
+                    'user_id' => $user->id,
+                    'avatar' => $user->avatar,
+                    'avatar_exists' => !empty($user->avatar),
+                    'gift_image_path' => $giftRequest->gift->image_path ?? null
+                ]);
+                
+                if ($user->avatar && !empty(trim($user->avatar))) {
+                    // Si el cliente tiene avatar personalizado, usarlo
+                    $giftImage = $user->avatar;
+                    Log::info('✅ [SIMPLE] Usando avatar personalizado del cliente', ['avatar' => $giftImage]);
+                } else {
+                    // Si no, usar la imagen del regalo estándar
+                    $giftImage = $giftRequest->gift->image_path ?? null;
+                    Log::info('⚠️ [SIMPLE] Usando imagen del regalo estándar', ['gift_image' => $giftImage]);
+                }
+                
                 // Mensaje para la modelo
                 $giftDataForModelo = [
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
-                    'gift_image' => $giftRequest->gift->image_path ?? null,
+                    'gift_image' => $giftImage, // ← 🔥 USAR IMAGEN PERSONALIZADA DEL CLIENTE SI EXISTE
                     'gift_price' => $giftRequest->amount ?? 0,
                     'client_name' => $user->name ?? 'Cliente',
                     'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',

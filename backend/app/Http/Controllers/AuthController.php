@@ -51,22 +51,76 @@ class AuthController extends Controller
 
             $token = $user->createToken('ligand-token')->plainTextToken;
 
-            // Enviar correo de verificación (no bloquear si falla)
-            try {
-                Log::info('📤 Enviando correo a ' . $user->email);
-                Mail::to($user->email)->send(new VerifyCode($code));
-                Log::info('✅ Correo enviado');
-            } catch (\Throwable $mailError) {
-                Log::error('❌ Error enviando correo: ' . $mailError->getMessage());
-                // No lanzar error, el registro fue exitoso aunque el correo falle
+            // Validar configuración de correo antes de enviar
+            $mailDriver = config('mail.default');
+            $mailHost = config('mail.mailers.smtp.host');
+            $mailUsername = config('mail.mailers.smtp.username');
+            $mailPassword = config('mail.mailers.smtp.password');
+            
+            $emailSent = false;
+            $emailError = null;
+            
+            if ($mailDriver === 'smtp' && (!$mailHost || !$mailUsername || !$mailPassword)) {
+                Log::error('❌ Configuración de correo incompleta', [
+                    'mail_driver' => $mailDriver,
+                    'mail_host' => $mailHost ? 'configured' : 'NOT SET',
+                    'mail_username' => $mailUsername ? 'configured' : 'NOT SET',
+                    'mail_password' => $mailPassword ? 'configured' : 'NOT SET'
+                ]);
+                $emailError = 'Configuración de correo incompleta en el servidor';
+            } else {
+                // Enviar correo de verificación
+                try {
+                    Log::info('📤 Enviando correo de verificación', [
+                        'email' => $user->email,
+                        'code' => $code,
+                        'mail_driver' => $mailDriver,
+                        'mail_host' => $mailHost,
+                        'mail_port' => config('mail.mailers.smtp.port'),
+                        'mail_encryption' => config('mail.mailers.smtp.encryption'),
+                        'mail_username' => $mailUsername ? substr($mailUsername, 0, 3) . '***' : 'NOT SET'
+                    ]);
+                    Mail::to($user->email)->send(new VerifyCode($code));
+                    $emailSent = true;
+                    Log::info('✅ Correo enviado exitosamente a ' . $user->email);
+                } catch (\Throwable $mailError) {
+                    $emailError = $mailError->getMessage();
+                    $isAuthError = strpos($emailError, 'authentication failed') !== false || 
+                                  strpos($emailError, '535') !== false ||
+                                  strpos($emailError, 'authentication') !== false;
+                    
+                    Log::error('❌ Error enviando correo de verificación', [
+                        'email' => $user->email,
+                        'error' => $emailError,
+                        'error_class' => get_class($mailError),
+                        'trace' => $mailError->getTraceAsString(),
+                        'is_auth_error' => $isAuthError,
+                        'mail_host' => $mailHost,
+                        'mail_port' => config('mail.mailers.smtp.port'),
+                        'mail_encryption' => config('mail.mailers.smtp.encryption')
+                    ]);
+                }
             }
 
-            return response()->json([
+            // Retornar respuesta con información sobre el estado del correo
+            $response = [
                 'message' => 'Registro exitoso',
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user->toArray()
-            ]);
+                'user' => $user->toArray(),
+                'email_sent' => $emailSent,
+            ];
+            
+            if (!$emailSent) {
+                $response['email_warning'] = 'El registro fue exitoso, pero no se pudo enviar el correo de verificación. Por favor, usa la opción "Reenviar código" o contacta al soporte.';
+                Log::warning('⚠️ Registro exitoso pero correo no enviado', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $emailError
+                ]);
+            }
+
+            return response()->json($response);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Error de validación',
@@ -384,10 +438,12 @@ class AuthController extends Controller
     public function resendCode(Request $request)
     {
         Log::info('🔐 Intento de reenvío', [
-        'ip' => $request->ip(),
-        'user_agent' => $request->userAgent(),
-        'email' => $request->email,
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'email' => $request->email,
+            'has_auth' => auth('sanctum')->check()
         ]);
+        
         $request->validate([
             'email' => 'required|email',
         ]);
@@ -395,12 +451,17 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
+            Log::warning('❌ Intento de reenvío para email no registrado', ['email' => $request->email]);
             return response()->json(['message' => 'Usuario no encontrado'], 404);
         }
 
         // Si está bloqueado por muchos reintentos
         if ($user->resend_blocked_until && now()->lessThan($user->resend_blocked_until)) {
             $minutosRestantes = now()->diffInMinutes($user->resend_blocked_until);
+            Log::warning('⚠️ Usuario bloqueado por reenvíos', [
+                'email' => $user->email,
+                'minutos_restantes' => $minutosRestantes
+            ]);
             return response()->json([
                 'message' => "Has alcanzado el límite de reenvíos. Intenta de nuevo en $minutosRestantes minutos."
             ], 429);
@@ -412,6 +473,7 @@ class AuthController extends Controller
             $user->resend_blocked_until = now()->addMinutes(10);
             $user->save();
 
+            Log::warning('⚠️ Usuario bloqueado por exceso de reenvíos', ['email' => $user->email]);
             return response()->json([
                 'message' => 'Has alcanzado el límite de reenvíos. Espera 10 minutos para intentarlo de nuevo.'
             ], 429);
@@ -424,24 +486,81 @@ class AuthController extends Controller
         $user->resend_attempts += 1;
         $user->save();
 
-        try {
-            Log::info('📤 Reenviando código a ' . $user->email);
-            Mail::to($user->email)->send(new VerifyCode($newCode));
-            Log::info('✅ Código reenviado');
-        } catch (\Throwable $e) {
-            Log::error('❌ Error reenviando código', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'email' => $user->email,
-                'code' => $newCode
+        Log::info('📝 Nuevo código generado', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'code' => $newCode,
+            'expires_at' => $user->code_expires_at->toISOString(),
+            'resend_attempts' => $user->resend_attempts
+        ]);
+
+        // Validar configuración de correo
+        $mailDriver = config('mail.default');
+        $mailHost = config('mail.mailers.smtp.host');
+        $mailUsername = config('mail.mailers.smtp.username');
+        $mailPassword = config('mail.mailers.smtp.password');
+        
+        if ($mailDriver === 'smtp' && (!$mailHost || !$mailUsername || !$mailPassword)) {
+            Log::error('❌ Configuración de correo incompleta en reenvío', [
+                'mail_driver' => $mailDriver,
+                'mail_host' => $mailHost ? 'configured' : 'NOT SET',
+                'mail_username' => $mailUsername ? 'configured' : 'NOT SET',
+                'mail_password' => $mailPassword ? 'configured' : 'NOT SET'
             ]);
             return response()->json([
-                'message' => 'Error al reenviar el código.',
-                'error' => config('app.debug') ? $e->getMessage() : null
+                'message' => 'Error de configuración del servidor de correo. Por favor, contacta al soporte.',
+                'error' => 'Mail configuration incomplete'
             ], 500);
         }
 
-        return response()->json(['message' => 'Código reenviado correctamente.']);
+        try {
+            Log::info('📤 Reenviando código de verificación', [
+                'email' => $user->email,
+                'code' => $newCode,
+                'mail_driver' => $mailDriver,
+                'mail_host' => $mailHost,
+                'mail_port' => config('mail.mailers.smtp.port'),
+                'mail_encryption' => config('mail.mailers.smtp.encryption'),
+                'mail_username' => $mailUsername ? substr($mailUsername, 0, 3) . '***' : 'NOT SET'
+            ]);
+            Mail::to($user->email)->send(new VerifyCode($newCode));
+            Log::info('✅ Código reenviado exitosamente a ' . $user->email);
+        } catch (\Throwable $e) {
+            $errorMessage = $e->getMessage();
+            $isAuthError = strpos($errorMessage, 'authentication failed') !== false || 
+                          strpos($errorMessage, '535') !== false ||
+                          strpos($errorMessage, 'authentication') !== false;
+            
+            Log::error('❌ Error reenviando código', [
+                'message' => $errorMessage,
+                'error_class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+                'email' => $user->email,
+                'code' => $newCode,
+                'mail_host' => $mailHost,
+                'mail_port' => config('mail.mailers.smtp.port'),
+                'mail_encryption' => config('mail.mailers.smtp.encryption'),
+                'is_auth_error' => $isAuthError
+            ]);
+            
+            // Mensaje más específico según el tipo de error
+            if ($isAuthError) {
+                return response()->json([
+                    'message' => 'Error de autenticación con el servidor de correo. Por favor, verifica la configuración de correo en el servidor.',
+                    'error' => config('app.debug') ? 'SMTP Authentication failed. Check MAIL_USERNAME and MAIL_PASSWORD in .env file.' : null
+                ], 500);
+            }
+            
+            return response()->json([
+                'message' => 'Error al reenviar el código. Por favor, verifica tu conexión e intenta de nuevo más tarde.',
+                'error' => config('app.debug') ? $errorMessage : null
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Código reenviado exitosamente.',
+            'expires_at' => $user->code_expires_at->toISOString()
+        ]);
     }
     public function eliminarNoVerificado(Request $request)
     {

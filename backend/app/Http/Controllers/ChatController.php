@@ -272,12 +272,46 @@ class ChatController extends Controller
                 ->orderBy('created_at', 'asc')
                 ->limit(100)
                 ->get()
-                ->map(function ($message) {
+                ->map(function ($message) use ($user) {
+                    // Obtener el usuario para obtener su avatar y nickname
+                    $messageUser = null;
+                    $avatarUrl = null;
+                    $displayName = $message->user_name; // Por defecto usar el nombre del mensaje
+                    
+                    if ($message->user_id) {
+                        $messageUser = User::find($message->user_id);
+                        if ($messageUser) {
+                            // Obtener avatar
+                            if ($messageUser->avatar) {
+                                $profileController = new ProfileSettingsController();
+                                $avatarUrl = $profileController->generateAvatarUrl($messageUser->avatar);
+                            }
+                            
+                            // 🔥 Obtener nickname: primero el que el usuario actual le puso, luego el propio
+                            $nickname = \App\Models\UserNickname::where('user_id', $user->id)
+                                ->where('target_user_id', $messageUser->id)
+                                ->first();
+                            
+                            // Si no hay nickname del usuario actual, buscar el nickname propio del remitente
+                            if (!$nickname && $messageUser->rol === 'modelo') {
+                                $nickname = \App\Models\UserNickname::where('user_id', $messageUser->id)
+                                    ->where('target_user_id', $messageUser->id)
+                                    ->first();
+                            }
+                            
+                            // Usar nickname si existe, sino el nombre real
+                            $displayName = $nickname ? $nickname->nickname : $messageUser->name;
+                        }
+                    }
+                    
                     $result = [
                         'id' => $message->id,
                         'user_id' => $message->user_id,
-                        'user_name' => $message->user_name,
+                        'user_name' => $displayName, // 🔥 Usar displayName (nickname) en lugar de user_name original
+                        'user_name_original' => $message->user_name, // Guardar el original por si acaso
                         'user_role' => $message->user_role,
+                        'avatar' => $messageUser ? $messageUser->avatar : null,
+                        'avatar_url' => $avatarUrl,
                         'message' => $message->message,
                         'type' => $message->type,
                         'extra_data' => $message->extra_data,

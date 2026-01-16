@@ -200,7 +200,7 @@ export default function Favoritos() {
     }
     
     return { estado: 'unknown', texto: t('favorites.status.unknown'), color: 'text-gray-500' };
-  };
+  };;
 
   // 🔥 FUNCIÓN PARA INICIAR LLAMADA REAL CON VERIFICACIÓN DE BLOQUEO
   const iniciarLlamadaReal = async (otherUserId, otherUserName) => {

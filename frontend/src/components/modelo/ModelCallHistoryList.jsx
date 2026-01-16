@@ -94,8 +94,8 @@ const ModelCallHistoryList = ({
 
   if (loadingHistory) {
     return (
-      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex flex-col flex-1 min-h-0">
-        <div className="flex items-center justify-center py-8">
+      <div className="flex flex-col flex-1 min-h-0 border-t border-[#ff007a]/10">
+        <div className="flex items-center justify-center py-8 px-3 sm:px-4">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#ff007a] border-t-transparent"></div>
         </div>
       </div>
@@ -104,8 +104,8 @@ const ModelCallHistoryList = ({
 
   if (callHistory.length === 0) {
     return (
-      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex flex-col flex-1 min-h-0">
-        <div className="text-center py-8">
+      <div className="flex flex-col flex-1 min-h-0 border-t border-[#ff007a]/10">
+        <div className="text-center py-8 px-3 sm:px-4">
           <Clock size={32} className="text-white/20 mx-auto mb-3" />
           <p className="text-white/60 text-sm">
             {t("client.history.noHistory")}
@@ -138,12 +138,25 @@ const ModelCallHistoryList = ({
                   item.type === 'favorite' 
                     ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' 
                     : 'bg-gradient-to-br from-[#ff007a] to-[#e6006e]'
-                } text-white font-bold rounded-full flex items-center justify-center text-sm shadow-lg`}>
-                  {item.type === 'favorite' ? (
-                    <Star size={16} className="text-white" fill="white" />
-                  ) : (
-                    getInitial(item.user_name)
-                  )}
+                } text-white font-bold rounded-full flex items-center justify-center text-sm shadow-lg overflow-hidden relative`}>
+                  {item.avatar_url || item.avatar ? (
+                    <img 
+                      src={item.avatar_url || (item.avatar && item.avatar.startsWith('http') ? item.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${item.avatar}`)}
+                      alt={item.user_name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div className={`absolute inset-0 flex items-center justify-center ${item.avatar_url || item.avatar ? 'hidden' : ''}`}>
+                    {item.type === 'favorite' ? (
+                      <Star size={16} className="text-white" fill="white" />
+                    ) : (
+                      getInitial(item.user_name)
+                    )}
+                  </div>
                 </div>
                 <div className="text-sm min-w-0 flex-1">
                   <p className="font-medium text-white truncate">{item.user_name}</p>
@@ -208,9 +221,9 @@ const ModelCallHistoryList = ({
   };
 
   return (
-    <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-[#ff007a]/10 flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 border-t border-[#ff007a]/10">
       {/* Barra de búsqueda y filtros */}
-      <div className="flex-shrink-0 bg-[#2b2d31] pt-2 pb-2 z-10 -mx-3 sm:-mx-4 px-3 sm:px-4">
+      <div className="flex-shrink-0 bg-[#2b2d31] pt-2 pb-2 z-10 px-3 sm:px-4">
         {/* Búsqueda */}
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/40" />
@@ -272,7 +285,7 @@ const ModelCallHistoryList = ({
       </div>
 
       {/* Historial agrupado */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 pt-2">
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 pt-2 px-3 sm:px-4 pb-3 sm:pb-4">
         {!hasResults ? (
           <div className="flex flex-col items-center justify-center text-center py-8">
             <Search size={32} className="text-white/20 mb-3" />

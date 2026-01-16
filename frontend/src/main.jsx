@@ -27,10 +27,6 @@ try {
 
 // 🔇 FILTRAR LOGS REPETITIVOS DE LIVEKIT - DEBE EJECUTARSE ANTES QUE CUALQUIER OTRO CÓDIGO
 (function() {
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  const originalInfo = console.info;
   
   // Patrones a filtrar - más específicos
   const filteredPatterns = [
@@ -68,6 +64,11 @@ try {
     
     return filteredPatterns.some(pattern => pattern.test(combinedStr));
   };
+  
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalInfo = console.info;
   
   console.log = function(...args) {
     if (!shouldFilter(...args)) {

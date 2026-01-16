@@ -18,6 +18,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Dependencies
+node_modules/
+
 # Archivos de editor
 .vscode/
 .idea/
@@ -29,3 +32,6 @@ Thumbs.db
 *cambios locales*
 *commitearlos primero*
 
+# Archivos temporales locales
+tmp_*.php
+backend/test-email.php

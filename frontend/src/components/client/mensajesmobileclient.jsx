@@ -130,17 +130,10 @@ export default function ChatPrivadoMobile() {
   
   // 🔍 LOG INICIAL AL MONTAR COMPONENTE
   useEffect(() => {
-    console.log('🟡 [MOBILE] ========== COMPONENTE MONTADO ==========');
-    console.log('🟡 [MOBILE] location.pathname:', location.pathname);
-    console.log('🟡 [MOBILE] location.search:', location.search);
-    console.log('🟡 [MOBILE] location.state:', JSON.stringify(location.state, null, 2));
-    console.log('🟡 [MOBILE] openChatWith:', JSON.stringify(openChatWith, null, 2));
-    console.log('🟡 [MOBILE] usuario.id:', usuario.id);
-    console.log('🟡 [MOBILE] =========================================');
   }, []);
 
-  // 🔥 FUNCIÓN PARA OBTENER HEADERS
-  const getAuthHeaders = () => {
+  // 🔥 FUNCIÓN PARA OBTENER HEADERS (useCallback para evitar problemas de inicialización)
+  const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem("token");
     return {
       'Content-Type': 'application/json',
@@ -148,15 +141,17 @@ export default function ChatPrivadoMobile() {
       'X-Requested-With': 'XMLHttpRequest',
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
-  };
+  }, []);
 
   // 🎁 SISTEMA DE REGALOS
   const giftSystem = useGiftSystem(usuario.id, usuario.rol, getAuthHeaders, API_BASE_URL);
+  
+  // 🔥 Destructuring seguro con valores por defecto para evitar errores de inicialización
   const {
-    gifts,
-    loadingGifts,
-    pendingRequests,
-    loadingRequests,
+    gifts = [],
+    loadingGifts = false,
+    pendingRequests = [],
+    loadingRequests = false,
     loadGifts,
     loadPendingRequests,
     setPendingRequests,
@@ -165,27 +160,15 @@ export default function ChatPrivadoMobile() {
     rejectGiftRequest,
     requestGift,
     generateSessionToken,
-    userBalance,
+    userBalance = 0,
     setUserBalance,
     loadUserBalance
   } = giftSystem || {};
   
   // 🔥 Verificar que sendGiftSimple esté disponible
   useEffect(() => {
-    console.log('🎁 [CLIENT] Verificando sendGiftSimple:', {
-      available: !!sendGiftSimple,
-      type: typeof sendGiftSimple,
-      giftSystemExists: !!giftSystem,
-      giftSystemKeys: giftSystem ? Object.keys(giftSystem) : [],
-      giftSystemType: typeof giftSystem,
-      hasSendGiftSimple: giftSystem ? 'sendGiftSimple' in giftSystem : false,
-      sendGiftSimpleValue: giftSystem?.sendGiftSimple,
-      sendGiftSimpleType: typeof giftSystem?.sendGiftSimple
-    });
     
     if (!sendGiftSimple && giftSystem) {
-      console.warn('🎁 [CLIENT] ⚠️ sendGiftSimple no está en giftSystem, pero giftSystem existe');
-      console.warn('🎁 [CLIENT] giftSystem completo:', giftSystem);
     }
   }, [sendGiftSimple, giftSystem]);
 
@@ -723,7 +706,6 @@ export default function ChatPrivadoMobile() {
         
         // 🔥 Debug: Log de los datos del mensaje
         if (!finalGiftData.request_id && !finalGiftData.transaction_id) {
-          console.warn('🎁 [CLIENT] Mensaje gift_request sin request_id:', { mensaje, finalGiftData });
         }
         
         let imageUrl = null;
@@ -790,12 +772,6 @@ export default function ChatPrivadoMobile() {
                   onClick={async () => {
                     const requestId = finalGiftData.request_id || finalGiftData.transaction_id || mensaje.id;
                     
-                    console.log('🎁 [CLIENT] Iniciando aceptación de regalo:', { 
-                      requestId,
-                      finalGiftData,
-                      pendingRequestsCount: pendingRequests?.length || 0
-                    });
-                    
                     setSendingGiftId(requestId);
                     
                     try {
@@ -806,24 +782,20 @@ export default function ChatPrivadoMobile() {
                         const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
                         if (pendingRequest && pendingRequest.security_hash) {
                           securityHash = pendingRequest.security_hash;
-                          console.log('🎁 [CLIENT] ✅ Security hash encontrado en pendingRequests state');
                         }
                       }
                       
                       // 🔥 INTENTO 2: Cargar pendingRequests si no se encontró
                       if (!securityHash) {
-                        console.log('🎁 [CLIENT] Cargando solicitudes pendientes...');
                         try {
                           // 🔥 Asegurar que loadPendingRequests siempre retorne algo
                           let loadResult = await loadPendingRequests();
                           
                           // 🔥 Si loadResult es undefined o null, crear un objeto por defecto
                           if (!loadResult || typeof loadResult !== 'object') {
-                            console.warn('🎁 [CLIENT] ⚠️ loadPendingRequests devolvió resultado inválido, usando fallback:', loadResult);
                             loadResult = { success: false, requests: [], error: 'Resultado inválido' };
                           }
                           
-                          console.log('🎁 [CLIENT] Resultado de loadPendingRequests:', loadResult);
                           
                           // 🔥 Verificar que loadResult existe y tiene la estructura esperada
                           if (loadResult && typeof loadResult === 'object') {
@@ -831,16 +803,14 @@ export default function ChatPrivadoMobile() {
                               const pendingRequest = loadResult.requests.find(req => req.id === parseInt(requestId));
                               if (pendingRequest && pendingRequest.security_hash) {
                                 securityHash = pendingRequest.security_hash;
-                                console.log('🎁 [CLIENT] ✅ Security hash encontrado en loadResult.requests');
                               } else {
-                                console.warn('🎁 [CLIENT] ⚠️ Solicitud encontrada pero sin security_hash:', pendingRequest);
                               }
                             } else {
-                              console.warn('🎁 [CLIENT] ⚠️ loadPendingRequests no devolvió requests válidos:', {
+                              console.log('⚠️ [CLIENT MOBILE] loadPendingRequests falló:', {
                                 success: loadResult.success,
                                 hasRequests: !!loadResult.requests,
                                 isArray: Array.isArray(loadResult.requests),
-                                error: loadResult.error
+                                // Error handled
                               });
                             }
                           }
@@ -850,12 +820,9 @@ export default function ChatPrivadoMobile() {
                             const pendingRequest = pendingRequests.find(req => req.id === parseInt(requestId));
                             if (pendingRequest && pendingRequest.security_hash) {
                               securityHash = pendingRequest.security_hash;
-                              console.log('🎁 [CLIENT] ✅ Security hash encontrado en pendingRequests state (fallback)');
                             }
                           }
                         } catch (loadError) {
-                          console.error('🎁 [CLIENT] Error cargando pendingRequests:', loadError);
-                          console.error('🎁 [CLIENT] Stack trace:', loadError.stack);
                           // Continuar sin security_hash - el backend puede generarlo
                         }
                       }
@@ -864,7 +831,6 @@ export default function ChatPrivadoMobile() {
                       if (!securityHash) {
                         securityHash = finalGiftData.security_hash || finalGiftData.securityHash || null;
                         if (securityHash) {
-                          console.log('🎁 [CLIENT] ✅ Security hash encontrado en finalGiftData');
                         }
                       }
                       
@@ -876,10 +842,8 @@ export default function ChatPrivadoMobile() {
                             : mensaje.extra_data;
                           securityHash = extraData.security_hash || extraData.securityHash || null;
                           if (securityHash) {
-                            console.log('🎁 [CLIENT] ✅ Security hash encontrado en mensaje.extra_data');
                           }
                         } catch (e) {
-                          console.warn('🎁 [CLIENT] Error parseando extra_data:', e);
                         }
                       }
                       
@@ -891,30 +855,20 @@ export default function ChatPrivadoMobile() {
                             : mensaje.gift_data;
                           securityHash = giftData.security_hash || giftData.securityHash || null;
                           if (securityHash) {
-                            console.log('🎁 [CLIENT] ✅ Security hash encontrado en mensaje.gift_data');
                           }
                         } catch (e) {
-                          console.warn('🎁 [CLIENT] Error parseando gift_data:', e);
                         }
                       }
                       
                       // 🔥 INTENTO 6: Si aún no tenemos security_hash, intentar aceptar sin él (el backend puede generarlo)
                       // El backend tiene lógica para generar el hash si no se proporciona
                       if (!securityHash) {
-                        console.warn('🎁 [CLIENT] ⚠️ No se encontró security_hash. Intentando aceptar sin él (backend puede generarlo)...');
                         // Continuar sin security_hash - el backend puede manejarlo
                       }
-                      
-                      console.log('🎁 [CLIENT] Llamando a sendGiftSimple con:', { 
-                        requestId, 
-                        requestIdType: typeof requestId,
-                        requestIdValue: requestId
-                      });
                       
                       // 🔥 Asegurar que requestId sea un número válido
                       const validRequestId = parseInt(requestId);
                       if (isNaN(validRequestId)) {
-                        console.error('🎁 [CLIENT] ❌ requestId inválido:', requestId);
                         alert('Error: ID de solicitud inválido. Por favor, recarga la página.');
                         return;
                       }
@@ -922,7 +876,6 @@ export default function ChatPrivadoMobile() {
                       // 🔥 Usar el nuevo método sendGiftSimple que es más directo
                       await handleSendGiftSimple(validRequestId);
                     } catch (error) {
-                      console.error('🎁 [CLIENT] Error en onClick:', error);
                       alert('Error inesperado. Por favor, intenta nuevamente.');
                     } finally {
                       setSendingGiftId(null);
@@ -1098,7 +1051,7 @@ export default function ChatPrivadoMobile() {
     try {
       setLoadingGift(true);
       
-      console.log('🎁 [CLIENT] handleSendGiftSimple llamado con:', { 
+      console.log('🎁 [CLIENT MOBILE] Enviando regalo simple:', {
         requestId, 
         pendingRequestsCount: pendingRequests?.length || 0,
         sendGiftSimpleAvailable: !!sendGiftSimple,
@@ -1113,14 +1066,13 @@ export default function ChatPrivadoMobile() {
       const sendGiftFunction = sendGiftSimple || giftSystem?.sendGiftSimple;
       
       if (!sendGiftFunction || typeof sendGiftFunction !== 'function') {
-        console.error('🎁 [CLIENT] ❌ sendGiftSimple no está disponible', {
+        console.error('❌ [CLIENT MOBILE] sendGiftSimple no disponible:', {
           sendGiftSimple,
           giftSystem,
           availableFunctions: giftSystem ? Object.keys(giftSystem) : []
         });
         
         // 🔥 FALLBACK: Llamar directamente al endpoint si el hook no funciona
-        console.log('🎁 [CLIENT] Intentando fallback directo al endpoint...');
         try {
           const response = await fetch(`${API_BASE_URL}/api/gifts/send-simple`, {
             method: 'POST',
@@ -1138,7 +1090,6 @@ export default function ChatPrivadoMobile() {
           try {
             data = JSON.parse(responseText);
           } catch (e) {
-            console.error('🎁 [CLIENT] Error parseando JSON en fallback:', e);
             alert('Error al procesar la respuesta del servidor.');
             return { success: false, error: 'Error al procesar la respuesta' };
           }
@@ -1163,7 +1114,6 @@ export default function ChatPrivadoMobile() {
             return { success: false, error: errorMsg };
           }
         } catch (fallbackError) {
-          console.error('🎁 [CLIENT] Error en fallback directo:', fallbackError);
           alert('Error: No se pudo enviar el regalo. Por favor, recarga la página e intenta nuevamente.');
           return { success: false, error: 'Error de conexión' };
         }
@@ -1171,8 +1121,7 @@ export default function ChatPrivadoMobile() {
       
       const result = await sendGiftFunction(requestId);
       
-      console.log('🎁 [CLIENT] Resultado de sendGiftSimple:', result);
-      console.log('🎁 [CLIENT] Resultado detallado:', {
+      console.log('🎁 [CLIENT MOBILE] Resultado de enviar regalo:', {
         hasResult: !!result,
         success: result?.success,
         error: result?.error,
@@ -1194,7 +1143,6 @@ export default function ChatPrivadoMobile() {
           loadPendingRequests();
         }, 1000);
         // Mostrar mensaje de éxito
-        console.log('🎁 [CLIENT] ✅ Regalo enviado exitosamente');
       } else {
         // 🔥 Asegurar que siempre haya un mensaje de error
         let errorMsg = 'No se pudo enviar el regalo. Por favor, intenta nuevamente.';
@@ -1246,7 +1194,6 @@ export default function ChatPrivadoMobile() {
       
       return result || { success: false, error: 'No se pudo enviar el regalo. Por favor, intenta nuevamente.' };
     } catch (error) {
-      console.error('🎁 [CLIENT] Error inesperado enviando regalo:', error);
       const errorMsg = error?.message || 'Error inesperado al enviar el regalo';
       alert(errorMsg);
       return { success: false, error: errorMsg };
@@ -1263,7 +1210,7 @@ export default function ChatPrivadoMobile() {
       // 🔥 GUARDAR BALANCE ANTES para comparar después
       const balanceBefore = userBalance;
       
-      console.log('🎁 [CLIENT] handleAcceptGift llamado con:', { 
+      console.log('🎁 [CLIENT] Aceptando regalo:', {
         requestId, 
         hasSecurityHash: !!securityHash,
         pendingRequestsCount: pendingRequests?.length || 0,
@@ -1273,7 +1220,6 @@ export default function ChatPrivadoMobile() {
       // 🔥 El backend puede generar el hash si no se proporciona, así que no validamos aquí
       // Solo logueamos para debugging
       if (!securityHash) {
-        console.warn('🎁 [CLIENT] ⚠️ No se proporcionó securityHash, pero el backend puede generarlo');
       }
       
       let result;
@@ -1282,7 +1228,6 @@ export default function ChatPrivadoMobile() {
       } catch (fetchError) {
         // 🔥 Si es un error de conexión, verificar si el regalo se procesó
         if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
-          console.warn('🎁 [CLIENT] Error de conexión al aceptar regalo, verificando si se procesó...');
           
           // Esperar un poco para que el backend procese
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1295,20 +1240,17 @@ export default function ChatPrivadoMobile() {
               await new Promise(resolve => setTimeout(resolve, 500));
               balanceAfter = userBalance;
             } catch (e) {
-              console.error('🎁 [CLIENT] Error cargando balance:', e);
             }
           }
           
           // 🔥 Si el balance cambió, el regalo se aceptó - cargar mensajes y no mostrar error
           if (balanceAfter < balanceBefore) {
-            console.log('🎁 [CLIENT] ✅ Balance cambió, el regalo se aceptó exitosamente');
             
             // Cargar mensajes para mostrar el regalo enviado
             if (conversacionActiva && cargarMensajes) {
               try {
                 await cargarMensajes(conversacionActiva);
               } catch (e) {
-                console.error('🎁 [CLIENT] Error cargando mensajes:', e);
               }
             }
             
@@ -1329,7 +1271,6 @@ export default function ChatPrivadoMobile() {
           }
           
           // Si el balance no cambió, puede que no se haya aceptado, pero no mostrar error
-          console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
           return {
             success: true,
             message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
@@ -1339,8 +1280,7 @@ export default function ChatPrivadoMobile() {
         throw fetchError;
       }
       
-      console.log('🎁 [CLIENT] Resultado de acceptGiftRequest:', result);
-      console.log('🎁 [CLIENT] Resultado detallado:', {
+      console.log('🎁 [CLIENT] Resultado de sendGiftSimple:', {
         hasResult: !!result,
         success: result?.success,
         error: result?.error,
@@ -1395,7 +1335,7 @@ export default function ChatPrivadoMobile() {
           errorMsg = 'Esta transacción ya se está procesando. Por favor espera un momento.';
         }
         
-        console.error('🎁 [CLIENT] Error aceptando regalo:', {
+        console.error('🎁 [CLIENT] Error enviando regalo:', {
           errorMsg,
           result,
           resultType: typeof result,
@@ -1416,11 +1356,9 @@ export default function ChatPrivadoMobile() {
       
       return result || { success: false, error: 'No se pudo aceptar el regalo. Por favor, intenta nuevamente.' };
     } catch (error) {
-      console.error('🎁 [CLIENT] Error inesperado aceptando regalo:', error);
       
       // 🔥 Si es un error de red, verificar si el regalo se procesó
       if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-        console.warn('🎁 [CLIENT] Error de red detectado, verificando si el regalo se procesó...');
         
         // Esperar un poco para que el backend procese
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1434,20 +1372,17 @@ export default function ChatPrivadoMobile() {
             await new Promise(resolve => setTimeout(resolve, 500));
             newBalance = userBalance;
           } catch (e) {
-            console.error('🎁 [CLIENT] Error cargando balance:', e);
           }
         }
         
         // 🔥 Si el balance cambió, el regalo se aceptó - cargar mensajes y no mostrar error
         if (newBalance < currentBalance || conversacionActiva) {
-          console.log('🎁 [CLIENT] ✅ Verificando si el regalo se aceptó...');
           
           // Cargar mensajes para mostrar el regalo enviado
           if (conversacionActiva && cargarMensajes) {
             try {
               await cargarMensajes(conversacionActiva);
             } catch (e) {
-              console.error('🎁 [CLIENT] Error cargando mensajes:', e);
             }
           }
           
@@ -1467,7 +1402,6 @@ export default function ChatPrivadoMobile() {
         }
         
         // Si el balance no cambió, no mostrar error
-        console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
         return {
           success: true,
           message: 'El regalo puede haberse enviado. Verifica tu balance y los mensajes.',
@@ -1601,10 +1535,9 @@ export default function ChatPrivadoMobile() {
       // 🔥 GUARDAR BALANCE ANTES para comparar después
       const balanceBefore = userBalance;
       
-      console.log('🎁 [CLIENT] Enviando regalo directo:', {
+      console.log('🎁 [CLIENT] Enviando regalo:', {
         giftId,
         recipientId,
-        roomName,
         message,
         userBalance: balanceBefore,
         conversacionActiva,
@@ -1636,7 +1569,6 @@ export default function ChatPrivadoMobile() {
         clearTimeout(timeoutId);
         // 🔥 Si es un error de abort (timeout) o error de red, verificar si el regalo se procesó
         if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
-          console.warn('🎁 [CLIENT] Error de conexión detectado, verificando si el regalo se procesó...');
           
           // Esperar un poco para que el backend procese
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1650,20 +1582,17 @@ export default function ChatPrivadoMobile() {
               await new Promise(resolve => setTimeout(resolve, 500));
               balanceAfter = userBalance;
             } catch (e) {
-              console.error('🎁 [CLIENT] Error cargando balance:', e);
             }
           }
           
           // 🔥 Si el balance cambió, el regalo se envió - cargar mensajes y cerrar modal
           if (balanceAfter < balanceBefore) {
-            console.log('🎁 [CLIENT] ✅ Balance cambió, el regalo se envió exitosamente');
             
             // Cargar mensajes para mostrar el regalo enviado
             if (conversacionActiva && cargarMensajes) {
               try {
                 await cargarMensajes(conversacionActiva);
               } catch (e) {
-                console.error('🎁 [CLIENT] Error cargando mensajes:', e);
               }
             }
             
@@ -1685,7 +1614,6 @@ export default function ChatPrivadoMobile() {
           
           // Si el balance no cambió, puede que no se haya enviado, pero no mostrar error
           // porque puede ser un problema temporal de red
-          console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
           setShowGiftsModal(false);
           
           return {
@@ -1702,12 +1630,10 @@ export default function ChatPrivadoMobile() {
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        console.error('🎁 [CLIENT] Error parseando JSON:', e);
-        console.error('🎁 [CLIENT] Respuesta raw:', responseText.substring(0, 1000));
         return { success: false, error: 'Respuesta inválida del servidor' };
       }
 
-      console.log('🎁 [CLIENT] Respuesta de send-direct:', {
+      console.log('🎁 [CLIENT] Respuesta de aceptar regalo:', {
         status: response.status,
         ok: response.ok,
         success: data?.success,
@@ -1752,7 +1678,6 @@ export default function ChatPrivadoMobile() {
             try {
               processedExtraData = JSON.parse(processedExtraData);
             } catch (e) {
-              console.warn('🎁 [CLIENT] Error parseando extra_data:', e);
             }
           }
 
@@ -1826,11 +1751,9 @@ export default function ChatPrivadoMobile() {
         };
       }
     } catch (error) {
-      console.error('🎁 [CLIENT] Excepción enviando regalo:', error);
       
       // 🔥 Si es un error de red, verificar si el regalo se procesó
       if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-        console.warn('🎁 [CLIENT] Error de red detectado, verificando si el regalo se procesó...');
         
         // Esperar un poco para que el backend procese
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1845,21 +1768,18 @@ export default function ChatPrivadoMobile() {
             // Obtener el nuevo balance del estado actualizado
             newBalance = userBalance;
           } catch (e) {
-            console.error('🎁 [CLIENT] Error cargando balance:', e);
           }
         }
         
         // 🔥 Si el balance cambió (disminuyó), el regalo se envió - cargar mensajes y cerrar modal
         // Nota: El balance puede no actualizarse inmediatamente, así que también verificamos si hay conversación activa
         if (newBalance < currentBalance || conversacionActiva) {
-          console.log('🎁 [CLIENT] ✅ Verificando si el regalo se envió...');
           
           // Cargar mensajes para mostrar el regalo enviado (si existe)
           if (conversacionActiva && cargarMensajes) {
             try {
               await cargarMensajes(conversacionActiva);
             } catch (e) {
-              console.error('🎁 [CLIENT] Error cargando mensajes:', e);
             }
           }
           
@@ -1880,7 +1800,6 @@ export default function ChatPrivadoMobile() {
         }
         
         // Si el balance no cambió, cerrar modal sin mostrar error
-        console.warn('🎁 [CLIENT] Balance no cambió, pero no se mostrará error');
         setShowGiftsModal(false);
         
         return {
@@ -2049,7 +1968,6 @@ export default function ChatPrivadoMobile() {
             user_name: "SofiSweet",
             user_role: "modelo",
             message: "¡Hola! ¿Cómo estás?",
-            type: "text",
             created_at: "2024-01-15T14:25:00Z"
           },
           {
@@ -2058,7 +1976,6 @@ export default function ChatPrivadoMobile() {
             user_name: usuario.name,
             user_role: usuario.rol,
             message: "¡Hola! Todo bien, ¿y tú?",
-            type: "text",
             created_at: "2024-01-15T14:26:00Z"
           },
           {
@@ -2067,7 +1984,6 @@ export default function ChatPrivadoMobile() {
             user_name: "SofiSweet",
             user_role: "modelo",
             message: "Rosa Roja 🌹",
-            type: "gift_request",
             gift_data: { 
               gift_name: "Rosa Roja 🌹",
               gift_price: "50",
@@ -2118,7 +2034,6 @@ export default function ChatPrivadoMobile() {
       user_name: usuario.name,
       user_role: usuario.rol,
       message: mensaje,
-      type: 'text',
       created_at: new Date().toISOString(),
       isLocal: true // Marcar como local
     };
@@ -2141,7 +2056,6 @@ export default function ChatPrivadoMobile() {
         body: JSON.stringify({
           room_name: conversacionActiva,
           message: mensaje,
-          type: 'text'
         })
       });
 
@@ -2166,44 +2080,29 @@ export default function ChatPrivadoMobile() {
 
   // 🔥 ABRIR CONVERSACIÓN CON TIEMPO REAL
   const abrirConversacion = async (conversacion) => {
-    console.log('🟣 [MOBILE] ========== INICIO abrirConversacion ==========');
-    console.log('🟣 [MOBILE] Conversación recibida:', JSON.stringify(conversacion, null, 2));
     
     try {
       // Detener polling anterior
-      console.log('🟣 [MOBILE] Deteniendo polling anterior...');
       detenerPolling();
       
-      console.log('🟣 [MOBILE] Estableciendo conversacionActiva:', conversacion.room_name);
       setConversacionActiva(conversacion.room_name);
       
-      console.log('🟣 [MOBILE] Cargando mensajes para room:', conversacion.room_name);
       await cargarMensajes(conversacion.room_name);
-      console.log('🟣 [MOBILE] Mensajes cargados');
       
-      console.log('🟣 [MOBILE] Ocultando sidebar');
       setShowSidebar(false);
       
       // Iniciar polling para esta conversación
-      console.log('🟣 [MOBILE] Iniciando polling para room:', conversacion.room_name);
       iniciarPolling(conversacion.room_name);
-      console.log('🟣 [MOBILE] Polling iniciado');
       
       // Scroll al final
       setTimeout(() => {
-        console.log('🟣 [MOBILE] Haciendo scroll al final');
         if (mensajesRef.current) {
           mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
-          console.log('🟣 [MOBILE] Scroll completado');
         } else {
-          console.warn('🟡 [MOBILE] mensajesRef.current es null, no se puede hacer scroll');
         }
       }, 100);
       
-      console.log('🟣 [MOBILE] ========== FIN abrirConversacion (éxito) ==========');
     } catch (error) {
-      console.error('❌ [MOBILE] ERROR en abrirConversacion:', error);
-      console.error('❌ [MOBILE] Stack trace:', error.stack);
       throw error;
     }
   };
@@ -2327,32 +2226,21 @@ export default function ChatPrivadoMobile() {
 
   // 🔥 MANEJAR openChatWith DESDE NAVEGACIÓN
   useEffect(() => {
-    console.log('🟢 [MOBILE] ========== useEffect openChatWith ==========');
-    console.log('🟢 [MOBILE] openChatWith:', JSON.stringify(openChatWith, null, 2));
-    console.log('🟢 [MOBILE] usuario.id:', usuario.id);
-    console.log('🟢 [MOBILE] location.state:', JSON.stringify(location.state, null, 2));
-    console.log('🟢 [MOBILE] conversaciones.length:', conversaciones.length);
     
     if (!openChatWith) {
-      console.log('🟡 [MOBILE] No hay openChatWith, saliendo');
       return;
     }
     
     if (!usuario.id) {
-      console.log('🟡 [MOBILE] No hay usuario.id, saliendo');
       return;
     }
 
     const handleOpenChat = async () => {
-      console.log('🟢 [MOBILE] ========== INICIO handleOpenChat ==========');
       try {
-        console.log('🟢 [MOBILE] Buscando conversación existente...');
-        console.log('🟢 [MOBILE] openChatWith.room_name:', openChatWith.room_name);
-        console.log('🟢 [MOBILE] openChatWith.other_user_id:', openChatWith.other_user_id);
-        console.log('🟢 [MOBILE] Conversaciones disponibles:', conversaciones.map(c => ({
-          room_name: c.room_name,
-          other_user_id: c.other_user_id
-        })));
+        console.log('🟡 [MOBILE] Abriendo chat con:', {
+          room_name: openChatWith.room_name,
+          other_user_id: openChatWith.other_user_id
+        });
         
         // Buscar si ya existe la conversación
         const existingConv = conversaciones.find(conv => 
@@ -2360,19 +2248,11 @@ export default function ChatPrivadoMobile() {
           conv.other_user_id === openChatWith.other_user_id
         );
 
-        console.log('🟢 [MOBILE] Conversación existente encontrada:', existingConv ? 'SÍ' : 'NO');
-        if (existingConv) {
-          console.log('🟢 [MOBILE] Conversación existente:', JSON.stringify(existingConv, null, 2));
-        }
-
         if (existingConv) {
           // Si existe, abrirla directamente
-          console.log('🟢 [MOBILE] Abriendo conversación existente...');
           await abrirConversacion(existingConv);
-          console.log('🟢 [MOBILE] Conversación abierta exitosamente');
         } else {
           // Si no existe, crear una nueva conversación
-          console.log('🟢 [MOBILE] Creando nueva conversación...');
           const nuevaConversacion = {
             id: Date.now(),
             other_user_id: openChatWith.other_user_id,
@@ -2385,61 +2265,47 @@ export default function ChatPrivadoMobile() {
             unread_count: 0
           };
 
-          console.log('🟢 [MOBILE] Nueva conversación creada:', JSON.stringify(nuevaConversacion, null, 2));
 
           // Agregar a la lista de conversaciones
           setConversaciones(prev => {
-            console.log('🟢 [MOBILE] setConversaciones - prev length:', prev.length);
             const exists = prev.some(conv => 
               conv.room_name === nuevaConversacion.room_name ||
               conv.other_user_id === nuevaConversacion.other_user_id
             );
             
-            console.log('🟢 [MOBILE] Conversación ya existe en lista?', exists);
             
             if (!exists) {
-              console.log('🟢 [MOBILE] Agregando nueva conversación a la lista');
               return [nuevaConversacion, ...prev];
             }
-            console.log('🟢 [MOBILE] No se agrega, ya existe');
             return prev;
           });
 
           // Abrir la conversación después de un pequeño delay para asegurar que se agregó
-          console.log('🟢 [MOBILE] Programando apertura de conversación en 200ms...');
           setTimeout(() => {
-            console.log('🟢 [MOBILE] Ejecutando abrirConversacion después del delay');
             abrirConversacion(nuevaConversacion);
           }, 200);
         }
 
         // Limpiar el estado de navegación para evitar re-ejecuciones
         if (location.state?.openChatWith) {
-          console.log('🟢 [MOBILE] Limpiando estado de navegación');
           navigate(location.pathname + location.search, { replace: true, state: {} });
         }
         
-        console.log('🟢 [MOBILE] ========== FIN handleOpenChat (éxito) ==========');
       } catch (error) {
-        console.error('❌ [MOBILE] ERROR en handleOpenChat:', error);
-        console.error('❌ [MOBILE] Stack trace:', error.stack);
+        console.error('❌ [MOBILE] Error abriendo chat:', error);
       }
     };
 
     // Esperar a que las conversaciones se carguen antes de intentar abrir
     // Usar un pequeño delay para asegurar que todo esté listo
-    console.log('🟢 [MOBILE] Programando handleOpenChat en 300ms...');
     const timeoutId = setTimeout(() => {
-      console.log('🟢 [MOBILE] Ejecutando handleOpenChat después del delay');
       if (conversaciones.length >= 0) { // Permitir incluso si no hay conversaciones aún
         handleOpenChat();
       } else {
-        console.log('🟡 [MOBILE] No se ejecuta handleOpenChat, conversaciones.length < 0');
       }
     }, 300);
 
     return () => {
-      console.log('🟢 [MOBILE] Limpiando timeout');
       clearTimeout(timeoutId);
     };
   }, [openChatWith, usuario.id, conversaciones]);
@@ -2546,7 +2412,6 @@ export default function ChatPrivadoMobile() {
       className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white"
       style={isMobile ? {
         paddingBottom: 'env(safe-area-inset-bottom)',
-        minHeight: '100vh',
         minHeight: '-webkit-fill-available'
       } : {}}
     >

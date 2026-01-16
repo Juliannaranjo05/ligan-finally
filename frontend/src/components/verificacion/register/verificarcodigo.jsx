@@ -23,6 +23,8 @@ export default function EmailVerification() {
   React.useEffect(() => {
     const token = localStorage.getItem("token");
     const justRegistered = localStorage.getItem("just_registered");
+    const emailNotSent = localStorage.getItem("email_not_sent");
+    const emailWarning = localStorage.getItem("email_warning");
     
     if (token) {
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -31,6 +33,16 @@ export default function EmailVerification() {
       console.warn('⚠️ No se encontró token en localStorage en verificarcodigo');
       // No mostrar error - permitir verificar el código sin token
       // El código se puede verificar sin autenticación según la API
+    }
+    
+    // Mostrar advertencia si el correo no se envió
+    if (emailNotSent === "true" && emailWarning) {
+      setMessage(`⚠️ ${emailWarning}`);
+      // Limpiar después de mostrar
+      setTimeout(() => {
+        localStorage.removeItem("email_not_sent");
+        localStorage.removeItem("email_warning");
+      }, 10000); // Mostrar por 10 segundos
     }
   }, [navigate]);
 
@@ -138,13 +150,27 @@ export default function EmailVerification() {
     try {
       setResending(true);
       setMessage("Reenviando código...");
-      await reenviarCodigo(email);
-      setMessage("📧 Código reenviado al correo.");
+      const result = await reenviarCodigo(email);
+      setMessage("📧 Código reenviado exitosamente. Revisa tu correo electrónico.");
+      // Limpiar advertencias si el reenvío fue exitoso
+      localStorage.removeItem("email_not_sent");
+      localStorage.removeItem("email_warning");
     } catch (error) {
-      setTimeout(() => {
-        navigate("/home");
-      }, 3000);
-      setMessage("❌ Vuelve a intentarlo dentro de 10 minutos.");
+      console.error('Error reenviando código:', error);
+      const errorMessage = error.response?.data?.message || error.message || "Error al reenviar el código";
+      
+      if (error.response?.status === 429) {
+        setMessage(`❌ ${errorMessage}`);
+      } else if (error.response?.status === 500) {
+        setMessage("❌ Error del servidor. Por favor, contacta al soporte si el problema persiste.");
+      } else if (error.response?.status === 404) {
+        setMessage("❌ Usuario no encontrado. Por favor, regístrate nuevamente.");
+        setTimeout(() => {
+          navigate("/home");
+        }, 3000);
+      } else {
+        setMessage(`❌ ${errorMessage}`);
+      }
     } finally {
       setResending(false);
     }

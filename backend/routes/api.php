@@ -657,7 +657,8 @@ Route::post('/auth/google/unlink', [AuthController::class, 'unlinkGoogle'])->mid
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:sanctum', 'throttle:20,1'])->post('/resend-code', [AuthController::class, 'resendCode']);
+// Reenvío de código - permite sin autenticación para usuarios no verificados
+Route::middleware(['throttle:20,1'])->post('/resend-code', [AuthController::class, 'resendCode']);
 
 // 🔥 RECLAMAR SESIÓN - MEJORADA CON INVALIDACIÓN COMPLETA
 Route::middleware(['throttle:30,1'])->post('/reclamar-sesion', function (Request $request) {
