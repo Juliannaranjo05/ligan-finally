@@ -918,9 +918,15 @@ class VideoChatCoinController extends Controller
             $query = UserCoins::with('user')
                 ->orderByRaw('(purchased_balance + gift_balance) DESC');
 
-            // Filtro por rol de usuario (modelo, cliente, etc.)
-            if ($request->filled('rol')) {
-                $rol = $request->query('rol');
+            // 🔥 FILTRAR SOLO CLIENTES POR DEFECTO cuando rol es "all" o no está especificado
+            $rol = $request->query('rol');
+            if (empty($rol) || $rol === 'all') {
+                // Por defecto, mostrar solo clientes
+                $query->whereHas('user', function ($q) {
+                    $q->where('rol', 'cliente');
+                });
+            } else {
+                // Si se especifica un rol diferente, usar ese filtro
                 $query->whereHas('user', function ($q) use ($rol) {
                     $q->where('rol', $rol);
                 });
@@ -961,6 +967,11 @@ class VideoChatCoinController extends Controller
             $paginator->getCollection()->transform(function (UserCoins $coins) {
                 $totalBalance = (int) $coins->total_balance;
 
+                // 🔥 CALCULAR TOTAL GASTADO: Sumar todos los CoinPurchase completados del usuario
+                $totalSpent = CoinPurchase::where('user_id', $coins->user_id)
+                    ->where('status', 'completed')
+                    ->sum('amount'); // amount está en USD
+
                 return [
                     'user_id' => $coins->user_id,
                     'user_name' => optional($coins->user)->name,
@@ -972,6 +983,7 @@ class VideoChatCoinController extends Controller
                     'minutes_available' => (int) $coins->available_minutes,
                     'total_purchased' => (int) $coins->total_purchased,
                     'total_consumed' => (int) $coins->total_consumed,
+                    'total_spent' => (float) $totalSpent, // 🔥 NUEVO: Total gastado en USD
                     'balance_status' => $coins->balance_status,
                     'last_purchase_at' => optional($coins->last_purchase_at)->toISOString(),
                     'last_consumption_at' => optional($coins->last_consumption_at)->toISOString(),

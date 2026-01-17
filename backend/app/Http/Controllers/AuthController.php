@@ -29,9 +29,7 @@ class AuthController extends Controller
                 'password' => 'required|string|min:6',
             ]);
 
-            // ✅ Luego crear el usuario
-            $code = random_int(100000, 999999);
-            $expiration = Carbon::now()->addMinutes(15);
+            // ✅ Luego crear el usuario (sin verificación por código)
             
             // Detectar país (sin bloquear si falla)
             try {
@@ -44,63 +42,24 @@ class AuthController extends Controller
             $user = User::create([
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'code_verify' => $code,
-                'code_expires_at' => $expiration,
-                'verification_expires_at' => Carbon::now()->addHours(24), // ⏳ expira en 24 horas
+                'email_verified_at' => Carbon::now(),
+                'code_verify' => null,
+                'code_expires_at' => null,
+                'verification_expires_at' => null,
             ]);
 
             $token = $user->createToken('ligand-token')->plainTextToken;
+            $tokenId = explode('|', $token)[0];
 
-            // Validar configuración de correo antes de enviar
-            $mailDriver = config('mail.default');
-            $mailHost = config('mail.mailers.smtp.host');
-            $mailUsername = config('mail.mailers.smtp.username');
-            $mailPassword = config('mail.mailers.smtp.password');
-            
-            $emailSent = false;
-            $emailError = null;
-            
-            if ($mailDriver === 'smtp' && (!$mailHost || !$mailUsername || !$mailPassword)) {
-                Log::error('❌ Configuración de correo incompleta', [
-                    'mail_driver' => $mailDriver,
-                    'mail_host' => $mailHost ? 'configured' : 'NOT SET',
-                    'mail_username' => $mailUsername ? 'configured' : 'NOT SET',
-                    'mail_password' => $mailPassword ? 'configured' : 'NOT SET'
-                ]);
-                $emailError = 'Configuración de correo incompleta en el servidor';
-            } else {
-                // Enviar correo de verificación
-            try {
-                    Log::info('📤 Enviando correo de verificación', [
-                        'email' => $user->email,
-                        'code' => $code,
-                        'mail_driver' => $mailDriver,
-                        'mail_host' => $mailHost,
-                        'mail_port' => config('mail.mailers.smtp.port'),
-                        'mail_encryption' => config('mail.mailers.smtp.encryption'),
-                        'mail_username' => $mailUsername ? substr($mailUsername, 0, 3) . '***' : 'NOT SET'
-                    ]);
-                Mail::to($user->email)->send(new VerifyCode($code));
-                    $emailSent = true;
-                    Log::info('✅ Correo enviado exitosamente a ' . $user->email);
-            } catch (\Throwable $mailError) {
-                    $emailError = $mailError->getMessage();
-                    $isAuthError = strpos($emailError, 'authentication failed') !== false || 
-                                  strpos($emailError, '535') !== false ||
-                                  strpos($emailError, 'authentication') !== false;
-                    
-                    Log::error('❌ Error enviando correo de verificación', [
-                        'email' => $user->email,
-                        'error' => $emailError,
-                        'error_class' => get_class($mailError),
-                        'trace' => $mailError->getTraceAsString(),
-                        'is_auth_error' => $isAuthError,
-                        'mail_host' => $mailHost,
-                        'mail_port' => config('mail.mailers.smtp.port'),
-                        'mail_encryption' => config('mail.mailers.smtp.encryption')
-                    ]);
-                }
+            $newToken = \Laravel\Sanctum\PersonalAccessToken::find($tokenId);
+            if ($newToken) {
+                $newToken->update(['status' => 'active']);
             }
+
+            $user->current_access_token_id = $tokenId;
+            $user->save();
+
+            $emailSent = false;
 
             // Retornar respuesta con información sobre el estado del correo
             $response = [
@@ -111,14 +70,7 @@ class AuthController extends Controller
                 'email_sent' => $emailSent,
             ];
             
-            if (!$emailSent) {
-                $response['email_warning'] = 'El registro fue exitoso, pero no se pudo enviar el correo de verificación. Por favor, usa la opción "Reenviar código" o contacta al soporte.';
-                Log::warning('⚠️ Registro exitoso pero correo no enviado', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $emailError
-                ]);
-            }
+            // Sin verificación por correo
 
             return response()->json($response);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -186,7 +138,13 @@ class AuthController extends Controller
         }
 
         // ✅ CREDENCIALES CORRECTAS - Login permitido
-        // PERO si no está verificado, no podrá usar otras funciones (se valida en cada endpoint)
+        // 🔓 Desactivar verificación por código: auto-verificar si aún no lo está
+        if (!$user->email_verified_at) {
+            $user->email_verified_at = now();
+            $user->code_verify = null;
+            $user->code_expires_at = null;
+            $user->verification_expires_at = null;
+        }
 
         // 🔥 SUSPENDER SESIÓN ANTERIOR en lugar de eliminarla
         $tokenAnteriorId = $user->current_access_token_id;
@@ -269,10 +227,6 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Usuario no autenticado.'], 401);
             }
             
-            if (!$user->email_verified_at) {
-                return response()->json(['message' => 'Correo no verificado.'], 403);
-            }
-
             // 🔥 VALIDACIÓN DIFERENTE SEGÚN EL ORIGEN DEL USUARIO
             if ($user->google_id) {
             // 👤 USUARIO DE GOOGLE: Solo validar que no tenga ROL

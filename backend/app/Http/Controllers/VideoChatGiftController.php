@@ -62,8 +62,6 @@ class VideoChatGiftController extends Controller
                 ->map(function ($gift) {
                     $pricing = $this->getGiftPricing($gift);
 
-                    $pricing = $this->getGiftPricing($request->gift);
-
                     return [
                         'id' => $gift->id,
                         'name' => $gift->name,
@@ -609,6 +607,9 @@ class VideoChatGiftController extends Controller
                 ], 400);
             }
 
+            $pricing = $this->getGiftPricing($gift);
+            $requiredCoins = $pricing['coins'];
+
             // 🔐 GENERAR HASH DE SEGURIDAD ESPECÍFICO PARA VIDEOCHAT
             $securityData = $this->generateVideoChatSecurityHash(
                 $user->id,
@@ -1046,6 +1047,9 @@ class VideoChatGiftController extends Controller
                     'message' => 'El regalo ya no está disponible'
                 ], 400);
             }
+
+            $pricing = $this->getGiftPricing($giftRequest->gift);
+            $requiredCoins = (int) ($giftRequest->amount ?: $pricing['coins']);
 
             // 5. 🚨 VALIDAR HASH DE SEGURIDAD ESPECÍFICO PARA VIDEOCHAT
             $giftData = null;

@@ -270,7 +270,6 @@ class ChatController extends Controller
 
             $messages = ChatMessage::where('room_name', $roomName)
                 ->orderBy('created_at', 'asc')
-                ->limit(100)
                 ->get()
                 ->map(function ($message) use ($user) {
                     // Obtener el usuario para obtener su avatar y nickname

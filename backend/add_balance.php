@@ -12,11 +12,11 @@ use App\Http\Controllers\VideoChatCoinController;
 use Illuminate\Support\Facades\DB;
 
 $email = 'juliannaranjo58@gmail.com';
-$minutesToAdd = 4; // 4 minutos para pruebas
+$minutesToAdd = 200; // 200 minutos para pruebas extensas
 $giftCoinsToAdd = 0; // Sin monedas de regalo para esta prueba
 
 // 1 minuto = 10 coins
-$purchasedCoinsToAdd = $minutesToAdd * 10; // 40 coins
+$purchasedCoinsToAdd = $minutesToAdd * 10; // 2000 coins
 
 echo "========================================\n";
 echo "AGREGAR SALDO A USUARIO\n";
