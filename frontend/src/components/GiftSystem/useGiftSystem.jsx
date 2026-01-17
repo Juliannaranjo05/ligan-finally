@@ -570,7 +570,7 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
       
       // Mensajes específicos por tipo de error
       if (data && (data.error === 'insufficient_balance' || data.data?.error === 'insufficient_balance')) {
-        errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || data.required_amount || 'más'} monedas`;
+        errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || data.required_amount || 'más'} minutos`;
       } else if (data && (data.error === 'invalid_request' || data.data?.error === 'invalid_request')) {
         errorMessage = 'La solicitud ya expiró o fue procesada';
       } else if (data && (data.error === 'security_violation' || data.data?.error === 'security_violation')) {
@@ -686,14 +686,13 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.balance) {
-          // 🔥 Usar total_balance (purchased_balance + gift_balance)
-          const totalBalance = data.balance.total_balance || 
-                              (data.balance.purchased_balance || 0) + (data.balance.gift_balance || 0);
-          setUserBalance(totalBalance);
+          const coinsPerMinute = data.balance.coins_per_minute || 10;
+          const availableMinutes = data.balance.available_minutes ?? Math.floor((data.balance.purchased_balance || 0) / coinsPerMinute);
+          setUserBalance(availableMinutes);
           console.log('💰 [useGiftSystem] Balance cargado:', {
-            totalBalance,
+            availableMinutes,
             purchased_balance: data.balance.purchased_balance,
-            gift_balance: data.balance.gift_balance
+            coins_per_minute: coinsPerMinute
           });
         }
       }
@@ -789,7 +788,7 @@ const requestGift = useCallback(async (clientId, giftId, message = '', roomName 
         
         if (data.error === 'insufficient_balance') {
           const required = data.data?.required_amount || 'más';
-          errorMessage = `Saldo insuficiente. Necesitas ${required} monedas para enviar este regalo.`;
+          errorMessage = `Saldo insuficiente. Necesitas ${required} minutos para enviar este regalo.`;
         } else if (data.error === 'invalid_request') {
           errorMessage = 'La solicitud ya expiró o fue procesada. Por favor, recarga la página.';
         }

@@ -9,17 +9,47 @@ use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use App\Models\Gift;
 use App\Models\GiftTransaction;
-use App\Models\UserGiftCoins;
 use App\Models\UserCoins;
 use App\Models\GiftRequest;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
 use App\Services\PlatformSettingsService;
+use App\Services\CallPricingService;
 use Exception;
 use Carbon\Carbon;
 
 class VideoChatGiftController extends Controller
 {
+    private function getGiftPricing(Gift $gift): array
+    {
+        $giftPriceUsd = (float) $gift->price;
+        $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+        $minutesCost = CallPricingService::getGiftMinutesCost($giftPriceUsd);
+        $coinsCost = CallPricingService::getGiftCoinsCost($giftPriceUsd, $coinsPerMinute);
+
+        return [
+            'usd' => $giftPriceUsd,
+            'minutes' => $minutesCost,
+            'coins' => $coinsCost,
+            'coins_per_minute' => $coinsPerMinute,
+        ];
+    }
+
+    private function buildGiftData(Gift $gift, array $extra = []): array
+    {
+        $pricing = $this->getGiftPricing($gift);
+
+        return array_merge([
+            'gift_id' => $gift->id,
+            'gift_name' => $gift->name,
+            'gift_image' => $gift->image_path,
+            'gift_price' => $pricing['minutes'],
+            'gift_price_minutes' => $pricing['minutes'],
+            'gift_price_coins' => $pricing['coins'],
+            'gift_price_usd' => $pricing['usd'],
+            'coins_per_minute' => $pricing['coins_per_minute'],
+        ], $extra);
+    }
     /**
      * 🎁 Obtener todos los regalos disponibles para videochat
      */
@@ -30,11 +60,18 @@ class VideoChatGiftController extends Controller
                 ->orderBy('price', 'asc')
                 ->get()
                 ->map(function ($gift) {
+                    $pricing = $this->getGiftPricing($gift);
+
+                    $pricing = $this->getGiftPricing($request->gift);
+
                     return [
                         'id' => $gift->id,
                         'name' => $gift->name,
                         'image_path' => $gift->image_path ? asset($gift->image_path) : 'https://via.placeholder.com/80x80/ff007a/ffffff?text=NO',
-                        'price' => $gift->price,
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $pricing['coins'],
+                        'price_usd' => $pricing['usd'],
                         'category' => $gift->category ?? 'basic'
                     ];
                 });
@@ -143,6 +180,9 @@ class VideoChatGiftController extends Controller
                 ], 400);
             }
 
+            $pricing = $this->getGiftPricing($gift);
+            $requiredCoins = $pricing['coins'];
+
             // 🔐 VERIFICAR SALDO DEL CLIENTE CON BLOQUEO
             $lockKey = "videochat_direct_gift_lock_{$user->id}_{$giftId}";
             if (\Illuminate\Support\Facades\Cache::has($lockKey)) {
@@ -156,7 +196,10 @@ class VideoChatGiftController extends Controller
             // Crear lock temporal
             \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
 
-            // 🔥 VERIFICAR SALDO DEL CLIENTE USANDO SOLO `gift_balance` (saldo exclusivo para regalos)
+            $pricing = $this->getGiftPricing($gift);
+            $requiredCoins = $pricing['coins'];
+
+            // 🔥 VERIFICAR SALDO DEL CLIENTE USANDO purchased_balance (minutos)
             $clientUserCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
@@ -171,56 +214,64 @@ class VideoChatGiftController extends Controller
                 ]);
             }
 
-            // Validar que el cliente tiene suficientes `gift_balance` para este regalo
-            $giftOnlyBalance = $clientUserCoins->gift_balance;
+            $pricing = $this->getGiftPricing($giftRequest->gift);
+            $requiredCoins = (int) $giftRequest->amount;
 
-            if ($giftOnlyBalance < $gift->price) {
+            // Validar que el cliente tiene suficientes minutos para este regalo
+            $minutesBalanceCoins = $clientUserCoins->purchased_balance;
+
+            if ($minutesBalanceCoins < $requiredCoins) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [VIDEOCHAT] Saldo de regalos insuficiente para regalo directo", [
                     'client_id' => $user->id,
-                    'gift_balance' => $clientUserCoins->gift_balance,
-                    'required' => $gift->price
+                    'purchased_balance' => $clientUserCoins->purchased_balance,
+                    'required_coins' => $requiredCoins,
+                    'required_minutes' => $pricing['minutes']
                 ]);
                 
                 return response()->json([
                     'success' => false,
                     'error' => 'insufficient_balance',
-                    'message' => 'Saldo de regalos insuficiente para este regalo',
+                    'message' => 'Saldo de minutos insuficiente para este regalo',
                     'data' => [
-                        'current_gift_balance' => $giftOnlyBalance,
-                        'required_amount' => $gift->price,
-                        'missing_amount' => $gift->price - $giftOnlyBalance
+                        'current_balance_coins' => $minutesBalanceCoins,
+                        'current_balance_minutes' => floor($minutesBalanceCoins / $pricing['coins_per_minute']),
+                        'required_amount_coins' => $requiredCoins,
+                        'required_amount_minutes' => $pricing['minutes'],
+                        'missing_amount_coins' => $requiredCoins - $minutesBalanceCoins
                     ]
                 ], 400);
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
             Log::info("💰 [VIDEOCHAT] Procesando regalo directo", [
-                'client_balance_before' => $totalBalance,
+                'client_balance_before' => $clientUserCoins->purchased_balance,
                 'purchased_balance' => $clientUserCoins->purchased_balance,
                 'gift_balance' => $clientUserCoins->gift_balance,
-                'amount' => $gift->price,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes'],
                 'room_name' => $roomName
             ]);
             
-            // 1. Descontar exclusivamente de gift_balance
-            $clientUserCoins->gift_balance -= $gift->price;
-            $clientUserCoins->total_consumed += $gift->price;
+            // 1. Descontar de purchased_balance (minutos)
+            $clientUserCoins->purchased_balance -= $requiredCoins;
+            $clientUserCoins->total_consumed += $requiredCoins;
             $clientUserCoins->last_consumption_at = now();
             $clientUserCoins->save();
 
             // 2. Obtener/crear monedas de la modelo
-            $modeloCoins = UserGiftCoins::lockForUpdate()
+            $modeloCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $recipientId)
                 ->first();
 
             if (!$modeloCoins) {
-                $modeloCoins = UserGiftCoins::create([
+                $modeloCoins = UserCoins::create([
                     'user_id' => $recipientId,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
@@ -229,12 +280,12 @@ class VideoChatGiftController extends Controller
             $giftCommissionDecimal = $giftCommissionPercentage / 100;
             $modeloPercentage = 1 - $giftCommissionDecimal;
             
-            $modeloAmount = $gift->price * $modeloPercentage;
-            $platformCommission = $gift->price * $giftCommissionDecimal;
+            $modeloAmount = $pricing['usd'] * $modeloPercentage;
+            $platformCommission = $pricing['usd'] * $giftCommissionDecimal;
 
             // 4. Agregar monedas a la modelo
-            $modeloCoins->increment('balance', $modeloAmount);
-            $modeloCoins->increment('total_received', $modeloAmount);
+            $modeloCoins->increment('purchased_balance', $modeloAmount);
+            $modeloCoins->increment('total_purchased', $modeloAmount);
 
             // 5. Registrar la transacción directa
             // 5. Registrar la transacción directa
@@ -245,8 +296,8 @@ class VideoChatGiftController extends Controller
                 'sender_id' => $user->id,
                 'receiver_id' => $recipientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
-                'amount_total' => $gift->price,
+                'amount' => $pricing['minutes'],
+                'amount_total' => $pricing['usd'],
                 'amount_modelo' => $modeloAmount,
                 'amount_commission' => $platformCommission,
                 'type' => 'direct_gift',
@@ -256,6 +307,11 @@ class VideoChatGiftController extends Controller
                 'message' => $message ?: "Regalo directo: {$gift->name}",
                 'reference_id' => "VCG-DIRECT-" . time(), // ← LÍNEA CORREGIDA
                 'room_name' => $roomName,
+                'gift_data' => json_encode($this->buildGiftData($gift, [
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
+                ])),
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -275,7 +331,10 @@ class VideoChatGiftController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $recipient->name ?? 'Modelo',
                         'transaction_id' => $transactionId,
@@ -288,7 +347,10 @@ class VideoChatGiftController extends Controller
                     'gift_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'original_message' => $message
                     ])
                 ]);
@@ -311,7 +373,10 @@ class VideoChatGiftController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $recipient->name ?? 'Modelo',
                         'transaction_id' => $transactionId,
@@ -324,7 +389,10 @@ class VideoChatGiftController extends Controller
                     'gift_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'original_message' => $message
                     ])
                 ]);
@@ -344,7 +412,10 @@ class VideoChatGiftController extends Controller
                 'gift_id' => $giftId,
                 'gift_name' => $gift->name,
                 'gift_image' => $gift->image_path,
-                'gift_price' => $gift->price,
+                'gift_price' => $pricing['minutes'],
+                'gift_price_minutes' => $pricing['minutes'],
+                'gift_price_coins' => $requiredCoins,
+                'gift_price_usd' => $pricing['usd'],
                 'transaction_id' => $transactionId,
                 'context' => 'videochat_direct'
             ];
@@ -352,7 +423,7 @@ class VideoChatGiftController extends Controller
             $earningsController->processGiftEarnings(
                 $recipientId,                // modelUserId
                 $user->id,                   // clientUserId
-                $gift->price,                // giftValue
+                $pricing['usd'],             // giftValue (USD)
                 $roomName,                   // roomName
                 $giftDetails                 // giftDetails
             );
@@ -361,7 +432,7 @@ class VideoChatGiftController extends Controller
                 'transaction_id' => $transactionId,
                 'modelo_id' => $recipientId,
                 'client_id' => $user->id,
-                'amount' => $gift->price
+                'amount_usd' => $pricing['usd']
             ]);
 
 
@@ -370,10 +441,11 @@ class VideoChatGiftController extends Controller
                 'client_id' => $user->id,
                 'modelo_id' => $recipientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
                 'modelo_received' => $modeloAmount,
                 'platform_commission' => $platformCommission,
-                'client_new_balance' => $clientUserCoins->fresh()->gift_balance,
+                'client_new_balance' => $clientUserCoins->fresh()->purchased_balance,
                 'room_name' => $roomName
             ]);
 
@@ -385,15 +457,23 @@ class VideoChatGiftController extends Controller
                 'context' => 'videochat_direct',
                 'gift_name' => $gift->name,
                 'gift_image' => $gift->image_path,
-                'gift_price' => $gift->price,
-                'amount' => $gift->price,
+                'gift_price' => $pricing['minutes'],
+                'gift_price_minutes' => $pricing['minutes'],
+                'gift_price_coins' => $requiredCoins,
+                'gift_price_usd' => $pricing['usd'],
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
+                'amount_usd' => $pricing['usd'],
                 'data' => [
                     'transaction_id' => $transactionId,
                     'gift' => [
                         'id' => $gift->id,
                         'name' => $gift->name,
                         'image' => $gift->image_path ? asset($gift->image_path) : null,
-                        'price' => $gift->price
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $requiredCoins,
+                        'price_usd' => $pricing['usd']
                     ],
                     'recipient' => [
                         'id' => $recipient->id,
@@ -401,8 +481,10 @@ class VideoChatGiftController extends Controller
                         'received_amount' => $modeloAmount
                     ],
                     'client_balance' => [
-                        'new_balance' => $clientCoins->fresh()->balance,
-                        'spent_amount' => $gift->price
+                        'new_balance' => $clientCoins->fresh()->purchased_balance,
+                        'spent_amount_minutes' => $pricing['minutes'],
+                        'spent_amount_coins' => $requiredCoins,
+                        'spent_amount_usd' => $pricing['usd']
                     ],
                     'transaction_details' => [
                         'processed_at' => now()->toISOString(),
@@ -532,7 +614,7 @@ class VideoChatGiftController extends Controller
                 $user->id,
                 $clientId,
                 $giftId,
-                $gift->price,
+                $requiredCoins,
                 $roomName
             );
 
@@ -558,12 +640,12 @@ class VideoChatGiftController extends Controller
                 'modelo_id' => $user->id,
                 'client_id' => $clientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
+                'amount' => $requiredCoins,
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(15),
                 'room_name' => $roomName,
                 'message' => $request->input('message', ''),
-                'gift_data' => json_encode([
+                'gift_data' => json_encode($this->buildGiftData($gift, [
                     'security_hash' => $securityData['hash'],
                     'timestamp' => $securityData['timestamp'],
                     'nonce' => $securityData['nonce'],
@@ -571,16 +653,13 @@ class VideoChatGiftController extends Controller
                     'session_id' => $securityData['session_id'],
                     'ip' => $securityData['ip'],
                     'integrity_hash' => $securityData['integrity_hash'],
-                    'gift_name' => $gift->name,
-                    'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
                     'modelo_name' => $user->name,
                     'client_name' => $client->name,
                     'original_message' => $request->input('message', ''),
                     'context' => 'videochat',
                     'room_name' => $roomName,
                     'session_type' => 'videochat'
-                ])
+                ]))
             ]);
 
             // 💬 CREAR MENSAJE DE CHAT ESPECÍFICO PARA VIDEOCHAT
@@ -600,7 +679,10 @@ class VideoChatGiftController extends Controller
                         'security_hash' => $securityData['hash'], // ← CRÍTICO: FALTABA ESTO
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'original_message' => $request->input('message', ''),
                         'context' => 'videochat',
                         'room_name' => $roomName
@@ -611,7 +693,10 @@ class VideoChatGiftController extends Controller
                         'security_hash' => $securityData['hash'],
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'original_message' => $request->input('message', '')
                     ])
                 ]);
@@ -638,13 +723,19 @@ class VideoChatGiftController extends Controller
                 'gift_data' => [
                     'gift_name' => $gift->name,
                     'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'original_message' => $request->input('message', '')
                 ],
                 'extra_data' => [
                     'gift_name' => $gift->name,
                     'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'original_message' => $request->input('message', ''),
                     'context' => 'videochat'
                 ]
@@ -655,7 +746,8 @@ class VideoChatGiftController extends Controller
                 'modelo_id' => $user->id,
                 'client_id' => $clientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes'],
                 'room_name' => $roomName
             ]);
 
@@ -674,7 +766,10 @@ class VideoChatGiftController extends Controller
                     'gift' => [
                         'id' => $gift->id,
                         'name' => $gift->name,
-                        'price' => $gift->price,
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $requiredCoins,
+                        'price_usd' => $pricing['usd'],
                         'image' => $gift->image_path
                     ],
                     'client' => [
@@ -810,7 +905,10 @@ class VideoChatGiftController extends Controller
                             'id' => $request->gift->id,
                             'name' => $request->gift->name,
                             'image' => $request->gift->image_path ? asset($request->gift->image_path) : null,
-                            'price' => (int) $request->gift->price,
+                            'price' => $pricing['minutes'],
+                            'price_minutes' => $pricing['minutes'],
+                            'price_coins' => $pricing['coins'],
+                            'price_usd' => $pricing['usd'],
                             'category' => $request->gift->category ?? 'basic',
                             'is_active' => $request->gift->is_active
                         ],
@@ -1035,59 +1133,61 @@ class VideoChatGiftController extends Controller
                 ]);
             }
 
-            // Validar que el cliente tiene suficientes `gift_balance` para este request
-            $giftOnlyBalance = $clientUserCoins->gift_balance;
+            // Validar que el cliente tiene suficientes minutos para este request
+            $minutesBalanceCoins = $clientUserCoins->purchased_balance;
 
-            if ($giftOnlyBalance < $giftRequest->amount) {
+            if ($minutesBalanceCoins < $requiredCoins) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [VIDEOCHAT] Saldo de regalos insuficiente para request", [
                     'client_id' => $user->id,
-                    'gift_balance' => $clientUserCoins->gift_balance,
-                    'required' => $giftRequest->amount
+                    'purchased_balance' => $clientUserCoins->purchased_balance,
+                    'required_coins' => $requiredCoins,
+                    'required_minutes' => $pricing['minutes']
                 ]);
                 
                 return response()->json([
                     'success' => false,
                     'error' => 'insufficient_balance',
-                    'message' => 'Saldo de regalos insuficiente para este request',
+                    'message' => 'Saldo de minutos insuficiente para este request',
                     'data' => [
-                        'current_gift_balance' => $giftOnlyBalance,
-                        'required_amount' => $giftRequest->amount,
-                        'missing_amount' => $giftRequest->amount - $giftOnlyBalance
+                        'current_balance_coins' => $minutesBalanceCoins,
+                        'current_balance_minutes' => floor($minutesBalanceCoins / $pricing['coins_per_minute']),
+                        'required_amount_coins' => $requiredCoins,
+                        'required_amount_minutes' => $pricing['minutes'],
+                        'missing_amount_coins' => $requiredCoins - $minutesBalanceCoins
                     ]
                 ], 400);
             }
 
             // 8. 💰 PROCESAR TRANSACCIÓN ESPECÍFICA PARA VIDEOCHAT (igual que sendDirectGift)
-            // Calcular balance total antes de usarlo
-            $totalBalance = $clientUserCoins->purchased_balance + $clientUserCoins->gift_balance;
-            
             Log::info("💰 [VIDEOCHAT] Iniciando transacción", [
-                'client_balance_before' => $totalBalance,
+                'client_balance_before' => $clientUserCoins->purchased_balance,
                 'purchased_balance' => $clientUserCoins->purchased_balance,
                 'gift_balance' => $clientUserCoins->gift_balance,
-                'amount' => $giftRequest->amount,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes'],
                 'room_name' => $giftRequest->room_name
             ]);
             
-            // 1. Descontar exclusivamente de gift_balance
-            $clientUserCoins->gift_balance -= $giftRequest->amount;
-            $clientUserCoins->total_consumed += $giftRequest->amount;
+            // 1. Descontar de purchased_balance (minutos)
+            $clientUserCoins->purchased_balance -= $requiredCoins;
+            $clientUserCoins->total_consumed += $requiredCoins;
             $clientUserCoins->last_consumption_at = now();
             $clientUserCoins->save();
 
             // 2. Obtener/crear monedas de la modelo
-            $modeloCoins = UserGiftCoins::lockForUpdate()
+            $modeloCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $giftRequest->modelo_id)
                 ->first();
 
             if (!$modeloCoins) {
-                $modeloCoins = UserGiftCoins::create([
+                $modeloCoins = UserCoins::create([
                     'user_id' => $giftRequest->modelo_id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
@@ -1097,12 +1197,12 @@ class VideoChatGiftController extends Controller
             $platformCommissionRate = $giftCommissionPercentage / 100;
             $modeloRate = 1 - $platformCommissionRate;
             
-            $modeloAmount = $giftRequest->amount * $modeloRate;
-            $platformCommission = $giftRequest->amount * $platformCommissionRate;
+            $modeloAmount = $pricing['usd'] * $modeloRate;
+            $platformCommission = $pricing['usd'] * $platformCommissionRate;
 
             // 4. Agregar monedas a la modelo
-            $modeloCoins->increment('balance', $modeloAmount);
-            $modeloCoins->increment('total_received', $modeloAmount);
+            $modeloCoins->increment('purchased_balance', $modeloAmount);
+            $modeloCoins->increment('total_purchased', $modeloAmount);
 
             // 5. Actualizar estado de la solicitud
             $giftRequest->update([
@@ -1122,8 +1222,8 @@ class VideoChatGiftController extends Controller
                 'sender_id' => $user->id,
                 'receiver_id' => $giftRequest->modelo_id,
                 'gift_id' => $giftRequest->gift_id,
-                'amount' => $giftRequest->amount,
-                'amount_total' => $giftRequest->amount,
+                'amount' => $pricing['minutes'],
+                'amount_total' => $pricing['usd'],
                 'amount_modelo' => $modeloAmount,
                 'amount_commission' => $platformCommission,
                 'type' => 'gift',
@@ -1133,6 +1233,11 @@ class VideoChatGiftController extends Controller
                 'message' => "Regalo en videochat: {$giftRequest->gift->name}",
                 'reference_id' => "VCG-{$giftRequest->id}",
                 'room_name' => $giftRequest->room_name ?? '',
+                'gift_data' => json_encode($this->buildGiftData($giftRequest->gift, [
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
+                ])),
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -1152,7 +1257,10 @@ class VideoChatGiftController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                         'gift_image' => $giftRequest->gift->image_path,  // ← RUTA DIRECTA
-                        'gift_price' => $giftRequest->amount ?? 0,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                         'transaction_id' => $giftRequest->id ?? 0,
@@ -1181,7 +1289,10 @@ class VideoChatGiftController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                         'gift_image' => $giftRequest->gift->image_path,  // ← RUTA DIRECTA
-                        'gift_price' => $giftRequest->amount ?? 0,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                         'transaction_id' => $giftRequest->id ?? 0,
@@ -1225,7 +1336,10 @@ class VideoChatGiftController extends Controller
                 'gift_id' => $giftRequest->gift_id,
                 'gift_name' => $giftRequest->gift->name,
                 'gift_image' => $giftRequest->gift->image_path,
-                'gift_price' => $giftRequest->amount,
+                'gift_price' => $pricing['minutes'],
+                'gift_price_minutes' => $pricing['minutes'],
+                'gift_price_coins' => $requiredCoins,
+                'gift_price_usd' => $pricing['usd'],
                 'transaction_id' => $transactionId,
                 'context' => 'videochat_request'
             ];
@@ -1233,7 +1347,7 @@ class VideoChatGiftController extends Controller
             $earningsController->processGiftEarnings(
                 $giftRequest->modelo_id,     // modelUserId
                 $user->id,                   // clientUserId
-                $giftRequest->amount,        // giftValue
+                $pricing['usd'],             // giftValue (USD)
                 $giftRequest->room_name,     // roomName
                 $giftDetails                 // giftDetails
             );
@@ -1243,7 +1357,7 @@ class VideoChatGiftController extends Controller
                 'transaction_id' => $transactionId,
                 'modelo_id' => $giftRequest->modelo_id,
                 'client_id' => $user->id,
-                'amount' => $giftRequest->amount
+                'amount_usd' => $pricing['usd']
             ]);
 
            Log::info('✅ [VIDEOCHAT] Regalo aceptado y procesado exitosamente', [
@@ -1251,10 +1365,11 @@ class VideoChatGiftController extends Controller
                'client_id' => $user->id,
                'modelo_id' => $giftRequest->modelo_id,
                'gift_id' => $giftRequest->gift_id,
-               'amount' => $giftRequest->amount,
+               'amount_minutes' => $pricing['minutes'],
+               'amount_coins' => $requiredCoins,
                'modelo_received' => $modeloAmount,
                'platform_commission' => $platformCommission,
-               'client_new_balance' => $clientUserCoins->fresh()->gift_balance,
+               'client_new_balance' => $clientUserCoins->fresh()->purchased_balance,
                'room_name' => $giftRequest->room_name,
                'transaction_id' => $transactionId
            ]);
@@ -1271,7 +1386,9 @@ class VideoChatGiftController extends Controller
                        'id' => $giftRequest->gift->id,
                        'name' => $giftRequest->gift->name,
                        'image' => $giftRequest->gift->image_path ? asset($giftRequest->gift->image_path) : null,
-                       'amount' => $giftRequest->amount
+                       'amount_minutes' => $pricing['minutes'],
+                       'amount_coins' => $requiredCoins,
+                       'amount_usd' => $pricing['usd']
                    ],
                    'modelo' => [
                        'id' => $giftRequest->modelo->id,
@@ -1279,8 +1396,10 @@ class VideoChatGiftController extends Controller
                        'received_amount' => $modeloAmount
                    ],
                    'client_balance' => [
-                       'new_balance' => $clientUserCoins->fresh()->gift_balance,
-                       'spent_amount' => $giftRequest->amount
+                       'new_balance' => $clientUserCoins->fresh()->purchased_balance,
+                       'spent_amount_minutes' => $pricing['minutes'],
+                       'spent_amount_coins' => $requiredCoins,
+                       'spent_amount_usd' => $pricing['usd']
                    ],
                    'transaction_details' => [
                        'processed_at' => now()->toISOString(),
@@ -1439,14 +1558,16 @@ class VideoChatGiftController extends Controller
                ]);
            }
 
-           // Devolver balances separados: `purchased_balance` (minutos) y `gift_balance` (monedas para regalos)
+       $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+       $availableMinutes = $coinsPerMinute > 0 ? (int) floor($userCoins->purchased_balance / $coinsPerMinute) : 0;
+
+       // Devolver balance basado en minutos (sin saldo de regalos separado)
            return response()->json([
                'success' => true,
-               'balance' => $userCoins->gift_balance, // legacy: mostrar el balance de regalos
-               'gift_balance' => $userCoins->gift_balance,
-               'gift_balance_coins' => $userCoins->gift_balance,
+           'balance' => $availableMinutes,
                'purchased_balance' => $userCoins->purchased_balance,
-               'total_balance' => $userCoins->purchased_balance + $userCoins->gift_balance,
+           'available_minutes' => $availableMinutes,
+           'coins_per_minute' => $coinsPerMinute,
                'total_consumed' => $userCoins->total_consumed,
                'user_role' => $user->rol,
                'context' => 'videochat'

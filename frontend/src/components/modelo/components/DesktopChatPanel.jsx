@@ -1121,7 +1121,7 @@ const DesktopChatPanel = ({
                                 
                                 <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg gift-price-container border border-amber-300/30">
                                   <span className="text-amber-200 font-bold gift-price-text">
-                                    ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                                    ✨ {giftData.gift_price_coins ?? giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                                   </span>
                                 </div>
                                 <div className="text-left">
@@ -1208,7 +1208,7 @@ const DesktopChatPanel = ({
                                 
                                 <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg gift-price-container border border-green-300/30">
                                   <span className="text-green-200 font-bold gift-price-text">
-                                    💰 {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                                    💰 {giftData.gift_price_coins ?? giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                                   </span>
                                 </div>
                               </div>
@@ -1262,7 +1262,7 @@ const DesktopChatPanel = ({
                               
                               <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 rounded-lg gift-price-container border border-purple-300/30">
                                 <span className="text-purple-200 font-bold gift-price-text">
-                                  ✨ {giftData.gift_price} monedas
+                                  ✨ {giftData.gift_price_coins ?? giftData.gift_price} monedas
                                 </span>
                               </div>
                             </div>
@@ -1316,7 +1316,7 @@ const DesktopChatPanel = ({
                               
                               <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg gift-price-container border border-blue-300/30">
                                 <span className="text-blue-200 font-bold gift-price-text">
-                                  💰 {giftData.gift_price} monedas
+                                  💰 {giftData.gift_price_coins ?? giftData.gift_price} monedas
                                 </span>
                               </div>
                             </div>

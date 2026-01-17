@@ -1412,10 +1412,10 @@ const VideoDisplayImproved = ({
                         </p>
                       </div>
                       
-                      {giftData.gift_price && (
+                      {(giftData.gift_price_coins ?? giftData.gift_price) && (
                         <div className="text-center">
                           <span className="text-xs font-semibold text-amber-200">
-                            ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                            ✨ {giftData.gift_price_coins ?? giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
                           </span>
                         </div>
                       )}

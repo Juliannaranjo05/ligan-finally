@@ -355,6 +355,7 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     
         // 🎁 REGALOS DISPONIBLES
         Route::get('/gifts/available', [GiftSystemController::class, 'getAvailableGifts']);
+        Route::get('/gifts/pricing-table', [GiftSystemController::class, 'getGiftPricingTable']);
 
         Route::post('/gifts/send-direct', [GiftSystemController::class, 'sendDirectGift']);
         

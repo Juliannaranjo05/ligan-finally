@@ -68,20 +68,36 @@ export const GIFT_CARD_TEXTS = {
     tr: '✓ Hediye gönderildi'
   },
   coins: {
-    es: 'monedas',
-    en: 'coins',
-    pt: 'moedas',
-    fr: 'pièces',
-    de: 'Münzen',
-    it: 'monete',
-    ru: 'монет',
-    ja: 'コイン',
-    ko: '코인',
-    zh: '硬币',
-    ar: 'عملات',
-    hi: 'सिक्के',
-    nl: 'munten',
-    tr: 'jeton'
+    es: 'minutos',
+    en: 'minutes',
+    pt: 'minutos',
+    fr: 'minutes',
+    de: 'Minuten',
+    it: 'minuti',
+    ru: 'минут',
+    ja: '分',
+    ko: '분',
+    zh: '分钟',
+    ar: 'دقائق',
+    hi: 'मिनट',
+    nl: 'minuten',
+    tr: 'dakika'
+  },
+  minutes: {
+    es: 'minutos',
+    en: 'minutes',
+    pt: 'minutos',
+    fr: 'minutes',
+    de: 'Minuten',
+    it: 'minuti',
+    ru: 'минут',
+    ja: '分',
+    ko: '분',
+    zh: '分钟',
+    ar: 'دقائق',
+    hi: 'मिनट',
+    nl: 'minuten',
+    tr: 'dakika'
   },
   sendGift: {
     es: 'Enviar Regalo',
@@ -148,39 +164,39 @@ export const GIFT_CARD_TEXTS = {
     tr: '{name} İstek'
   },
   yourBalance: {
-    es: 'Tu saldo: {balance} monedas',
-    en: 'Your balance: {balance} coins',
-    pt: 'Seu saldo: {balance} moedas',
-    fr: 'Votre solde: {balance} pièces',
-    de: 'Ihr Guthaben: {balance} Münzen',
-    it: 'Il tuo saldo: {balance} monete',
-    ru: 'Ваш баланс: {balance} монет',
-    ja: '残高: {balance} コイン',
-    ko: '잔액: {balance} 코인',
-    zh: '您的余额: {balance} 硬币',
-    ar: 'رصيدك: {balance} عملات',
-    hi: 'आपका शेष: {balance} सिक्के',
-    nl: 'Uw saldo: {balance} munten',
-    tr: 'Bakiyeniz: {balance} jeton'
+    es: 'Tu saldo: {balance} minutos',
+    en: 'Your balance: {balance} minutes',
+    pt: 'Seu saldo: {balance} minutos',
+    fr: 'Votre solde: {balance} minutes',
+    de: 'Ihr Guthaben: {balance} Minuten',
+    it: 'Il tuo saldo: {balance} minuti',
+    ru: 'Ваш баланс: {balance} минут',
+    ja: '残高: {balance} 分',
+    ko: '잔액: {balance} 분',
+    zh: '您的余额: {balance} 分钟',
+    ar: 'رصيدك: {balance} دقائق',
+    hi: 'आपका शेष: {balance} मिनट',
+    nl: 'Uw saldo: {balance} minuten',
+    tr: 'Bakiyeniz: {balance} dakika'
   }
 };
 
 // Texto adicional para aclarar que el saldo mostrado es para regalos
 GIFT_CARD_TEXTS.balanceForGifts = {
-  es: 'Saldo disponible para regalos',
-  en: 'Available for gifts',
-  pt: 'Saldo disponível para presentes',
-  fr: 'Solde disponible pour les cadeaux',
-  de: 'Für Geschenke verfügbar',
-  it: 'Disponibile per i regali',
-  ru: 'Доступно для подарков',
-  ja: 'ギフトに利用可能',
-  ko: '선물에 사용 가능',
-  zh: '可用于礼物',
-  ar: 'الرصيد المتاح للهدايا',
-  hi: 'उपहारों के लिए उपलब्ध शेष',
-  nl: 'Beschikbaar voor cadeaus',
-  tr: 'Hediyeler için kullanılabilir bakiye'
+  es: 'Tiempo disponible para regalos',
+  en: 'Minutes available for gifts',
+  pt: 'Minutos disponíveis para presentes',
+  fr: 'Minutes disponibles pour les cadeaux',
+  de: 'Minuten für Geschenke verfügbar',
+  it: 'Minuti disponibili per i regali',
+  ru: 'Минуты, доступные для подарков',
+  ja: 'ギフトに使える時間',
+  ko: '선물에 사용할 수 있는 시간',
+  zh: '可用于礼物的分钟',
+  ar: 'الدقائق المتاحة للهدايا',
+  hi: 'उपहारों के लिए उपलब्ध मिनट',
+  nl: 'Minuten beschikbaar voor cadeaus',
+  tr: 'Hediyeler için kullanılabilir dakika'
 };
 
 export const GIFT_TRANSLATIONS = {

@@ -780,10 +780,10 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
               {finalGiftData.gift_name || 'Regalo Especial'}
             </p>
             
-            {finalGiftData.gift_price && (
+            {(finalGiftData.gift_price_coins ?? finalGiftData.gift_price) && (
               <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg px-2 py-1 border border-amber-300/30">
                 <span className="text-amber-200 font-bold text-xs">
-                  ✨ {finalGiftData.gift_price} monedas
+                  ✨ {finalGiftData.gift_price_coins ?? finalGiftData.gift_price} monedas
                 </span>
               </div>
             )}
@@ -867,10 +867,10 @@ const FloatingMessagesImproved = ({ messages = [], t }) => {
               {finalReceivedGiftData.gift_name || 'Regalo Especial'}
             </p>
             
-            {finalReceivedGiftData.gift_price && (
+            {(finalReceivedGiftData.gift_price_coins ?? finalReceivedGiftData.gift_price) && (
               <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg px-2 py-1 border border-green-300/30">
                 <span className="text-green-200 font-bold text-xs">
-                  💰 {finalReceivedGiftData.gift_price} monedas
+                  💰 {finalReceivedGiftData.gift_price_coins ?? finalReceivedGiftData.gift_price} monedas
                 </span>
               </div>
             )}

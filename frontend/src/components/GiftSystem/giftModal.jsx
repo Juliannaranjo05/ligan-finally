@@ -134,8 +134,9 @@ export const GiftsModal = ({
         // 🔥 CLIENTE: ENVIAR REGALO DIRECTAMENTE
         
         // Verificar saldo suficiente
-        if (userBalance < gift.price) {
-          alert(t('gifts.insufficientBalance', { required: gift.price, current: userBalance }));
+        const giftPriceMinutes = gift.price_minutes ?? gift.price ?? 0;
+        if (userBalance < giftPriceMinutes) {
+          alert(t('gifts.insufficientBalance', { required: giftPriceMinutes, current: userBalance }));
           setIsLoading(false);
           return;
         }
@@ -146,7 +147,7 @@ export const GiftsModal = ({
           t('gifts.confirmSend', {
             giftName: translatedGiftName,
             recipientName: recipientName,
-            price: gift.price,
+            price: giftPriceMinutes,
             balance: userBalance
           })
         );
@@ -294,7 +295,8 @@ export const GiftsModal = ({
           <div className="grid grid-cols-2 gap-3">
             {gifts.map((gift) => {
               // 🔥 VERIFICAR SI EL CLIENTE TIENE SALDO SUFICIENTE (modelo siempre puede pedir)
-              const canAfford = isModelo || userBalance >= gift.price;
+              const giftPriceMinutes = gift.price_minutes ?? gift.price ?? 0;
+              const canAfford = isModelo || userBalance >= giftPriceMinutes;
               
               return (
                 <div
@@ -362,7 +364,7 @@ export const GiftsModal = ({
                         : 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 shadow-gray-500/20'
                     }`}>
                       <Sparkles size={8} />
-                      {gift.price} {getGiftCardText('coins', currentLanguage, 'monedas')}
+                      {giftPriceMinutes} {getGiftCardText('minutes', currentLanguage, 'minutos')}
                       {!isModelo && !canAfford && (
                         <span className="ml-1 text-red-300">💸</span>
                       )}
@@ -371,7 +373,7 @@ export const GiftsModal = ({
                     {/* Indicador de saldo insuficiente */}
                     {!isModelo && !canAfford && (
                       <div className="mt-1 text-xs text-red-400 line-clamp-1">
-                        {t('gifts.insufficient', { amount: gift.price - userBalance })}
+                        {t('gifts.insufficient', { amount: giftPriceMinutes - userBalance })}
                       </div>
                     )}
                   </div>

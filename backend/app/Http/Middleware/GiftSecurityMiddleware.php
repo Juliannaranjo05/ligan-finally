@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use App\Models\User;
 use App\Models\Gift;
 use App\Models\GiftRequest;
-use App\Models\UserGiftCoins;
+use App\Models\UserCoins;
+use App\Services\CallPricingService;
 
 class GiftSecurityMiddleware
 {
@@ -472,14 +473,17 @@ class GiftSecurityMiddleware
 
         // 🚨 VERIFICAR QUE EL PRECIO NO HA SIDO MANIPULADO
         $submittedAmount = $request->input('amount');
-        if ($submittedAmount && $submittedAmount != $gift->price) {
-            $this->logSecurity('FRAUDE CRÍTICO: Precio manipulado', null, $request, 'CRITICAL', [
-                'gift_id' => $giftId,
-                'real_price' => $gift->price,
-                'submitted_price' => $submittedAmount,
-                'modelo_id' => $modeloId
-            ]);
-            return false;
+        if ($submittedAmount) {
+            $expectedAmount = CallPricingService::getGiftCoinsCost((float) $gift->price);
+            if ((int) $submittedAmount !== (int) $expectedAmount) {
+                $this->logSecurity('FRAUDE CRÍTICO: Precio manipulado', null, $request, 'CRITICAL', [
+                    'gift_id' => $giftId,
+                    'real_price' => $expectedAmount,
+                    'submitted_price' => $submittedAmount,
+                    'modelo_id' => $modeloId
+                ]);
+                return false;
+            }
         }
 
         return true;
@@ -674,16 +678,17 @@ class GiftSecurityMiddleware
             return false;
         }
 
-        $clientCoins = UserGiftCoins::lockForUpdate()
+        $clientCoins = UserCoins::lockForUpdate()
             ->where('user_id', $userId)
             ->first();
 
         if (!$clientCoins) {
-            $clientCoins = UserGiftCoins::create([
+            $clientCoins = UserCoins::create([
                 'user_id' => $userId,
-                'balance' => 0,
-                'total_received' => 0,
-                'total_sent' => 0
+                'purchased_balance' => 0,
+                'gift_balance' => 0,
+                'total_purchased' => 0,
+                'total_consumed' => 0
             ]);
         }
 
@@ -729,13 +734,13 @@ class GiftSecurityMiddleware
         }
 
         // 🚨 DETECCIÓN DE VACIADO DE CUENTA
-        $userCoins = UserGiftCoins::where('user_id', $userId)->first();
-        if ($userCoins && $amount >= ($userCoins->balance * 0.9)) {
+        $userCoins = UserCoins::where('user_id', $userId)->first();
+        if ($userCoins && $amount >= ($userCoins->purchased_balance * 0.9)) {
             $this->logSecurity('ALERTA: Intento de vaciado de cuenta', null, null, 'WARNING', [
                 'user_id' => $userId,
-                'balance' => $userCoins->balance,
+                'balance' => $userCoins->purchased_balance,
                 'amount' => $amount,
-                'percentage' => round(($amount / $userCoins->balance) * 100, 2)
+                'percentage' => round(($amount / $userCoins->purchased_balance) * 100, 2)
             ]);
         }
 

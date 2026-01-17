@@ -10,15 +10,46 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\User;
 use App\Models\Gift;
 use App\Models\GiftTransaction;
-use App\Models\UserGiftCoins;
+use App\Models\UserCoins;
 use App\Models\GiftRequest;
 use Exception;
 use Carbon\Carbon;
 use App\Models\ChatMessage; // En lugar de Message
 use App\Services\PlatformSettingsService;
+use App\Services\CallPricingService;
 
 class GiftSystemController extends Controller
 {
+    private function getGiftPricing(Gift $gift): array
+    {
+        $giftPriceUsd = (float) $gift->price;
+        $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+        $minutesCost = CallPricingService::getGiftMinutesCost($giftPriceUsd);
+        $coinsCost = CallPricingService::getGiftCoinsCost($giftPriceUsd, $coinsPerMinute);
+
+        return [
+            'usd' => $giftPriceUsd,
+            'minutes' => $minutesCost,
+            'coins' => $coinsCost,
+            'coins_per_minute' => $coinsPerMinute,
+        ];
+    }
+
+    private function buildGiftData(Gift $gift, array $extra = []): array
+    {
+        $pricing = $this->getGiftPricing($gift);
+
+        return array_merge([
+            'gift_id' => $gift->id,
+            'gift_name' => $gift->name,
+            'gift_image' => $gift->image_path,
+            'gift_price' => $pricing['minutes'],
+            'gift_price_minutes' => $pricing['minutes'],
+            'gift_price_coins' => $pricing['coins'],
+            'gift_price_usd' => $pricing['usd'],
+            'coins_per_minute' => $pricing['coins_per_minute'],
+        ], $extra);
+    }
     /**
      * 🎁 Obtener todos los regalos disponibles
      */
@@ -57,11 +88,16 @@ class GiftSystemController extends Controller
                         }
                     }
                     
+                    $pricing = $this->getGiftPricing($gift);
+
                     return [
                         'id' => $gift->id,
                         'name' => $gift->name,
                         'image_path' => $imageUrl ?: 'https://via.placeholder.com/80x80/ff007a/ffffff?text=NO',
-                        'price' => $gift->price,
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $pricing['coins'],
+                        'price_usd' => $pricing['usd'],
                         'category' => $gift->category ?? 'basic'
                     ];
                 });
@@ -79,6 +115,43 @@ class GiftSystemController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Error al obtener regalos disponibles'
+            ], 500);
+        }
+    }
+
+    /**
+     * 📊 Tabla de precios de regalos (USD / minutos / monedas)
+     */
+    public function getGiftPricingTable()
+    {
+        try {
+            $gifts = Gift::where('is_active', true)
+                ->orderBy('price', 'asc')
+                ->get()
+                ->map(function ($gift) {
+                    $pricing = $this->getGiftPricing($gift);
+
+                    return [
+                        'id' => $gift->id,
+                        'name' => $gift->name,
+                        'price_usd' => $pricing['usd'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $pricing['coins'],
+                        'coins_per_minute' => $pricing['coins_per_minute'],
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'gifts' => $gifts,
+                'total' => $gifts->count(),
+                'base_minute_value_usd' => CallPricingService::getBaseMinuteValueUsd(),
+            ]);
+        } catch (Exception $e) {
+            Log::error('Error obteniendo tabla de precios de regalos: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Error al obtener tabla de precios'
             ], 500);
         }
     }
@@ -133,13 +206,15 @@ class GiftSystemController extends Controller
                 ], 400);
             }
 
+            $pricing = $this->getGiftPricing($gift);
+
             // 🔐 GENERAR HASH DE SEGURIDAD AVANZADO
             $middleware = new \App\Http\Middleware\GiftSecurityMiddleware();
             $securityData = $middleware->generateAdvancedSecurityHash(
                 $user->id,
                 $clientId,
                 $giftId,
-                $gift->price
+                $pricing['coins']
             );
 
             // Generar hash de integridad
@@ -147,7 +222,7 @@ class GiftSystemController extends Controller
                 $user->id,
                 $clientId,
                 $giftId,
-                $gift->price,
+                $pricing['coins'],
                 now()->timestamp
             ]));
 
@@ -172,12 +247,12 @@ class GiftSystemController extends Controller
                 'modelo_id' => $user->id,
                 'client_id' => $clientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
+                'amount' => $pricing['coins'],
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(15),
                 'room_name' => $request->input('room_name', ''),  // ← AGREGAR ESTA LÍNEA
                 'message' => $request->input('message', ''),      // ← AGREGAR ESTA LÍNEA
-                'gift_data' => json_encode([
+                'gift_data' => json_encode($this->buildGiftData($gift, [
                     'security_hash' => $securityData['hash'],
                     'timestamp' => $securityData['timestamp'],
                     'nonce' => $securityData['nonce'],
@@ -185,13 +260,10 @@ class GiftSystemController extends Controller
                     'session_id' => $securityData['session_id'],
                     'ip' => $securityData['ip'],
                     'integrity_hash' => $integrityHash,
-                    'gift_name' => $gift->name,
-                    'gift_image' => $gift->image_path,  // ← CAMBIAR image_url por image_path
-                    'gift_price' => $gift->price,       // ← AGREGAR PRECIO
                     'modelo_name' => $user->name,
                     'client_name' => $client->name,
-                    'original_message' => $request->input('message', '') // ← AGREGAR MENSAJE
-                ])
+                    'original_message' => $request->input('message', '')
+                ]))
             ]);
             // AGREGAR DESPUÉS DE $giftRequest = GiftRequest::create([...]);
             Log::info('💬 Creando mensaje de chat para solicitud de regalo');
@@ -207,7 +279,9 @@ class GiftSystemController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $pricing['coins'],
                         'original_message' => $request->input('message', ''),
                         'request_id' => $giftRequest->id
                     ])
@@ -227,13 +301,17 @@ class GiftSystemController extends Controller
                 'gift_data' => [
                     'gift_name' => $gift->name,
                     'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $pricing['coins'],
                     'original_message' => $request->input('message', '')
                 ],
                 'extra_data' => [
                     'gift_name' => $gift->name,
                     'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $pricing['coins'],
                     'original_message' => $request->input('message', '')
                 ]
             ];
@@ -243,7 +321,7 @@ class GiftSystemController extends Controller
                 'modelo_id' => $user->id,
                 'client_id' => $clientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price
+                'amount' => $pricing['coins']
             ]);
 
             DB::commit();
@@ -259,7 +337,10 @@ class GiftSystemController extends Controller
                     'gift' => [
                         'id' => $gift->id,
                         'name' => $gift->name,
-                        'price' => $gift->price,
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $pricing['coins'],
+                        'price_usd' => $pricing['usd'],
                         'image_url' => $gift->image_url
                     ],
                     'client' => [
@@ -339,6 +420,8 @@ class GiftSystemController extends Controller
                         Log::info("✅ Security hash generado y guardado para request {$request->id}");
                     }
 
+                    $pricing = $this->getGiftPricing($request->gift);
+
                     return [
                         'id' => $request->id,
                         'modelo_id' => $request->modelo_id,
@@ -367,7 +450,10 @@ class GiftSystemController extends Controller
                             'id' => $request->gift->id,
                             'name' => $request->gift->name,
                             'image' => $request->gift->image_path ? asset($request->gift->image_path) : null,
-                            'price' => (int) $request->gift->price,
+                            'price' => $pricing['minutes'],
+                            'price_minutes' => $pricing['minutes'],
+                            'price_coins' => $pricing['coins'],
+                            'price_usd' => $pricing['usd'],
                             'category' => $request->gift->category ?? 'basic',
                             'is_active' => $request->gift->is_active
                         ],
@@ -553,27 +639,32 @@ class GiftSystemController extends Controller
             // Crear lock temporal
             \Illuminate\Support\Facades\Cache::put($lockKey, true, 300); // 5 minutos
 
-            // 6. Verificar saldo del cliente con bloqueo de fila
-            $clientCoins = UserGiftCoins::lockForUpdate()
+            // 6. Verificar saldo del cliente con bloqueo de fila (usar minutos)
+            $pricing = $this->getGiftPricing($giftRequest->gift);
+            $requiredCoins = (int) $giftRequest->amount;
+
+            $clientCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
 
             if (!$clientCoins) {
-                $clientCoins = UserGiftCoins::create([
+                $clientCoins = UserCoins::create([
                     'user_id' => $user->id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
-            if ($clientCoins->balance < $giftRequest->amount) {
+            if ($clientCoins->purchased_balance < $requiredCoins) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ Saldo insuficiente", [
                     'client_id' => $user->id,
-                    'balance' => $clientCoins->balance,
-                    'required' => $giftRequest->amount
+                    'balance_coins' => $clientCoins->purchased_balance,
+                    'required_coins' => $requiredCoins,
+                    'required_minutes' => $pricing['minutes']
                 ]);
                 
                 return response()->json([
@@ -581,34 +672,40 @@ class GiftSystemController extends Controller
                     'error' => 'insufficient_balance',
                     'message' => 'Saldo insuficiente para este regalo',
                     'data' => [
-                        'current_balance' => $clientCoins->balance,
-                        'required_amount' => $giftRequest->amount,
-                        'missing_amount' => $giftRequest->amount - $clientCoins->balance
+                        'current_balance_coins' => $clientCoins->purchased_balance,
+                        'current_balance_minutes' => floor($clientCoins->purchased_balance / $pricing['coins_per_minute']),
+                        'required_amount_coins' => $requiredCoins,
+                        'required_amount_minutes' => $pricing['minutes'],
+                        'missing_amount_coins' => $requiredCoins - $clientCoins->purchased_balance
                     ]
                 ], 400);
             }
 
             // 7. 💰 PROCESAR TRANSACCIÓN
             Log::info("💰 Iniciando transacción", [
-                'client_balance_before' => $clientCoins->balance,
-                'amount' => $giftRequest->amount
+                'client_balance_before' => $clientCoins->purchased_balance,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes']
             ]);
             
             // 1. Descontar del cliente
-            $clientCoins->decrement('balance', $giftRequest->amount);
-            $clientCoins->increment('total_sent', $giftRequest->amount);
+            $clientCoins->purchased_balance -= $requiredCoins;
+            $clientCoins->total_consumed += $requiredCoins;
+            $clientCoins->last_consumption_at = now();
+            $clientCoins->save();
 
             // 2. Obtener/crear monedas de la modelo
-            $modeloCoins = UserGiftCoins::lockForUpdate()
+            $modeloCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $giftRequest->modelo_id)
                 ->first();
 
             if (!$modeloCoins) {
-                $modeloCoins = UserGiftCoins::create([
+                $modeloCoins = UserCoins::create([
                     'user_id' => $giftRequest->modelo_id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
 
@@ -617,12 +714,12 @@ class GiftSystemController extends Controller
             $platformCommissionRate = $giftCommissionPercentage / 100;
             $modeloRate = 1 - $platformCommissionRate;
             
-            $modeloAmount = $giftRequest->amount * $modeloRate;
-            $platformCommission = $giftRequest->amount * $platformCommissionRate;
+            $modeloAmount = $pricing['usd'] * $modeloRate;
+            $platformCommission = $pricing['usd'] * $platformCommissionRate;
 
             // 4. Agregar monedas a la modelo
-            $modeloCoins->increment('balance', $modeloAmount);
-            $modeloCoins->increment('total_received', $modeloAmount);
+            $modeloCoins->increment('purchased_balance', $modeloAmount);
+            $modeloCoins->increment('total_purchased', $modeloAmount);
 
             // 5. Actualizar estado de la solicitud
             $giftRequest->update([
@@ -642,8 +739,8 @@ class GiftSystemController extends Controller
                 'sender_id' => $user->id,
                 'receiver_id' => $giftRequest->modelo_id,
                 'gift_id' => $giftRequest->gift_id,
-                'amount' => $giftRequest->amount,
-                'amount_total' => $giftRequest->amount,
+                'amount' => $pricing['minutes'],
+                'amount_total' => $pricing['usd'],
                 'amount_modelo' => $modeloAmount,
                 'amount_commission' => $platformCommission,
                 'type' => 'gift',
@@ -652,7 +749,12 @@ class GiftSystemController extends Controller
                 'source' => 'gift_request_system',
                 'message' => "Regalo: {$giftRequest->gift->name}",
                 'reference_id' => "GR-{$giftRequest->id}",
-                'room_name' => $giftRequest->room_name ?? ''
+                'room_name' => $giftRequest->room_name ?? '',
+                'gift_data' => json_encode($this->buildGiftData($giftRequest->gift, [
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
+                ]))
             ]);
 
             // Limpiar lock
@@ -664,10 +766,11 @@ class GiftSystemController extends Controller
                 'client_id' => $user->id,
                 'modelo_id' => $giftRequest->modelo_id,
                 'gift_id' => $giftRequest->gift_id,
-                'amount' => $giftRequest->amount,
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
                 'modelo_received' => $modeloAmount,
                 'platform_commission' => $platformCommission,
-                'client_new_balance' => $clientCoins->fresh()->balance
+                'client_new_balance' => $clientCoins->fresh()->purchased_balance
             ]);
 
                 $duplicatesUpdated = GiftRequest::where('modelo_id', $giftRequest->modelo_id)
@@ -707,7 +810,10 @@ class GiftSystemController extends Controller
                 'extra_data' => json_encode([
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                     'gift_image' => $giftRequest->gift->image_path ?? null, // ← 🔥 AGREGAR ESTA LÍNEA
-                    'gift_price' => $giftRequest->amount ?? 0,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'client_name' => $user->name ?? 'Cliente',
                     'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                     'transaction_id' => $giftRequest->id ?? 0
@@ -756,7 +862,10 @@ class GiftSystemController extends Controller
                 'extra_data' => json_encode([
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                     'gift_image' => $giftImage, // ← 🔥 USAR IMAGEN PERSONALIZADA DEL CLIENTE SI EXISTE
-                    'gift_price' => $giftRequest->amount ?? 0,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'client_name' => $user->name ?? 'Cliente',
                     'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                     'transaction_id' => $giftRequest->id ?? 0
@@ -779,7 +888,10 @@ class GiftSystemController extends Controller
                     'gift_id' => $giftRequest->gift_id,
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                     'gift_image' => $giftRequest->gift->image_path ?? null,
-                    'gift_price' => $giftRequest->amount,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'transaction_id' => $giftRequest->id,
                     'context' => 'chat_request'
                 ];
@@ -787,7 +899,7 @@ class GiftSystemController extends Controller
                 $earningsResult = $earningsController->processGiftEarnings(
                     $giftRequest->modelo_id,     // modelUserId
                     $user->id,                   // clientUserId
-                    $giftRequest->amount,        // giftValue
+                    $pricing['usd'],             // giftValue (USD)
                     $giftRequest->room_name ?? 'chat_gift',     // roomName
                     $giftDetails                 // giftDetails
                 );
@@ -797,7 +909,7 @@ class GiftSystemController extends Controller
                         'gift_request_id' => $giftRequest->id,
                         'modelo_id' => $giftRequest->modelo_id,
                         'client_id' => $user->id,
-                        'amount' => $giftRequest->amount,
+                        'amount_usd' => $pricing['usd'],
                         'context' => 'chat_request'
                     ]);
                 } else {
@@ -823,7 +935,9 @@ class GiftSystemController extends Controller
                         'id' => $giftRequest->gift->id,
                         'name' => $giftRequest->gift->name,
                         'image' => $giftRequest->gift->image_path ? asset($giftRequest->gift->image_path) : null,
-                        'amount' => $giftRequest->amount
+                        'amount_minutes' => $pricing['minutes'],
+                        'amount_coins' => $requiredCoins,
+                        'amount_usd' => $pricing['usd']
                     ],
                     'modelo' => [
                         'id' => $giftRequest->modelo->id,
@@ -831,8 +945,10 @@ class GiftSystemController extends Controller
                         'received_amount' => $modeloAmount
                     ],
                     'client_balance' => [
-                        'new_balance' => $clientCoins->fresh()->balance,
-                        'spent_amount' => $giftRequest->amount
+                        'new_balance' => $clientCoins->fresh()->purchased_balance,
+                        'spent_amount_minutes' => $pricing['minutes'],
+                        'spent_amount_coins' => $requiredCoins,
+                        'spent_amount_usd' => $pricing['usd']
                     ],
                     'transaction_details' => [
                         'processed_at' => now()->toISOString(),
@@ -1013,45 +1129,52 @@ class GiftSystemController extends Controller
                 ]);
             }
 
-            // 🔥 VERIFICAR SALDO DE REGALOS (solo `gift_balance`) — no consumir `purchased_balance` para regalos
-            $giftOnlyBalance = $clientCoins->gift_balance;
+            $pricing = $this->getGiftPricing($gift);
+            $requiredCoins = $pricing['coins'];
 
-            if ($giftOnlyBalance < $gift->price) {
+            // 🔥 USAR SALDO DE MINUTOS (purchased_balance) PARA REGALOS
+            $minutesBalanceCoins = $clientCoins->purchased_balance;
+
+            if ($minutesBalanceCoins < $requiredCoins) {
                 \Illuminate\Support\Facades\Cache::forget($lockKey);
                 
                 Log::warning("❌ [CHAT] Saldo de regalos insuficiente para regalo directo", [
                     'client_id' => $user->id,
-                    'gift_balance' => $clientCoins->gift_balance,
-                    'required' => $gift->price
+                    'purchased_balance' => $clientCoins->purchased_balance,
+                    'required_coins' => $requiredCoins,
+                    'required_minutes' => $pricing['minutes']
                 ]);
                 
                 return response()->json([
                     'success' => false,
                     'error' => 'insufficient_balance',
-                    'message' => 'Saldo de regalos insuficiente para este regalo',
+                    'message' => 'Saldo de minutos insuficiente para este regalo',
                     'data' => [
-                        'current_gift_balance' => $giftOnlyBalance,
-                        'required_amount' => $gift->price,
-                        'missing_amount' => $gift->price - $giftOnlyBalance
+                        'current_minutes_balance' => floor($minutesBalanceCoins / $pricing['coins_per_minute']),
+                        'current_balance_coins' => $minutesBalanceCoins,
+                        'required_amount_minutes' => $pricing['minutes'],
+                        'required_amount_coins' => $requiredCoins,
+                        'missing_amount_coins' => $requiredCoins - $minutesBalanceCoins
                     ]
                 ], 400);
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
             // Calcular balance total antes de usarlo
-            $totalBalance = $clientCoins->purchased_balance + $clientCoins->gift_balance;
+            $totalBalance = $clientCoins->purchased_balance;
             
             Log::info("💰 [CHAT] Procesando regalo directo", [
                 'client_total_balance_before' => $totalBalance,
                 'purchased_balance' => $clientCoins->purchased_balance,
                 'gift_balance' => $clientCoins->gift_balance,
-                'amount' => $gift->price,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes'],
                 'room_name' => $roomName
             ]);
             
-            // 1. Descontar exclusivamente de gift_balance
-            $clientCoins->gift_balance -= $gift->price;
-            $clientCoins->total_consumed += $gift->price;
+            // 1. Descontar de purchased_balance (minutos)
+            $clientCoins->purchased_balance -= $requiredCoins;
+            $clientCoins->total_consumed += $requiredCoins;
             $clientCoins->last_consumption_at = now();
             $clientCoins->save();
 
@@ -1075,8 +1198,8 @@ class GiftSystemController extends Controller
             $platformCommissionRate = $giftCommissionPercentage / 100;
             $modeloRate = 1 - $platformCommissionRate;
             
-            $modeloAmount = $gift->price * $modeloRate;
-            $platformCommission = $gift->price * $platformCommissionRate;
+            $modeloAmount = $pricing['usd'] * $modeloRate;
+            $platformCommission = $pricing['usd'] * $platformCommissionRate;
 
             // 4. Agregar monedas a la modelo (en purchased_balance ya que son ganancias)
             $modeloCoins->increment('purchased_balance', $modeloAmount);
@@ -1091,8 +1214,8 @@ class GiftSystemController extends Controller
                 'sender_id' => $user->id,
                 'receiver_id' => $recipientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
-                'amount_total' => $gift->price,
+                'amount' => $pricing['minutes'],
+                'amount_total' => $pricing['usd'],
                 'amount_modelo' => $modeloAmount,
                 'amount_commission' => $platformCommission,
                 'type' => 'direct_gift',
@@ -1102,6 +1225,11 @@ class GiftSystemController extends Controller
                 'message' => $message ?: "Regalo directo: {$gift->name}",
                 'reference_id' => "CHG-DIRECT-" . time(),
                 'room_name' => $roomName,
+                'gift_data' => json_encode($this->buildGiftData($gift, [
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
+                ])),
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -1111,14 +1239,15 @@ class GiftSystemController extends Controller
 
             // 🔥 OBTENER BALANCE TOTAL ACTUALIZADO
             $clientCoinsFresh = $clientCoins->fresh();
-            $newTotalBalance = $clientCoinsFresh->purchased_balance + $clientCoinsFresh->gift_balance;
+            $newTotalBalance = $clientCoinsFresh->purchased_balance;
             
             Log::info('✅ [CHAT] Regalo directo enviado exitosamente', [
                 'transaction_id' => $transactionId,
                 'client_id' => $user->id,
                 'modelo_id' => $recipientId,
                 'gift_id' => $giftId,
-                'amount' => $gift->price,
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
                 'modelo_received' => $modeloAmount,
                 'platform_commission' => $platformCommission,
                 'client_new_total_balance' => $newTotalBalance,
@@ -1134,7 +1263,10 @@ class GiftSystemController extends Controller
                     'gift_id' => $gift->id,
                     'gift_name' => $gift->name,
                     'gift_image' => $gift->image_path,
-                    'gift_price' => $gift->price,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'transaction_id' => $transactionId,
                     'context' => 'direct_gift'
                 ];
@@ -1142,7 +1274,7 @@ class GiftSystemController extends Controller
                 $earningsResult = $earningsController->processGiftEarnings(
                     $recipientId,                // modelUserId
                     $user->id,                   // clientUserId
-                    $gift->price,                // giftValue
+                    $pricing['usd'],             // giftValue (USD)
                     $roomName,                   // roomName
                     $giftDetails                 // giftDetails
                 );
@@ -1152,7 +1284,7 @@ class GiftSystemController extends Controller
                         'transaction_id' => $transactionId,
                         'modelo_id' => $recipientId,
                         'client_id' => $user->id,
-                        'amount' => $gift->price,
+                        'amount_usd' => $pricing['usd'],
                         'context' => 'direct_gift'
                     ]);
                 } else {
@@ -1206,7 +1338,10 @@ class GiftSystemController extends Controller
             $giftDataForModelo = [
                 'gift_name' => $gift->name ?? 'Regalo',
                 'gift_image' => $gift->image_path ?? null,
-                'gift_price' => $gift->price ?? 0,
+                'gift_price' => $pricing['minutes'],
+                'gift_price_minutes' => $pricing['minutes'],
+                'gift_price_coins' => $requiredCoins,
+                'gift_price_usd' => $pricing['usd'],
                 'client_name' => $user->name ?? 'Cliente',
                 'modelo_name' => $recipient->name ?? 'Modelo',
                 'transaction_id' => $transactionId ?? 0,
@@ -1235,7 +1370,10 @@ class GiftSystemController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $recipient->name ?? 'Modelo',
                         'transaction_id' => $transactionId,
@@ -1248,7 +1386,10 @@ class GiftSystemController extends Controller
                     'gift_data' => json_encode([
                         'gift_name' => $gift->name,
                         'gift_image' => $gift->image_path,
-                        'gift_price' => $gift->price,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'original_message' => $message
                     ])
                 ]);
@@ -1327,7 +1468,7 @@ class GiftSystemController extends Controller
 
             // 🔥 OBTENER BALANCE TOTAL ACTUALIZADO PARA LA RESPUESTA
             $clientCoinsFresh = $clientCoins->fresh();
-            $newTotalBalance = $clientCoinsFresh->purchased_balance + $clientCoinsFresh->gift_balance;
+            $newTotalBalance = $clientCoinsFresh->purchased_balance;
             
             // 🔥 Log final de confirmación
             Log::info('✅ [CHAT] Regalo directo completado exitosamente', [
@@ -1345,8 +1486,13 @@ class GiftSystemController extends Controller
                 'context' => 'chat_direct',
                 'gift_name' => $gift->name,
                 'gift_image' => $gift->image_path,
-                'gift_price' => $gift->price,
-                'amount' => $gift->price,
+                'gift_price' => $pricing['minutes'],
+                'gift_price_minutes' => $pricing['minutes'],
+                'gift_price_coins' => $requiredCoins,
+                'gift_price_usd' => $pricing['usd'],
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
+                'amount_usd' => $pricing['usd'],
                 'new_balance' => $newTotalBalance, // 🔥 Balance total (purchased + gift)
                 'purchased_balance' => $clientCoinsFresh->purchased_balance,
                 'gift_balance' => $clientCoinsFresh->gift_balance,
@@ -1373,7 +1519,10 @@ class GiftSystemController extends Controller
                         'id' => $gift->id,
                         'name' => $gift->name,
                         'image' => $gift->image_path ? asset($gift->image_path) : null,
-                        'price' => $gift->price
+                        'price' => $pricing['minutes'],
+                        'price_minutes' => $pricing['minutes'],
+                        'price_coins' => $requiredCoins,
+                        'price_usd' => $pricing['usd']
                     ],
                     'recipient' => [
                         'id' => $recipient->id,
@@ -1385,7 +1534,9 @@ class GiftSystemController extends Controller
                         'total_balance' => $newTotalBalance, // 🔥 Alias para compatibilidad
                         'purchased_balance' => $clientCoinsFresh->purchased_balance,
                         'gift_balance' => $clientCoinsFresh->gift_balance,
-                        'spent_amount' => $gift->price
+                        'spent_amount_minutes' => $pricing['minutes'],
+                        'spent_amount_coins' => $requiredCoins,
+                        'spent_amount_usd' => $pricing['usd']
                     ],
                     'transaction_details' => [
                         'processed_at' => now()->toISOString(),
@@ -1648,26 +1799,6 @@ class GiftSystemController extends Controller
         }
     }
 
-    /**
-     * 🛠️ Obtener o crear registro de coins de regalo
-     */
-    private function getUserGiftCoins($userId)
-    {
-        try {
-            return UserGiftCoins::firstOrCreate(
-                ['user_id' => $userId],
-                [
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
-                ]
-            );
-        } catch (Exception $e) {
-            Log::error('Error obteniendo UserGiftCoins: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
     public function generateSecurityHash($modeloId, $clientId, $giftId, $amount): array
     {
         return $this->generateAdvancedSecurityHash($modeloId, $clientId, $giftId, $amount);
@@ -1729,29 +1860,35 @@ class GiftSystemController extends Controller
                 ], 400);
             }
             
-            // 5. Verificar saldo del cliente
-            $clientCoins = UserGiftCoins::lockForUpdate()
+            $pricing = $this->getGiftPricing($giftRequest->gift);
+            $requiredCoins = (int) $giftRequest->amount;
+
+            // 5. Verificar saldo del cliente (minutos)
+            $clientCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $user->id)
                 ->first();
             
             if (!$clientCoins) {
-                $clientCoins = UserGiftCoins::create([
+                $clientCoins = UserCoins::create([
                     'user_id' => $user->id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
             
-            if ($clientCoins->balance < $giftRequest->amount) {
+            if ($clientCoins->purchased_balance < $requiredCoins) {
                 return response()->json([
                     'success' => false,
                     'error' => 'insufficient_balance',
                     'message' => 'Saldo insuficiente para este regalo',
                     'data' => [
-                        'current_balance' => $clientCoins->balance,
-                        'required_amount' => $giftRequest->amount,
-                        'missing_amount' => $giftRequest->amount - $clientCoins->balance
+                        'current_balance_coins' => $clientCoins->purchased_balance,
+                        'current_balance_minutes' => floor($clientCoins->purchased_balance / $pricing['coins_per_minute']),
+                        'required_amount_coins' => $requiredCoins,
+                        'required_amount_minutes' => $pricing['minutes'],
+                        'missing_amount_coins' => $requiredCoins - $clientCoins->purchased_balance
                     ]
                 ], 400);
             }
@@ -1768,25 +1905,29 @@ class GiftSystemController extends Controller
             
             // 7. Procesar transacción
             Log::info("💰 [SIMPLE] Procesando transacción", [
-                'client_balance_before' => $clientCoins->balance,
-                'amount' => $giftRequest->amount
+                'client_balance_before' => $clientCoins->purchased_balance,
+                'amount_coins' => $requiredCoins,
+                'amount_minutes' => $pricing['minutes']
             ]);
             
             // Descontar del cliente
-            $clientCoins->decrement('balance', $giftRequest->amount);
-            $clientCoins->increment('total_sent', $giftRequest->amount);
+            $clientCoins->purchased_balance -= $requiredCoins;
+            $clientCoins->total_consumed += $requiredCoins;
+            $clientCoins->last_consumption_at = now();
+            $clientCoins->save();
             
             // Obtener/crear monedas de la modelo
-            $modeloCoins = UserGiftCoins::lockForUpdate()
+            $modeloCoins = UserCoins::lockForUpdate()
                 ->where('user_id', $giftRequest->modelo_id)
                 ->first();
             
             if (!$modeloCoins) {
-                $modeloCoins = UserGiftCoins::create([
+                $modeloCoins = UserCoins::create([
                     'user_id' => $giftRequest->modelo_id,
-                    'balance' => 0,
-                    'total_received' => 0,
-                    'total_sent' => 0
+                    'purchased_balance' => 0,
+                    'gift_balance' => 0,
+                    'total_purchased' => 0,
+                    'total_consumed' => 0
                 ]);
             }
             
@@ -1795,12 +1936,12 @@ class GiftSystemController extends Controller
             $platformCommissionRate = $giftCommissionPercentage / 100;
             $modeloRate = 1 - $platformCommissionRate;
             
-            $modeloAmount = $giftRequest->amount * $modeloRate;
-            $platformCommission = $giftRequest->amount * $platformCommissionRate;
+            $modeloAmount = $pricing['usd'] * $modeloRate;
+            $platformCommission = $pricing['usd'] * $platformCommissionRate;
             
             // Agregar monedas a la modelo
-            $modeloCoins->increment('balance', $modeloAmount);
-            $modeloCoins->increment('total_received', $modeloAmount);
+            $modeloCoins->increment('purchased_balance', $modeloAmount);
+            $modeloCoins->increment('total_purchased', $modeloAmount);
             
             // Actualizar estado de la solicitud
             $giftRequest->update([
@@ -1820,8 +1961,8 @@ class GiftSystemController extends Controller
                 'sender_id' => $user->id,
                 'receiver_id' => $giftRequest->modelo_id,
                 'gift_id' => $giftRequest->gift_id,
-                'amount' => $giftRequest->amount,
-                'amount_total' => $giftRequest->amount,
+                'amount' => $pricing['minutes'],
+                'amount_total' => $pricing['usd'],
                 'amount_modelo' => $modeloAmount,
                 'amount_commission' => $platformCommission,
                 'type' => 'gift',
@@ -1830,7 +1971,12 @@ class GiftSystemController extends Controller
                 'source' => 'gift_simple_system',
                 'message' => "Regalo: {$giftRequest->gift->name}",
                 'reference_id' => "GR-{$giftRequest->id}",
-                'room_name' => $giftRequest->room_name ?? ''
+                'room_name' => $giftRequest->room_name ?? '',
+                'gift_data' => json_encode($this->buildGiftData($giftRequest->gift, [
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
+                ]))
             ]);
             
             // Crear mensajes de chat
@@ -1874,7 +2020,10 @@ class GiftSystemController extends Controller
                     'extra_data' => json_encode([
                         'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                         'gift_image' => $giftRequest->gift->image_path ?? null,
-                        'gift_price' => $giftRequest->amount ?? 0,
+                        'gift_price' => $pricing['minutes'],
+                        'gift_price_minutes' => $pricing['minutes'],
+                        'gift_price_coins' => $requiredCoins,
+                        'gift_price_usd' => $pricing['usd'],
                         'client_name' => $user->name ?? 'Cliente',
                         'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                         'transaction_id' => $giftRequest->id ?? 0,
@@ -1918,7 +2067,10 @@ class GiftSystemController extends Controller
                 $giftDataForModelo = [
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                     'gift_image' => $giftImage, // ← 🔥 USAR IMAGEN PERSONALIZADA DEL CLIENTE SI EXISTE
-                    'gift_price' => $giftRequest->amount ?? 0,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'client_name' => $user->name ?? 'Cliente',
                     'modelo_name' => $giftRequest->modelo->name ?? 'Modelo',
                     'transaction_id' => $giftRequest->id ?? 0,
@@ -2003,7 +2155,10 @@ class GiftSystemController extends Controller
                     'gift_id' => $giftRequest->gift_id,
                     'gift_name' => $giftRequest->gift->name ?? 'Regalo',
                     'gift_image' => $giftRequest->gift->image_path ?? null,
-                    'gift_price' => $giftRequest->amount,
+                    'gift_price' => $pricing['minutes'],
+                    'gift_price_minutes' => $pricing['minutes'],
+                    'gift_price_coins' => $requiredCoins,
+                    'gift_price_usd' => $pricing['usd'],
                     'transaction_id' => $giftRequest->id,
                     'context' => 'chat_request'
                 ];
@@ -2011,7 +2166,7 @@ class GiftSystemController extends Controller
                 $earningsResult = $earningsController->processGiftEarnings(
                     $giftRequest->modelo_id,     // modelUserId
                     $user->id,                   // clientUserId
-                    $giftRequest->amount,        // giftValue
+                    $pricing['usd'],             // giftValue (USD)
                     $giftRequest->room_name ?? 'chat_gift',     // roomName
                     $giftDetails                 // giftDetails
                 );
@@ -2021,7 +2176,7 @@ class GiftSystemController extends Controller
                         'gift_request_id' => $giftRequest->id,
                         'modelo_id' => $giftRequest->modelo_id,
                         'client_id' => $user->id,
-                        'amount' => $giftRequest->amount
+                        'amount_usd' => $pricing['usd']
                     ]);
                 } else {
                     Log::warning('⚠️ [SIMPLE] [UNIFICADO] Error integrando ganancias de regalo', [
@@ -2040,9 +2195,10 @@ class GiftSystemController extends Controller
                 'request_id' => $requestId,
                 'client_id' => $user->id,
                 'modelo_id' => $giftRequest->modelo_id,
-                'amount' => $giftRequest->amount,
+                'amount_minutes' => $pricing['minutes'],
+                'amount_coins' => $requiredCoins,
                 'modelo_received' => $modeloAmount,
-                'new_balance' => $clientCoins->fresh()->balance
+                'new_balance' => $clientCoins->fresh()->purchased_balance
             ]);
             
             return response()->json([
@@ -2054,12 +2210,16 @@ class GiftSystemController extends Controller
                         'id' => $giftRequest->gift->id,
                         'name' => $giftRequest->gift->name,
                         'image' => $giftRequest->gift->image_path,
-                        'amount' => $giftRequest->amount
+                        'amount_minutes' => $pricing['minutes'],
+                        'amount_coins' => $requiredCoins,
+                        'amount_usd' => $pricing['usd']
                     ],
                     'client_balance' => [
-                        'old_balance' => $clientCoins->balance + $giftRequest->amount,
-                        'new_balance' => $clientCoins->fresh()->balance,
-                        'amount_spent' => $giftRequest->amount
+                        'old_balance' => $clientCoins->purchased_balance + $requiredCoins,
+                        'new_balance' => $clientCoins->fresh()->purchased_balance,
+                        'amount_spent_minutes' => $pricing['minutes'],
+                        'amount_spent_coins' => $requiredCoins,
+                        'amount_spent_usd' => $pricing['usd']
                     ],
                     'modelo_received' => $modeloAmount,
                     'platform_commission' => $platformCommission

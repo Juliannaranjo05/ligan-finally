@@ -422,9 +422,6 @@
       "noResults": "No se encontraron resultados",
       "tryOtherTerms": "Intenta con otros términos de búsqueda"
     },
-    "errors": {
-      "callError": "No puedes realizar llamadas en este momento"
-    },
     "restrictions": {
       "pendingApproval": "Historia Pendiente de Aprobación",
       "activeStory": "Historia Activa - En Espera",
@@ -1838,7 +1835,7 @@
     "requestFrom": "Solicitar a {{name}}",
     "clickToSend": "Haz clic para enviar",
     "clickToRequest": "Haz clic para pedir",
-    "yourBalance": "Tu saldo: {{balance}} monedas",
+    "yourBalance": "Tu saldo: {{balance}} minutos",
     "optionalMessage": "Mensaje opcional para acompañar tu regalo:",
     "optionalRequestMessage": "Mensaje opcional (aparecerá con tu solicitud):",
     "placeholderGift": "Ej: ¡Eres increíble! 💖",
@@ -1846,14 +1843,14 @@
     "characters": "{{current}}/{{max}} caracteres",
     "giftsAvailable": "{{count}} regalos disponibles",
     "insufficient": "Faltan {{amount}}",
-    "confirmSend": "¿Enviar {{giftName}} a {{recipientName}}?\nCosto: {{price}} monedas\nTu saldo actual: {{balance}} monedas",
+    "confirmSend": "¿Enviar {{giftName}} a {{recipientName}}?\nCosto: {{price}} minutos\nTu saldo actual: {{balance}} minutos",
     "giftSent": "¡{{giftName}} enviado a {{recipientName}}! 🎉",
     "requestSent": "¡Solicitud de {{giftName}} enviada a {{recipientName}}! 🎁",
     "sendingGift": "Enviando regalo...",
     "sendingRequest": "Enviando solicitud...",
     "invalidGiftId": "Error: ID de regalo inválido",
     "invalidRecipientId": "Error: ID de destinatario inválido",
-    "insufficientBalance": "No tienes suficientes monedas. Necesitas {{required}} pero tienes {{current}}.",
+    "insufficientBalance": "No tienes suficientes minutos. Necesitas {{required}} pero tienes {{current}}.",
     "processingError": "Error al procesar el regalo"
   },
   "disconnect": {

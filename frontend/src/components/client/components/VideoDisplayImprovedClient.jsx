@@ -1415,7 +1415,7 @@ const VideoDisplayImprovedClient = ({
                       {giftData.gift_price && (
                         <div className="text-center">
                           <span className="text-xs font-semibold text-amber-200">
-                            ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                            ✨ {giftData.gift_price} {getGiftCardText('minutes', currentLanguage)}
                           </span>
                         </div>
                       )}
@@ -1461,7 +1461,7 @@ const VideoDisplayImprovedClient = ({
                             onClick={async () => {
                               if (!handleAcceptGift || !hasEnoughBalance) {
                                 if (window.showNotification) {
-                                  window.showNotification('error', 'Saldo insuficiente', `Necesitas ${giftPrice} ${getGiftCardText('coins', currentLanguage)} para aceptar este regalo. Tu saldo actual: ${currentBalance}`);
+                                  window.showNotification('error', 'Saldo insuficiente', `Necesitas ${giftPrice} ${getGiftCardText('minutes', currentLanguage)} para aceptar este regalo. Tu saldo actual: ${currentBalance}`);
                                 }
                                 return;
                               }
@@ -1480,7 +1480,7 @@ const VideoDisplayImprovedClient = ({
                                 : 'bg-gray-600 text-gray-300 cursor-not-allowed opacity-50'
                             }`}
                           >
-                            {hasEnoughBalance ? 'Regalar' : `Faltan ${giftPrice - currentBalance} ${getGiftCardText('coins', currentLanguage)}`}
+                            {hasEnoughBalance ? 'Regalar' : `Faltan ${giftPrice - currentBalance} ${getGiftCardText('minutes', currentLanguage)}`}
                           </button>
                         );
                       })()}

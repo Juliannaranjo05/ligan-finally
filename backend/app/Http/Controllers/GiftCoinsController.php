@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\User;
-use App\Models\UserGiftCoins;
 use App\Models\GiftTransaction;
+use App\Services\CallPricingService;
 use Exception;
 use Illuminate\Validation\ValidationException;
 
@@ -92,18 +92,17 @@ class GiftCoinsController extends Controller
             }
 
             Log::info('✅ DEBUGGING - Registro de UserCoins obtenido:', [
-                'current_gift_balance' => $userCoins->gift_balance,
-                'purchased_balance' => $userCoins->purchased_balance
+                'current_purchased_balance' => $userCoins->purchased_balance
             ]);
 
-            // Actualizar gift_balance en UserCoins
-            $oldBalance = $userCoins->gift_balance;
-            $userCoins->gift_balance += $amount;
+            // Actualizar purchased_balance en UserCoins (minutos)
+            $oldBalance = $userCoins->purchased_balance;
+            $userCoins->purchased_balance += $amount;
             $userCoins->save();
 
             Log::info('✅ DEBUGGING - Balance de regalos actualizado en UserCoins:', [
-                'old_gift_balance' => $oldBalance,
-                'new_gift_balance' => $userCoins->gift_balance,
+                'old_purchased_balance' => $oldBalance,
+                'new_purchased_balance' => $userCoins->purchased_balance,
                 'amount_added' => $amount
             ]);
 
@@ -133,9 +132,10 @@ class GiftCoinsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Coins de regalo agregados exitosamente',
+                'message' => 'Saldo de minutos agregado exitosamente',
                 'added' => $amount,
-                'new_gift_balance' => $userCoins->gift_balance,
+                'new_purchased_balance' => $userCoins->purchased_balance,
+                'available_minutes' => floor($userCoins->purchased_balance / 10),
                 'transaction_id' => $transaction->id
             ]);
 
@@ -183,12 +183,15 @@ class GiftCoinsController extends Controller
                 ]);
             }
 
+            $coinsPerMinute = CallPricingService::getCoinsPerMinute();
+            $availableMinutes = $coinsPerMinute > 0 ? (int) floor($userCoins->purchased_balance / $coinsPerMinute) : 0;
+
             return response()->json([
                 'success' => true,
                 'balance' => [
-                    'gift_balance' => $userCoins->gift_balance,
                     'purchased_balance' => $userCoins->purchased_balance,
-                    'total_balance' => $userCoins->purchased_balance + $userCoins->gift_balance,
+                    'available_minutes' => $availableMinutes,
+                    'coins_per_minute' => $coinsPerMinute,
                     'total_consumed' => $userCoins->total_consumed
                 ]
             ]);

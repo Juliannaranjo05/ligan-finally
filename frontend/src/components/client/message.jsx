@@ -2570,7 +2570,7 @@ const renderMensaje = useCallback((mensaje) => {
             {finalGiftData.gift_price && (
               <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg px-3 py-1 border border-amber-300/30">
                 <span className="text-amber-200 font-bold text-sm">
-                  ✨ {finalGiftData.gift_price} {getGiftCardText('coins', i18nInstance.language || 'es', 'monedas')}
+                  ✨ {finalGiftData.gift_price} {getGiftCardText('minutes', i18nInstance.language || 'es', 'minutos')}
                 </span>
               </div>
             )}
@@ -2782,7 +2782,7 @@ const renderMensaje = useCallback((mensaje) => {
             {finalSentGiftData.gift_price && (
               <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-lg px-3 py-1 border border-blue-300/30">
                 <span className="text-blue-200 font-bold text-sm">
-                  -{finalSentGiftData.gift_price} {getGiftCardText('coins', i18nInstance.language || 'es', 'monedas')}
+                  -{finalSentGiftData.gift_price} {getGiftCardText('minutes', i18nInstance.language || 'es', 'minutos')}
                 </span>
               </div>
             )}

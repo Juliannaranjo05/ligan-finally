@@ -46,7 +46,7 @@ export const GiftNotificationOverlay = ({
             </h4>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#ff007a] to-[#cc0062] rounded-full text-white font-bold">
               <Sparkles size={16} />
-              {request.gift.price} créditos
+              {request.gift.price} minutos
             </div>
           </div>
 

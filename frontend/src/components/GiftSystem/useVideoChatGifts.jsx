@@ -384,38 +384,15 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
             name: currentUser?.name
           });
           
-          // 🔥 LÓGICA MEJORADA PARA DETERMINAR EL BALANCE CORRECTO
-          // Para MODELOS: usar gift_balance (total de regalos recibidos)
-          // Para CLIENTES: usar gift_balance_coins (saldo disponible para enviar regalos)
-          let balance = 0;
-          if (currentUser?.role === 'modelo') {
-            // 🔥 MODELO: Usar gift_balance (total de regalos recibidos)
-            balance = data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0);
-            console.log('🎁 [GIFTS BALANCE] Lógica para MODELO:', {
-              gift_balance: data.gift_balance,
-              balance: data.balance,
-              final_balance: balance
-            });
-          } else {
-            // 🔥 CLIENTE: Usar gift_balance_coins (saldo disponible)
-            balance = data.gift_balance_coins !== undefined 
-              ? data.gift_balance_coins 
-              : (data.gift_balance !== undefined ? data.gift_balance : (data.balance || 0));
-            console.log('🎁 [GIFTS BALANCE] Lógica para CLIENTE:', {
-              gift_balance_coins: data.gift_balance_coins,
-              gift_balance: data.gift_balance,
-              balance: data.balance,
-              final_balance: balance
-            });
-          }
-          setUserBalance(balance);
-          console.log('✅ [useVideoChatGifts] Balance de regalos procesado y actualizado:', {
-            gift_balance_coins: data.gift_balance_coins,
-            gift_balance: data.gift_balance,
-            balance: data.balance,
-            final_balance: balance,
-            user_role: data.user_role,
-            purchased_balance: data.purchased_balance
+          const coinsPerMinute = data.coins_per_minute || 10;
+          const purchasedBalance = data.purchased_balance ?? data.balance?.purchased_balance ?? 0;
+          const availableMinutes = data.available_minutes ?? Math.floor(purchasedBalance / coinsPerMinute);
+          setUserBalance(availableMinutes);
+          console.log('✅ [useVideoChatGifts] Balance de minutos procesado y actualizado:', {
+            available_minutes: availableMinutes,
+            purchased_balance: purchasedBalance,
+            coins_per_minute: coinsPerMinute,
+            user_role: data.user_role
           });
           console.log('🎁 [GIFTS BALANCE] ======================================');
           return { success: true, balance: balance };
@@ -643,7 +620,7 @@ export const useVideoChatGifts = (roomName, currentUser, otherUser) => {
         let errorMessage = data.message || data.error || 'Error desconocido';
         
         if (data.error === 'insufficient_balance') {
-          errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || 'más'} monedas`;
+          errorMessage = `Saldo insuficiente. Necesitas ${data.data?.required_amount || 'más'} minutos`;
         } else if (data.error === 'invalid_request') {
           errorMessage = 'La solicitud ya expiró o fue procesada';
         } else if (data.error === 'security_violation') {

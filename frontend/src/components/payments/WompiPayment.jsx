@@ -236,10 +236,7 @@ export default function WompiPayment({ onClose }) {
         purchased_coins: 0,
         gift_coins: 0,
         total_coins: 0,
-        minutes_available: 0,
-        gift_balance: 0,
-        total_received_gifts: 0,
-        total_sent_gifts: 0
+        minutes_available: 0
       };
 
       if (minutesData.success) {
@@ -247,22 +244,6 @@ export default function WompiPayment({ onClose }) {
         combinedBalance.gift_coins = minutesData.balance.gift_coins || 0;
         combinedBalance.total_coins = minutesData.balance.total_coins || 0;
         combinedBalance.minutes_available = minutesData.balance.minutes_available || 0;
-      }
-
-      // Intentar obtener balance de gifts, pero no fallar si no está disponible
-      try {
-        const giftsResponse = await fetch(`${API_BASE_URL}/api/gifts/balance`, {
-          headers: getAuthHeaders()
-        });
-        const giftsData = await giftsResponse.json();
-
-        if (giftsData.success) {
-          combinedBalance.gift_balance = giftsData.balance.gift_balance || 0;
-          combinedBalance.total_received_gifts = giftsData.balance.total_received || 0;
-          combinedBalance.total_sent_gifts = giftsData.balance.total_sent || 0;
-        }
-      } catch (giftsError) {
-        // API de gifts no disponible, continuar sin ella
       }
 
       setBalance(combinedBalance);
@@ -301,7 +282,7 @@ export default function WompiPayment({ onClose }) {
   };
 
   const getFilteredPackages = () => {
-    const filtered = packages.filter(pkg => pkg.type === activePackageType);
+    const filtered = packages.filter(pkg => pkg.type === 'minutes');
     // debug summary removed
     return filtered;
   };
@@ -1849,7 +1830,7 @@ export default function WompiPayment({ onClose }) {
                 <CreditCard size={20} sm:size={24} className="text-white" />
               </div>
               <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-white">
-                {activePackageType === 'minutes' ? t('wompi.title.buyMinutes') : t('wompi.title.sendGifts')}
+                {t('wompi.title.buyMinutes')}
               </h1>
             </div>
 
@@ -1888,77 +1869,35 @@ export default function WompiPayment({ onClose }) {
                 
                 {balance && (
                   <>
-                    {activePackageType === 'minutes' ? (
-                      <>
-                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#ff007a] mb-2">
-                          {formatCoins(balance.total_coins)} {t('common.coins')}
+                    <>
+                      <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#ff007a] mb-2">
+                        {formatCoins(balance.total_coins)} {t('common.coins')}
+                      </div>
+                      <div className="text-base sm:text-lg text-blue-400 mb-3">
+                        ≈ {formatMinutesFromCoins(balance.total_coins)} {t('wompi.balances.availableForVideochat')}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4 text-sm">
+                        <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
+                          <div className="text-white/60 text-xs sm:text-sm">{t('balance.purchased')}</div>
+                          <div className="text-green-400 font-bold text-sm sm:text-base">{formatCoins(balance.purchased_coins)}</div>
                         </div>
-                        <div className="text-base sm:text-lg text-blue-400 mb-3">
-                          ≈ {formatMinutesFromCoins(balance.total_coins)} {t('wompi.balances.availableForVideochat')}
+                        <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
+                          <div className="text-white/60 text-xs sm:text-sm">{t('balance.giftMinutes')}</div>
+                          <div className="text-yellow-400 font-bold text-sm sm:text-base">{formatCoins(balance.gift_coins)}</div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4 text-sm">
-                          <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
-                            <div className="text-white/60 text-xs sm:text-sm">{t('balance.purchased')}</div>
-                            <div className="text-green-400 font-bold text-sm sm:text-base">{formatCoins(balance.purchased_coins)}</div>
-                          </div>
-                          <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
-                            <div className="text-white/60 text-xs sm:text-sm">{t('balance.giftMinutes')}</div>
-                            <div className="text-yellow-400 font-bold text-sm sm:text-base">{formatCoins(balance.gift_coins)}</div>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#ff007a] mb-2">
-                          {formatCoins(balance.gift_balance)} {t('balance.giftCoins')}
-                        </div>
-                        <div className="text-base sm:text-lg text-yellow-400 mb-3">
-                          {t('wompi.balances.availableForGifts')}
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4 text-sm">
-                          <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
-                            <div className="text-white/60 text-xs sm:text-sm">{t('balance.received')}</div>
-                            <div className="text-green-400 font-bold text-sm sm:text-base">{formatCoins(balance.total_received_gifts)}</div>
-                          </div>
-                          <div className="bg-[#1a1c20] rounded-lg p-2 sm:p-3">
-                            <div className="text-white/60 text-xs sm:text-sm">{t('balance.sent')}</div>
-                            <div className="text-orange-400 font-bold text-sm sm:text-base">{formatCoins(balance.total_sent_gifts)}</div>
-                          </div>
-                        </div>
-                      </>
-                    )}
+                      </div>
+                    </>
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Selector de tipo de paquete */}
           <div className="flex justify-center mb-6 sm:mb-8">
             <div className="bg-[#2b2d31] rounded-xl p-1 sm:p-2 border border-gray-600 w-full max-w-md">
-              <div className="grid grid-cols-2 gap-1 sm:gap-2">
-                <button
-                  onClick={() => setActivePackageType('minutes')}
-                  className={`px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-sm sm:text-base ${
-                    activePackageType === 'minutes'
-                      ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                      : 'text-white/70 hover:text-white hover:bg-[#1a1c20]'
-                  }`}
-                >
-                  <CreditCard size={16} />
-                  <span className="hidden sm:inline">{t('buttons.buy')}</span> {t('common.minutes')}
-                </button>
-                <button
-                  onClick={() => setActivePackageType('gifts')}
-                  className={`px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-sm sm:text-base ${
-                    activePackageType === 'gifts'
-                      ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                      : 'text-white/70 hover:text-white hover:bg-[#1a1c20]'
-                  }`}
-                >
-                  <Gift size={16} />
-                  <span className="hidden sm:inline">{t('buttons.send')}</span> {t('common.gifts')}
-                </button>
+              <div className="flex items-center justify-center gap-2 px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-green-500 to-green-600">
+                <CreditCard size={16} />
+                <span className="hidden sm:inline">{t('buttons.buy')}</span> {t('common.minutes')}
               </div>
             </div>
           </div>
@@ -2059,7 +1998,7 @@ export default function WompiPayment({ onClose }) {
             <div className="text-center py-12">
               <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
               <p className="text-white/80 text-lg mb-2">
-                No hay paquetes de regalos disponibles
+                No hay paquetes de minutos disponibles
               </p>
               <p className="text-white/60 text-sm">
                 Por favor, intenta recargar la página o contacta al soporte.
@@ -2068,8 +2007,6 @@ export default function WompiPayment({ onClose }) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
               {getFilteredPackages().map((pkg) => {
-                const isGiftPackage = pkg.type === 'gifts';
-
                 return (
                   <div
                     key={pkg.id}
@@ -2107,11 +2044,9 @@ export default function WompiPayment({ onClose }) {
                           </div>
                         )}
                         
-                        {!isGiftPackage && (
-                          <div className="text-blue-400 text-xs sm:text-sm mt-1">
-                            ≈ {formatMinutesFromCoins(pkg.total_coins)} {t('packages.videochatTime')}
-                          </div>
-                        )}
+                        <div className="text-blue-400 text-xs sm:text-sm mt-1">
+                          ≈ {formatMinutesFromCoins(pkg.total_coins)} {t('packages.videochatTime')}
+                        </div>
                       </div>
 
                       <div className="mb-4">
@@ -2546,14 +2481,10 @@ export default function WompiPayment({ onClose }) {
             <div className="sticky top-0 bg-[#1a1c20] border-b border-gray-700 p-4 sm:p-6 flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center">
-                  {activePackageType === 'minutes' ? (
-                    <Wallet size={20} className="text-white" />
-                  ) : (
-                    <Gift size={20} className="text-white" />
-                  )}
+                  <Wallet size={20} className="text-white" />
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold text-white">
-                  {activePackageType === 'minutes' ? t('wompi.title.buyMinutes') : t('wompi.title.sendGifts')}
+                  {t('wompi.title.buyMinutes')}
                 </h2>
               </div>
               <button
@@ -2569,29 +2500,9 @@ export default function WompiPayment({ onClose }) {
               {/* Selector de tipo de paquete */}
               <div className="mb-6">
                 <div className="bg-[#2b2d31] rounded-xl p-1 sm:p-2 border border-gray-600">
-                  <div className="grid grid-cols-2 gap-1 sm:gap-2">
-                    <button
-                      onClick={() => setActivePackageType('minutes')}
-                      className={`px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-sm sm:text-base ${
-                        activePackageType === 'minutes'
-                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                          : 'text-white/70 hover:text-white hover:bg-[#1a1c20]'
-                      }`}
-                    >
-                      <CreditCard size={16} />
-                      <span className="hidden sm:inline">{t('buttons.buy')}</span> {t('common.minutes')}
-                    </button>
-                    <button
-                      onClick={() => setActivePackageType('gifts')}
-                      className={`px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 text-sm sm:text-base ${
-                        activePackageType === 'gifts'
-                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
-                          : 'text-white/70 hover:text-white hover:bg-[#1a1c20]'
-                      }`}
-                    >
-                      <Gift size={16} />
-                      <span className="hidden sm:inline">{t('buttons.send')}</span> {t('common.gifts')}
-                    </button>
+                  <div className="flex items-center justify-center gap-2 px-3 py-2 sm:px-6 sm:py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-green-500 to-green-600">
+                    <CreditCard size={16} />
+                    <span className="hidden sm:inline">{t('buttons.buy')}</span> {t('common.minutes')}
                   </div>
                 </div>
               </div>
@@ -2686,7 +2597,7 @@ export default function WompiPayment({ onClose }) {
                 <div className="text-center py-12">
                   <AlertCircle className="mx-auto mb-4 text-yellow-500" size={48} />
                   <p className="text-white/80 text-lg mb-2">
-                    No hay paquetes de regalos disponibles
+                    No hay paquetes de minutos disponibles
                   </p>
                   <p className="text-white/60 text-sm">
                     Por favor, intenta recargar la página o contacta al soporte.
@@ -2695,8 +2606,6 @@ export default function WompiPayment({ onClose }) {
               ) : (
                 <div className="space-y-4">
                   {getFilteredPackages().map((pkg) => {
-                    const isGiftPackage = pkg.type === 'gifts';
-
                     return (
                       <div
                         key={pkg.id}
@@ -2734,11 +2643,9 @@ export default function WompiPayment({ onClose }) {
                               </div>
                             )}
                             
-                            {!isGiftPackage && (
-                              <div className="text-blue-400 text-xs sm:text-sm mt-1">
-                                ≈ {formatMinutesFromCoins(pkg.total_coins)} {t('packages.videochatTime')}
-                              </div>
-                            )}
+                            <div className="text-blue-400 text-xs sm:text-sm mt-1">
+                              ≈ {formatMinutesFromCoins(pkg.total_coins)} {t('packages.videochatTime')}
+                            </div>
                           </div>
 
                           <div className="mb-4">

@@ -214,6 +214,7 @@ class WompiController extends Controller
             // Obtener paquetes activos y eliminar duplicados
             // Agrupar por tipo, coins, price y bonus_coins, manteniendo solo el primero (menor ID o menor sort_order)
             $packages = CoinPackage::where('is_active', true)
+                ->where('type', 'minutes')
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()

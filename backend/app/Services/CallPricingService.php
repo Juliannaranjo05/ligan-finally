@@ -153,4 +153,22 @@ class CallPricingService
 
         return $coins;
     }
+
+    public static function getGiftMinutesCost(float $giftPriceUsd): int
+    {
+        $baseMinuteValueUsd = self::getBaseMinuteValueUsd();
+        if ($baseMinuteValueUsd <= 0) {
+            return 1;
+        }
+
+        return max(1, (int) ceil($giftPriceUsd / $baseMinuteValueUsd));
+    }
+
+    public static function getGiftCoinsCost(float $giftPriceUsd, ?int $coinsPerMinute = null): int
+    {
+        $coinsPerMinute = $coinsPerMinute ?? self::getCoinsPerMinute();
+        $minutesCost = self::getGiftMinutesCost($giftPriceUsd);
+
+        return max(1, $minutesCost * $coinsPerMinute);
+    }
 }

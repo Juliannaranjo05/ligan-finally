@@ -82,7 +82,7 @@ export const GiftMessageComponent = ({
                 <Sparkles size={12} />
                 {giftRequest.gift.price}
               </div>
-              <span className="text-white/60 text-sm">créditos</span>
+              <span className="text-white/60 text-sm">minutos</span>
             </div>
           </div>
 

@@ -850,7 +850,7 @@ const parseGiftData = useCallback((msg) => {
                                     
                                     <div className="bg-gradient-to-r from-amber-500/20 to-yellow-500/20 rounded-lg gift-price-container border border-amber-300/30">
                                       <span className="text-amber-200 font-bold gift-price-text">
-                                        ✨ {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                                        ✨ {giftData.gift_price} {getGiftCardText('minutes', currentLanguage)}
                                       </span>
                                     </div>
                                     
@@ -997,7 +997,7 @@ const parseGiftData = useCallback((msg) => {
                                               } else if (!hasEnoughBalance) {
                                                 // Mostrar notificación de saldo insuficiente
                                                 if (window.showNotification) {
-                                                  window.showNotification('error', 'Saldo insuficiente', `Necesitas ${giftPrice} ${getGiftCardText('coins', currentLanguage)} para aceptar este regalo. Tu saldo actual: ${currentBalance}`);
+                                                  window.showNotification('error', 'Saldo insuficiente', `Necesitas ${giftPrice} ${getGiftCardText('minutes', currentLanguage)} para aceptar este regalo. Tu saldo actual: ${currentBalance}`);
                                                 }
                                               }
                                             }}
@@ -1070,7 +1070,7 @@ const parseGiftData = useCallback((msg) => {
                                   
                                   <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg gift-price-container border border-blue-300/30">
                                     <span className="text-blue-200 font-bold gift-price-text">
-                                      💰 {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                                      💰 {giftData.gift_price} {getGiftCardText('minutes', currentLanguage)}
                                     </span>
                                   </div>
                                 </div>
@@ -1122,7 +1122,7 @@ const parseGiftData = useCallback((msg) => {
                                   
                                   <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-lg gift-price-container border border-green-300/30">
                                     <span className="text-green-200 font-bold gift-price-text">
-                                      💰 {giftData.gift_price} {getGiftCardText('coins', currentLanguage)}
+                                      💰 {giftData.gift_price} {getGiftCardText('minutes', currentLanguage)}
                                     </span>
                                   </div>
                                 </div>
@@ -1310,7 +1310,7 @@ const parseGiftData = useCallback((msg) => {
                     : 'bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 shadow-lg'
                   }
                 `}
-                title={!userBalance || userBalance <= 0 ? "Necesitas monedas para enviar regalos" : "Enviar regalo"}
+                title={!userBalance || userBalance <= 0 ? "Necesitas minutos para enviar regalos" : "Enviar regalo"}
               >
                 <Gift size={18} />
               </button>
