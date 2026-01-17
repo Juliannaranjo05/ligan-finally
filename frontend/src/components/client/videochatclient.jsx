@@ -52,6 +52,7 @@ import {
   TranslatedMessage
 } from '../../utils/translationSystem.jsx';
 import CameraAudioSettings from '../modelo/utils/cameraaudiosettings.jsx';  
+import UnifiedPaymentModal from '../../components/payments/UnifiedPaymentModal';
 
 // Utilities y contextos
 import { getUser } from "../../utils/auth";
@@ -838,6 +839,7 @@ function VideoChatClientInner() {
   const [showCameraAudioModal, setShowCameraAudioModal] = useState(false);
   const [showGiftsModal, setShowGiftsModal] = useState(false);
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false); // 🔥 NUEVO: Modal de saldo bajo durante llamada
+  const [showBuyMinutes, setShowBuyMinutes] = useState(false); // 🔥 Modal de compra de monedas durante videollamada
   const [isFavorite, setIsFavorite] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
   const [isAddingFavorite, setIsAddingFavorite] = useState(false);
@@ -945,6 +947,11 @@ function VideoChatClientInner() {
   
   // 🔥 ESTADOS PARA CONTROL DE ADVERTENCIA Y FINALIZACIÓN AUTOMÁTICA
   const [warningShown, setWarningShown] = useState(false); // Para controlar si ya se mostró la advertencia de 2 minutos
+  const lowBalanceModalShownRef = useRef(false); // 🔥 REF para controlar si ya se mostró el modal de saldo bajo
+  const lowBalanceAutoEndTimeoutRef = useRef(null); // 🔥 REF para el timeout de colgar automáticamente
+  const lowBalanceCheckIntervalRef = useRef(null); // 🔥 REF para verificar si el usuario recargó
+  const rechargeModalStartTimeRef = useRef(null); // 🔥 REF para registrar cuándo se abrió el modal de recarga
+  const rechargeModalCheckIntervalRef = useRef(null); // 🔥 REF para verificar cada 8 segundos si pasó 1 minuto
   const hasAutoEndedRef = useRef(false); // Para prevenir múltiples finalizaciones automáticas
   const hasAddedMinutesRef = useRef(false); // Para prevenir agregar minutos múltiples veces
 
@@ -1679,38 +1686,9 @@ function VideoChatClientInner() {
               setUserBalance(coinsData.total_coins || 0);
               setRemainingMinutes(coinsData.remaining_minutes || 0);
 
-              // 🔥 OPTIMIZADO: Verificar saldo real antes de desconectar automáticamente
-              // Solo desconectar si el saldo REALMENTE está agotado (no valores temporales/cacheados)
-              if (coinsData.remaining_minutes !== null && 
-                  coinsData.remaining_minutes !== undefined &&
-                  coinsData.remaining_minutes < 2 && 
-                  coinsData.remaining_minutes >= 0 && // Debe ser >= 0 para ser válido
-                  connected && 
-                  userData?.role !== 'modelo' && 
-                  !hasAutoEndedRef.current) {
-                
-                // 🔥 VALIDACIÓN ADICIONAL: Verificar que realmente no haya saldo suficiente
-                // Solo desconectar si remaining_minutes es 0 o negativo REALMENTE
-                // Si está entre 0 y 2, puede ser un cálculo temporal - verificar antes
-                if (coinsData.remaining_minutes <= 0 && coinsData.total_coins <= 0) {
-                  console.warn('⚠️ [BALANCE] Saldo realmente agotado - Desconectando automáticamente', {
-                    remaining_minutes: coinsData.remaining_minutes,
-                    total_coins: coinsData.total_coins
-                  });
-                  hasAutoEndedRef.current = true;
-                  addNotification('warning', '⏰ Tiempo agotado', 'Tu tiempo disponible se agotó. La llamada se cerrará automáticamente.', 8000);
-                  finalizarChat(true);
-                } else if (coinsData.remaining_minutes < 2 && coinsData.remaining_minutes > 0) {
-                  // Si está entre 0 y 2 minutos, solo mostrar advertencia pero NO desconectar automáticamente
-                  console.warn('⚠️ [BALANCE] Tiempo bajo detectado (< 2 minutos), pero NO desconectando automáticamente', {
-                    remaining_minutes: coinsData.remaining_minutes,
-                    total_coins: coinsData.total_coins,
-                    note: 'El usuario puede seguir en la llamada hasta que decida finalizar manualmente'
-                  });
-                  // Solo mostrar advertencia, NO desconectar
-                  addNotification('warning', '⏰ Tiempo bajo', `Te quedan ${coinsData.remaining_minutes} minuto(s). Puedes continuar o finalizar cuando desees.`, 10000);
-                }
-              }
+              // 🔥 OPTIMIZADO: El modal y desconexión automática se manejan en el useEffect de monitoreo
+              // Aquí solo actualizamos los estados, el useEffect detectará los cambios y mostrará el modal
+              // El useEffect verificará remainingMinutes <= 2 (incluyendo 0) y mostrará el modal automáticamente
               
               console.log('💰 [BALANCE] Estados actualizados en React:', {
                 userBalance: coinsData.total_coins || 0,
@@ -2459,25 +2437,77 @@ function VideoChatClientInner() {
 
     let autoEndTimeout = null;
 
-    // 🔥 DESACTIVADO: Ya NO se desconecta automáticamente cuando remainingMinutes < 2
-    // Solo se desconecta cuando remainingMinutes <= 0 Y total_coins <= 0 (verificado en carga de balance)
-    // El usuario decide cuándo finalizar la llamada manualmente
-    
-    // Solo mostrar advertencia si el tiempo es bajo, pero NO desconectar automáticamente
+    // 🔥 MOSTRAR MODAL DE SALDO BAJO CUANDO QUEDAN 2 MINUTOS O MENOS (incluyendo 0)
     if (remainingMinutes !== null && 
         remainingMinutes !== undefined &&
-        remainingMinutes < 2 && 
-        remainingMinutes > 0 && 
+        remainingMinutes <= 2 && 
+        remainingMinutes >= 0 && // 🔥 CAMBIADO: Ahora incluye 0
         connected && 
-        !warningShown && 
+        !lowBalanceModalShownRef.current && 
         !hasAutoEndedRef.current) {
-      console.warn('⚠️ [BALANCE] Tiempo restante < 2 minutos - Mostrando advertencia (NO desconectando)', { 
+      console.warn('⚠️ [BALANCE] Tiempo restante <= 2 minutos (o 0) - Mostrando modal de saldo bajo', { 
         remainingMinutes,
-        userBalance,
-        note: 'El usuario puede continuar hasta que decida finalizar manualmente'
+        userBalance
       });
-      setWarningShown(true);
-      addNotification('warning', '⏰ Tiempo bajo', `Te quedan ${remainingMinutes} minuto(s). Puedes continuar o finalizar cuando desees.`, 15000);
+      lowBalanceModalShownRef.current = true;
+      setShowLowBalanceModal(true);
+      
+      // 🔥 VERIFICAR PERIÓDICAMENTE SI EL USUARIO RECARGÓ (cada 3 segundos)
+      lowBalanceCheckIntervalRef.current = setInterval(() => {
+        // Si el balance aumentó a más de 2 minutos, el modal se cerrará automáticamente
+        // en el código de verificación de remainingMinutes > 2
+      }, 3000); // Verificar cada 3 segundos
+      
+      // 🔥 TIMEOUT DE 1 MINUTO (60 SEGUNDOS): Si el usuario no recarga, colgar automáticamente
+      const timeoutDuration = 60000; // 1 minuto para recargar
+      lowBalanceAutoEndTimeoutRef.current = setTimeout(() => {
+        // Verificar nuevamente el balance antes de colgar
+        const currentMinutes = remainingMinutes || 0;
+        if (currentMinutes <= 2 && !hasAutoEndedRef.current) {
+          console.warn('⏰ [BALANCE] Tiempo agotado para recargar - Colgando automáticamente', {
+            remainingMinutes: currentMinutes,
+            userBalance
+          });
+          hasAutoEndedRef.current = true;
+          setShowLowBalanceModal(false);
+          // Limpiar intervalo
+          if (lowBalanceCheckIntervalRef.current) {
+            clearInterval(lowBalanceCheckIntervalRef.current);
+            lowBalanceCheckIntervalRef.current = null;
+          }
+          addNotification('warning', '⏰ Tiempo agotado', 'No se detectó recarga. La llamada se cerrará automáticamente.', 5000);
+          finalizarChat(true);
+        }
+      }, timeoutDuration);
+    }
+    
+    // 🔥 RESETEAR MODAL Y TIMEOUT SI EL SALDO AUMENTA A MÁS DE 2 MINUTOS (usuario recargó)
+    if (remainingMinutes !== null && 
+        remainingMinutes !== undefined &&
+        remainingMinutes > 2 && 
+        lowBalanceModalShownRef.current) {
+      console.log('✅ [BALANCE] Saldo aumentó - Cerrando modal y cancelando timeout');
+      lowBalanceModalShownRef.current = false;
+      setShowLowBalanceModal(false);
+      // Limpiar timeout de colgar automáticamente
+      if (lowBalanceAutoEndTimeoutRef.current) {
+        clearTimeout(lowBalanceAutoEndTimeoutRef.current);
+        lowBalanceAutoEndTimeoutRef.current = null;
+      }
+      // Limpiar intervalo de verificación
+      if (lowBalanceCheckIntervalRef.current) {
+        clearInterval(lowBalanceCheckIntervalRef.current);
+        lowBalanceCheckIntervalRef.current = null;
+      }
+      // Cerrar modal de compra si está abierto
+      setShowBuyMinutes(false);
+      // 🔥 LIMPIAR INTERVALO DE VERIFICACIÓN DE RECARGA
+      if (rechargeModalCheckIntervalRef.current) {
+        clearInterval(rechargeModalCheckIntervalRef.current);
+        rechargeModalCheckIntervalRef.current = null;
+      }
+      rechargeModalStartTimeRef.current = null;
+      addNotification('success', '✅ Saldo recargado', `Tu saldo ha sido actualizado. Tienes ${remainingMinutes} minutos disponibles. La llamada continúa.`, 5000);
     }
     
     // 🔥 SOLO DESCONECTAR SI EL TIEMPO ES 0 O NEGATIVO Y NO HAY SALDO
@@ -2514,6 +2544,20 @@ function VideoChatClientInner() {
       if (autoEndTimeout) {
         clearTimeout(autoEndTimeout);
       }
+      if (lowBalanceAutoEndTimeoutRef.current) {
+        clearTimeout(lowBalanceAutoEndTimeoutRef.current);
+        lowBalanceAutoEndTimeoutRef.current = null;
+      }
+      if (lowBalanceCheckIntervalRef.current) {
+        clearInterval(lowBalanceCheckIntervalRef.current);
+        lowBalanceCheckIntervalRef.current = null;
+      }
+      // 🔥 LIMPIAR INTERVALO DE VERIFICACIÓN DE RECARGA
+      if (rechargeModalCheckIntervalRef.current) {
+        clearInterval(rechargeModalCheckIntervalRef.current);
+        rechargeModalCheckIntervalRef.current = null;
+      }
+      rechargeModalStartTimeRef.current = null;
     };
   }, [remainingMinutes, connected, roomName, otherUser?.id, userData?.role, warningShown, finalizarChat, addNotification]);
 
@@ -2552,6 +2596,22 @@ function VideoChatClientInner() {
     setTiempo(0);
     tiempoStartRef.current = null;
     activeRoomNameRef.current = null;
+
+    // 🔥 LIMPIAR localStorage INMEDIATAMENTE PARA DESBLOQUEAR EL NAVBAR
+    const itemsToRemove = [
+      'roomName', 'userName', 'currentRoom',
+      'inCall', 'callToken', 'videochatActive',
+      'sessionTime', 'sessionStartTime'
+    ];
+    
+    itemsToRemove.forEach(item => {
+      localStorage.removeItem(item);
+      sessionStorage.removeItem(item);
+    });
+    
+    // 🔥 DISPARAR EVENTO PARA NOTIFICAR AL HEADER QUE SE LIMPIÓ EL VIDEOCHAT
+    window.dispatchEvent(new CustomEvent('videochatCleaned'));
+    console.log('🧹 [VideoChat] localStorage limpiado inmediatamente - navbar desbloqueado');
 
     // 🔥 DETERMINAR MENSAJES SEGÚN EL ROL
     const isModelo = userData?.role === 'modelo';
@@ -6253,7 +6313,7 @@ useEffect(() => {
         
         clearUserCache();
         
-        // Limpiar datos
+        // Limpiar datos (por si acaso no se limpió antes)
         const itemsToRemove = [
           'roomName', 'userName', 'currentRoom',
           'inCall', 'callToken', 'videochatActive',
@@ -6264,6 +6324,9 @@ useEffect(() => {
           localStorage.removeItem(item);
           sessionStorage.removeItem(item);
         });
+        
+        // 🔥 DISPARAR EVENTO PARA NOTIFICAR AL HEADER (por si acaso no se disparó antes)
+        window.dispatchEvent(new CustomEvent('videochatCleaned'));
         
         // Actualizar heartbeat
         const authToken = localStorage.getItem('token');
@@ -8096,6 +8159,19 @@ const checkBalanceRealTime = useCallback(async () => {
         )}
 
         {/* 🔥 MODAL DE SALDO BAJO DURANTE LLAMADA */}
+        {/* 🔥 MODAL DE COMPRA DE MONEDAS DURANTE LLAMADA */}
+        {showBuyMinutes && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: 'rgba(0,0,0,0.8)' }}>
+            <UnifiedPaymentModal 
+              onClose={() => {
+                setShowBuyMinutes(false);
+                // 🔥 NO REINICIAR TIMEOUT - El intervalo de verificación cada 8 segundos se encarga
+                // El intervalo seguirá verificando si pasó 1 minuto desde que se abrió el modal
+              }} 
+            />
+          </div>
+        )}
+
         {showLowBalanceModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999]">
             <div className="bg-[#2b2d31] rounded-xl p-6 max-w-md mx-4 shadow-xl border border-[#ff007a]/20">
@@ -8117,6 +8193,9 @@ const checkBalanceRealTime = useCallback(async () => {
                   <p className="mb-3">
                     {t('videochat.balance.lowBalanceMessage') || 'Tu saldo ya es muy poco para seguir en la llamada'}
                   </p>
+                  <p className="text-yellow-400 font-semibold mb-3">
+                    ⏰ Tienes 1 minuto para recargar, sino la llamada se colgará automáticamente.
+                  </p>
                   
                   {/* Estado actual */}
                   <div className="bg-[#1f2125] rounded-lg p-3 text-sm">
@@ -8135,13 +8214,47 @@ const checkBalanceRealTime = useCallback(async () => {
                 <div className="flex flex-col gap-3">
                   <button
                     onClick={() => {
-                      setShowLowBalanceModal(false);
-                      // Terminar la llamada después de mostrar el modal
-                      if (finalizarChat && connected) {
-                        finalizarChat(true);
+                      // 🔥 ABRIR MODAL DE COMPRA DE MONEDAS (Wompi) DIRECTAMENTE
+                      // Cancelar timeout mientras el modal está abierto
+                      if (lowBalanceAutoEndTimeoutRef.current) {
+                        clearTimeout(lowBalanceAutoEndTimeoutRef.current);
+                        lowBalanceAutoEndTimeoutRef.current = null;
                       }
-                      // Abrir modal de recarga
-                      window.location.href = '/homecliente?recharge=true';
+                      // Abrir modal de compra
+                      setShowBuyMinutes(true);
+                      // 🔥 REGISTRAR TIEMPO DE APERTURA DEL MODAL DE RECARGA
+                      rechargeModalStartTimeRef.current = Date.now();
+                      // 🔥 INICIAR VERIFICACIÓN PERIÓDICA CADA 8 SEGUNDOS
+                      if (rechargeModalCheckIntervalRef.current) {
+                        clearInterval(rechargeModalCheckIntervalRef.current);
+                      }
+                      rechargeModalCheckIntervalRef.current = setInterval(() => {
+                        const elapsedTime = Date.now() - rechargeModalStartTimeRef.current;
+                        const oneMinuteInMs = 60000; // 1 minuto = 60,000 ms
+                        
+                        if (elapsedTime >= oneMinuteInMs && !hasAutoEndedRef.current) {
+                          console.warn('⏰ [BALANCE] Pasó 1 minuto desde que se abrió el modal de recarga - Colgando automáticamente');
+                          // Limpiar intervalos
+                          if (rechargeModalCheckIntervalRef.current) {
+                            clearInterval(rechargeModalCheckIntervalRef.current);
+                            rechargeModalCheckIntervalRef.current = null;
+                          }
+                          if (lowBalanceAutoEndTimeoutRef.current) {
+                            clearTimeout(lowBalanceAutoEndTimeoutRef.current);
+                            lowBalanceAutoEndTimeoutRef.current = null;
+                          }
+                          // Cerrar modales
+                          setShowBuyMinutes(false);
+                          setShowLowBalanceModal(false);
+                          lowBalanceModalShownRef.current = false;
+                          // Colgar llamada
+                          hasAutoEndedRef.current = true;
+                          addNotification('warning', '⏰ Tiempo agotado', 'No se detectó recarga en el minuto disponible. La llamada se cerrará automáticamente.', 5000);
+                          finalizarChat(true);
+                        }
+                      }, 8000); // Verificar cada 8 segundos
+                      // Mostrar notificación
+                      addNotification('info', '⏰ Tienes 1 minuto', 'Tienes 1 minuto para recargar. La videollamada se pausará mientras tanto.', 5000);
                     }}
                     className="w-full bg-[#ff007a] hover:bg-[#e6006e] text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
                   >
@@ -8153,8 +8266,21 @@ const checkBalanceRealTime = useCallback(async () => {
                   
                   <button
                     onClick={() => {
+                      // 🔥 CANCELAR TIMEOUT Y COLGAR INMEDIATAMENTE
+                      if (lowBalanceAutoEndTimeoutRef.current) {
+                        clearTimeout(lowBalanceAutoEndTimeoutRef.current);
+                        lowBalanceAutoEndTimeoutRef.current = null;
+                      }
+                      // Limpiar intervalo de verificación
+                      if (lowBalanceCheckIntervalRef.current) {
+                        clearInterval(lowBalanceCheckIntervalRef.current);
+                        lowBalanceCheckIntervalRef.current = null;
+                      }
+                      // Cerrar modal
                       setShowLowBalanceModal(false);
-                      // Terminar la llamada
+                      lowBalanceModalShownRef.current = false;
+                      // Colgar la llamada inmediatamente
+                      hasAutoEndedRef.current = true;
                       if (finalizarChat && connected) {
                         finalizarChat(true);
                       }

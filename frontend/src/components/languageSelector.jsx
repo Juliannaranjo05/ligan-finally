@@ -112,11 +112,35 @@ export default function LanguageSelector() {
         detail: { language: code }
       }));
       
-      // Si el backend se actualizó correctamente, recargar la página para aplicar cambios en toda la plataforma
+      // 🔥 OPTIMIZADO: Verificar si estamos en una videollamada activa antes de recargar
+      // Si estamos en videollamada, NO recargar para evitar perder el estado
+      const isInVideoChat = () => {
+        // Verificar localStorage y sessionStorage
+        const videochatActive = localStorage.getItem('videochatActive') === 'true' || 
+                               sessionStorage.getItem('videochatActive') === 'true';
+        const hasRoomName = !!localStorage.getItem('roomName') || !!sessionStorage.getItem('roomName');
+        const inCall = localStorage.getItem('inCall') === 'true' || sessionStorage.getItem('inCall') === 'true';
+        
+        // Verificar ruta actual
+        const currentPath = window.location.pathname;
+        const isVideoChatRoute = currentPath.includes('/videochatclient') || 
+                                currentPath.includes('/videochat');
+        
+        return (videochatActive || hasRoomName || inCall || isVideoChatRoute);
+      };
+      
+      // Si el backend se actualizó correctamente, recargar la página SOLO si NO estamos en videollamada
       if (backendResult.success) {
+        if (isInVideoChat()) {
+          // 🔥 NO RECARGAR si estamos en videollamada - el cambio de idioma se aplicará sin recargar
+          console.log('🌐 [LanguageSelector] Cambio de idioma aplicado SIN recargar (videollamada activa)');
+          // El cambio de idioma ya se aplicó con i18n.changeLanguage, no necesitamos recargar
+        } else {
+          // Recargar solo si NO estamos en videollamada
         setTimeout(() => {
           window.location.reload();
         }, 300);
+        }
       } else {
         // Si no se recarga, asegurarse de que el cambio se refleje inmediatamente
         // (el listener de i18n en GlobalTranslationContext ya lo maneja)

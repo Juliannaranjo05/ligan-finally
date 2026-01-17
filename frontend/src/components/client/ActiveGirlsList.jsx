@@ -175,7 +175,7 @@ const ActiveGirlsList = ({
       </div>
 
       {/* Lista de chicas */}
-      <div className="lg:flex-1 lg:min-h-0 lg:overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         {filteredChicas.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-4 flex-1">
             <Search size={24} className="text-white/20 mb-2" />
@@ -187,7 +187,7 @@ const ActiveGirlsList = ({
             </p>
           </div>
         ) : (
-          <div className={`lg:flex-1 lg:min-h-0 lg:overflow-y-auto custom-scrollbar ${viewMode === 'grid' ? 'grid grid-cols-2 gap-2 p-2' : 'space-y-2 p-2'}`}>
+          <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar ${viewMode === 'grid' ? 'grid grid-cols-2 gap-2 p-2' : 'space-y-2 p-2'}`}>
           {filteredChicas.map((chica, index) => {
             const isOnline = chica.is_online !== undefined ? chica.is_online : true;
             const avatarUrl = chica.avatar_url || chica.avatar;

@@ -1038,6 +1038,9 @@ class GiftSystemController extends Controller
             }
 
             // 💰 PROCESAR TRANSACCIÓN DIRECTA
+            // Calcular balance total antes de usarlo
+            $totalBalance = $clientCoins->purchased_balance + $clientCoins->gift_balance;
+            
             Log::info("💰 [CHAT] Procesando regalo directo", [
                 'client_total_balance_before' => $totalBalance,
                 'purchased_balance' => $clientCoins->purchased_balance,

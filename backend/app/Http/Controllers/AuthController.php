@@ -70,7 +70,7 @@ class AuthController extends Controller
                 $emailError = 'Configuración de correo incompleta en el servidor';
             } else {
                 // Enviar correo de verificación
-                try {
+            try {
                     Log::info('📤 Enviando correo de verificación', [
                         'email' => $user->email,
                         'code' => $code,
@@ -80,10 +80,10 @@ class AuthController extends Controller
                         'mail_encryption' => config('mail.mailers.smtp.encryption'),
                         'mail_username' => $mailUsername ? substr($mailUsername, 0, 3) . '***' : 'NOT SET'
                     ]);
-                    Mail::to($user->email)->send(new VerifyCode($code));
+                Mail::to($user->email)->send(new VerifyCode($code));
                     $emailSent = true;
                     Log::info('✅ Correo enviado exitosamente a ' . $user->email);
-                } catch (\Throwable $mailError) {
+            } catch (\Throwable $mailError) {
                     $emailError = $mailError->getMessage();
                     $isAuthError = strpos($emailError, 'authentication failed') !== false || 
                                   strpos($emailError, '535') !== false ||
@@ -438,9 +438,9 @@ class AuthController extends Controller
     public function resendCode(Request $request)
     {
         Log::info('🔐 Intento de reenvío', [
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'email' => $request->email,
+        'ip' => $request->ip(),
+        'user_agent' => $request->userAgent(),
+        'email' => $request->email,
             'has_auth' => auth('sanctum')->check()
         ]);
         
@@ -545,12 +545,12 @@ class AuthController extends Controller
             
             // Mensaje más específico según el tipo de error
             if ($isAuthError) {
-                return response()->json([
+            return response()->json([
                     'message' => 'Error de autenticación con el servidor de correo. Por favor, verifica la configuración de correo en el servidor.',
                     'error' => config('app.debug') ? 'SMTP Authentication failed. Check MAIL_USERNAME and MAIL_PASSWORD in .env file.' : null
-                ], 500);
-            }
-            
+            ], 500);
+        }
+
             return response()->json([
                 'message' => 'Error al reenviar el código. Por favor, verifica tu conexión e intenta de nuevo más tarde.',
                 'error' => config('app.debug') ? $errorMessage : null

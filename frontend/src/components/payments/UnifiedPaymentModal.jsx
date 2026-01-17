@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Coins,
   CreditCard, 
-  MapPin,
   X,
   ArrowLeft,
   Shield,
@@ -15,7 +14,6 @@ import { useTranslation } from 'react-i18next';
 
 // Importar componentes independientes
 import WompiPayment from './WompiPayment';
-import CountrySelector from './CountrySelector';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -23,8 +21,6 @@ export default function UnifiedPaymentModal({ onClose }) {
   const { t } = useTranslation();
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCountry, setSelectedCountry] = useState(null);
-  const [showCountrySelector, setShowCountrySelector] = useState(false);
   
   const [paymentMethods, setPaymentMethods] = useState({
     wompi: { available: false, config: null }
@@ -40,30 +36,9 @@ export default function UnifiedPaymentModal({ onClose }) {
   };
 
   useEffect(() => {
-    // Verificar si ya hay un país seleccionado
-    const savedCountry = localStorage.getItem('selected_country');
-    if (savedCountry) {
-      try {
-        const country = JSON.parse(savedCountry);
-        setSelectedCountry(country);
-        setLoading(false); // No mostrar loading si hay país guardado
+    // Inicializar directamente sin pedir país
         initializePaymentMethods();
-      } catch (e) {
-        setShowCountrySelector(true);
-        setLoading(false); // Mostrar selector de país
-      }
-    } else {
-      // Si no hay país seleccionado, mostrar el selector
-      setShowCountrySelector(true);
-      setLoading(false); // No mostrar loading, mostrar selector
-    }
   }, []);
-
-  const handleCountrySelect = (country) => {
-    setSelectedCountry(country);
-    setShowCountrySelector(false);
-    initializePaymentMethods();
-  };
 
   const initializePaymentMethods = async () => {
     try {
@@ -155,8 +130,8 @@ export default function UnifiedPaymentModal({ onClose }) {
     return null;
   };
 
-  // Solo mostrar loading si no estamos mostrando el selector de país
-  if (loading && !showCountrySelector) {
+  // Mostrar loading mientras se inicializan los métodos
+  if (loading) {
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" style={{ display: 'flex' }}>
         <div className="bg-[#1a1c20] rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden border border-gray-600">
@@ -174,12 +149,12 @@ export default function UnifiedPaymentModal({ onClose }) {
   
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" style={{ display: 'flex' }}>
-      <div className={`bg-[#1a1c20] rounded-2xl w-full ${showCountrySelector ? 'max-w-md' : 'max-w-6xl'} max-h-[95vh] overflow-hidden border border-gray-600`}>
+      <div className="bg-[#1a1c20] rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden border border-gray-600">
         
         {/* Header con botón de cerrar */}
         <div className="flex items-center justify-between p-4 border-b border-gray-600">
           <div className="flex items-center gap-3">
-            {(selectedMethod || showCountrySelector) && !showCountrySelector && (
+            {selectedMethod && (
               <button
                 onClick={handleBackToSelection}
                 className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
@@ -188,9 +163,7 @@ export default function UnifiedPaymentModal({ onClose }) {
               </button>
             )}
             <h2 className="text-xl font-bold text-white">
-              {showCountrySelector 
-                ? 'Selecciona tu país' 
-                : selectedMethod 
+              {selectedMethod 
                   ? 'Wompi' 
                   : t('paymentMethods.buyCoins')}
             </h2>
@@ -228,21 +201,11 @@ export default function UnifiedPaymentModal({ onClose }) {
 
         {/* Contenido principal */}
         <div className="overflow-auto max-h-[calc(95vh-80px)]">
-          {showCountrySelector ? (
-            <CountrySelector 
-              onSelect={handleCountrySelect}
-              onClose={onClose}
-            />
-          ) : !selectedMethod ? (
+          {!selectedMethod ? (
             <PaymentMethodSelector />
           ) : selectedMethod === 'wompi' ? (
             <WompiPayment 
               onClose={onClose} 
-              selectedCountry={selectedCountry}
-              onCountryChange={() => {
-                setShowCountrySelector(true);
-                setSelectedMethod(null);
-              }}
             />
           ) : null}
         </div>

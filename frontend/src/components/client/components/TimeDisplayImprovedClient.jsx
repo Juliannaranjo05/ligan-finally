@@ -99,26 +99,7 @@ const TimeDisplayImprovedClient = ({
               </div>
             </div>
 
-            {/* 🔥 MINUTOS RESTANTES (en lugar de regalos) */}
-            <div className="balance-section minutes-section">
-              <div className="balance-icon-wrapper minutes-icon">
-                <Timer className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">{texts.minutes}</div>
-                <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
-              </div>
-              {/* 🔥 BOTÓN DE CONVERSIÓN (solo si hay 2+ minutos) */}
-              {remainingMinutes !== undefined && remainingMinutes !== null && remainingMinutes >= 2 && (
-                <button
-                  onClick={() => setShowConvertModal(true)}
-                  className="convert-button-mobile"
-                  title="Convertir minutos a regalos"
-                >
-                  <ArrowRightLeft size={14} />
-                </button>
-              )}
-            </div>
+            {/* 🔥 MINUTOS RESTANTES OCULTOS EN VIDEOCHAT */}
             
             {/* Estado de conexión CON BOTÓN INFO */}
             <div className="connection-section">
@@ -228,26 +209,7 @@ const TimeDisplayImprovedClient = ({
               </div>
             </div>
 
-            {/* 🔥 MINUTOS RESTANTES */}
-            <div className="balance-item minutes-item">
-              <div className="balance-icon-wrapper minutes-icon">
-                <Timer className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">{texts.minutes}</div>
-                <div className="balance-value minutes-value">{remainingMinutes !== undefined && remainingMinutes !== null ? remainingMinutes : 0}</div>
-              </div>
-              {/* 🔥 BOTÓN DE CONVERSIÓN (solo si hay 2+ minutos) */}
-              {remainingMinutes !== undefined && remainingMinutes !== null && remainingMinutes >= 2 && (
-                <button
-                  onClick={() => setShowConvertModal(true)}
-                  className="convert-button-desktop"
-                  title="Convertir minutos a regalos"
-                >
-                  <ArrowRightLeft size={14} />
-                </button>
-              )}
-            </div>
+            {/* 🔥 MINUTOS RESTANTES OCULTOS EN VIDEOCHAT */}
           </div>
 
           {/* Panel central - CONTROLES CENTRADOS */}

@@ -10,6 +10,7 @@ import {
   X,
   Coins,
   Play,
+  Timer,
   User    // Para el icono de usuario por defecto
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -22,7 +23,13 @@ import StoriesModal from './StoriesModal';
 import { useAppNotifications } from '../../contexts/NotificationContext';
 import { useCurrentUser } from '../hooks/useCurrentUser.js';
 
-export default function HeaderCliente({ showMessagesButton = false, onMessagesClick = null }) {
+export default function HeaderCliente({ 
+  showMessagesButton = false, 
+  onMessagesClick = null,
+  remainingMinutes = null,
+  showMinutePulse = false,
+  callElapsedSeconds = 0
+}) {
   const navigate = useNavigate();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [comprasAbierto, setComprasAbierto] = useState(false);
@@ -184,6 +191,16 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
     return () => document.removeEventListener("mousedown", manejarClickFuera);
   }, []);
 
+  const elapsedSecondsSafe = Math.max(0, Number(callElapsedSeconds || 0));
+  const elapsedMinutes = Math.floor(elapsedSecondsSafe / 60);
+  const shouldPulseMinutes =
+    showMinutePulse &&
+    remainingMinutes !== null &&
+    remainingMinutes !== undefined &&
+    elapsedMinutes > 0 &&
+    elapsedMinutes % 10 === 0 &&
+    elapsedSecondsSafe % 600 < 10;
+
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => {
     setMobileMenuAbierto(false);
@@ -205,7 +222,16 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
 
         {/* Navegación Desktop - oculta en móvil */}
         <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-lg">
-          <LanguageSelector />
+          <div className="flex items-center gap-2">
+            {shouldPulseMinutes && (
+              <div className="flex items-center gap-1 text-[11px] text-white/80 bg-[#ff007a]/15 border border-[#ff007a]/30 px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                <Timer size={12} className="text-[#ff007a]" />
+                <span className="text-white/70">Minutos:</span>
+                <span className="text-[#ff007a] font-semibold">{remainingMinutes}</span>
+              </div>
+            )}
+            <LanguageSelector />
+          </div>
           
           {/* ICONO DE HISTORIAS - ABRE EL MODAL */}
           <button
@@ -257,7 +283,7 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
           <div className="relative" ref={menuRef}>
             <button
               onClick={toggleMenu}
-              className={`w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a] ${isBlocked ? 'opacity-50' : ''}`}
+              className="w-10 h-10 rounded-full bg-[#ff007a] text-white font-bold text-sm hover:scale-105 transition flex items-center justify-center overflow-hidden border-2 border-[#ff007a]"
               title={t('accountMenu')}
               onMouseEnter={() => isBlocked && !menuAbierto && setShowHoverBanner(true)}
               onMouseLeave={() => setShowHoverBanner(false)}
@@ -280,7 +306,18 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
 
             {/* Menú desplegable desktop */}
             {menuAbierto && (
-              <div className="absolute right-0 mt-2 w-48 bg-[#1f2125] rounded-xl shadow-lg border border-[#ff007a]/30 z-50 overflow-hidden">
+              <div className="absolute right-0 mt-2 w-64 bg-[#1f2125] rounded-xl shadow-lg border border-[#ff007a]/30 z-50 overflow-hidden">
+                {remainingMinutes !== null && remainingMinutes !== undefined && (
+                  <div className="px-4 py-3 border-b border-[#ff007a]/20">
+                    <div className="flex items-center justify-between text-sm text-white">
+                      <div className="flex items-center gap-2">
+                        <Timer size={16} className="text-[#ff007a]" />
+                        <span>Minutos disponibles</span>
+                      </div>
+                      <span className="text-[#ff007a] font-semibold">{remainingMinutes}</span>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => {
                     if (isBlocked) {
@@ -344,8 +381,29 @@ export default function HeaderCliente({ showMessagesButton = false, onMessagesCl
                 {/* Selector de idioma móvil */}
                 <div className="px-4 py-3 border-b border-[#ff007a]/20">
                   <div className="text-xs text-gray-400 mb-2">{t('idioma')}</div>
-                  <LanguageSelector />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {shouldPulseMinutes && (
+                      <div className="flex items-center gap-1 text-[11px] text-white/80 bg-[#ff007a]/15 border border-[#ff007a]/30 px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                        <Timer size={12} className="text-[#ff007a]" />
+                        <span className="text-white/70">Minutos:</span>
+                        <span className="text-[#ff007a] font-semibold">{remainingMinutes}</span>
+                      </div>
+                    )}
+                    <LanguageSelector />
+                  </div>
                 </div>
+
+                {remainingMinutes !== null && remainingMinutes !== undefined && (
+                  <div className="px-4 py-3 border-b border-[#ff007a]/20">
+                    <div className="flex items-center justify-between text-sm text-white">
+                      <div className="flex items-center gap-2">
+                        <Timer size={16} className="text-[#ff007a]" />
+                        <span>Minutos disponibles</span>
+                      </div>
+                      <span className="text-[#ff007a] font-semibold">{remainingMinutes}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* 🚫 INDICADOR DE ESTADO BLOQUEADO EN MÓVIL */}
                 {isBlocked && (

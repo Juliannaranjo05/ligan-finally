@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-export default function WompiPayment({ onClose, selectedCountry, onCountryChange }) {
+export default function WompiPayment({ onClose }) {
   const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [packages, setPackages] = useState([]);
@@ -48,11 +48,8 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   
-  // Obtener país desde localStorage si no viene como prop
-  const country = selectedCountry || (() => {
-    const saved = localStorage.getItem('selected_country');
-    return saved ? JSON.parse(saved) : null;
-  })();
+  // El país ya no es necesario, los planes son fijos
+  const country = null;
 
   // Debug: Log cuando cambia el estado del sidebar
   useEffect(() => {
@@ -82,13 +79,9 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
       }
     };
 
-    // Solo inicializar si hay un país seleccionado
-    if (country) {
+    // Inicializar directamente sin requerir país
       initializeWompi();
-    } else {
-      setLoading(false);
-    }
-  }, [country]);
+  }, []);
 
   // 🔥 FUNCIÓN PARA VERIFICAR ESTADO DEL PAGO
   const checkPurchaseStatus = async (purchaseIdToCheck) => {
@@ -279,15 +272,8 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
 
   const fetchPackages = async () => {
     try {
-      // Enviar país seleccionado en los parámetros
-      const params = new URLSearchParams();
-      if (country) {
-        params.append('country_code', country.code);
-        params.append('currency', country.currency);
-        params.append('price_per_hour', country.pricePerHour.toString());
-      }
-      
-      const response = await fetch(`${API_BASE_URL}/api/wompi/packages?${params.toString()}`, {
+      // Los planes son fijos sin importar el país
+      const response = await fetch(`${API_BASE_URL}/api/wompi/packages`, {
         headers: getAuthHeaders()
       });
       const data = await response.json();
@@ -1665,9 +1651,8 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          package_id: pkg.id,
-          currency: country?.currency || 'COP',
-          price_per_hour: country?.pricePerHour || 30
+          package_id: pkg.id
+          // Los planes son fijos, no se necesita país
         })
       });
 
@@ -1876,30 +1861,6 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
                   {t('wompi.poweredBy')}
                 </span>
               </div>
-              {country && (
-                <div className="inline-flex items-center gap-2 bg-[#2b2d31] border border-[#ff007a]/30 rounded-full px-3 py-2">
-                  <span className="text-lg">{country.flag}</span>
-                  <span className="text-white text-xs sm:text-sm font-medium">
-                    {country.name}
-                  </span>
-                  <span className="text-white/60 text-xs">
-                    ${country.pricePerHour}/hora
-                  </span>
-                  {onCountryChange && (
-                    <button
-                      onClick={() => {
-                        if (onCountryChange) {
-                          onCountryChange();
-                        }
-                      }}
-                      className="ml-2 p-1 hover:bg-[#3a3d44] rounded transition-colors"
-                      title="Cambiar país"
-                    >
-                      <X size={12} className="text-white/60 hover:text-white" />
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Texto de marketing superior */}
@@ -2293,10 +2254,6 @@ export default function WompiPayment({ onClose, selectedCountry, onCountryChange
                   <ArrowLeft size={20} />
                   <span className="text-sm sm:text-base">{t('buttons.back')}</span>
                 </button>
-                <div className="flex items-center gap-2 text-green-400">
-                  <MapPin size={18} />
-                  <span className="text-sm">{t('wompi.country.colombia')}</span>
-                </div>
               </div>
 
               {/* Resumen del paquete */}

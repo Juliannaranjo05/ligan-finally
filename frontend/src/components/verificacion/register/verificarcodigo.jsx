@@ -165,9 +165,9 @@ export default function EmailVerification() {
         setMessage("❌ Error del servidor. Por favor, contacta al soporte si el problema persiste.");
       } else if (error.response?.status === 404) {
         setMessage("❌ Usuario no encontrado. Por favor, regístrate nuevamente.");
-        setTimeout(() => {
-          navigate("/home");
-        }, 3000);
+      setTimeout(() => {
+        navigate("/home");
+      }, 3000);
       } else {
         setMessage(`❌ ${errorMessage}`);
       }

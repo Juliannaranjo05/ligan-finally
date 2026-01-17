@@ -12,11 +12,11 @@ use App\Http\Controllers\VideoChatCoinController;
 use Illuminate\Support\Facades\DB;
 
 $email = 'juliannaranjo58@gmail.com';
-$minutesToAdd = 50; // 50 minutos
-$giftCoinsToAdd = 200; // 200 monedas de regalo
+$minutesToAdd = 4; // 4 minutos para pruebas
+$giftCoinsToAdd = 0; // Sin monedas de regalo para esta prueba
 
 // 1 minuto = 10 coins
-$purchasedCoinsToAdd = $minutesToAdd * 10; // 100 coins
+$purchasedCoinsToAdd = $minutesToAdd * 10; // 40 coins
 
 echo "========================================\n";
 echo "AGREGAR SALDO A USUARIO\n";
@@ -56,12 +56,12 @@ echo "   - Total: " . ($userCoins->purchased_balance + $userCoins->gift_balance)
 DB::beginTransaction();
 
 try {
-    // Agregar purchased coins (minutos)
-    $userCoins->purchased_balance += $purchasedCoinsToAdd;
-    $userCoins->total_purchased += $purchasedCoinsToAdd;
+    // 🔥 ESTABLECER SALDO EXACTO A 6 MINUTOS (60 coins) para pruebas
+    $userCoins->purchased_balance = $purchasedCoinsToAdd; // 60 coins = 6 minutos
+    // No modificar total_purchased para mantener el historial
     
-    // Agregar gift coins
-    $userCoins->gift_balance += $giftCoinsToAdd;
+    // Mantener gift coins como están (no modificar)
+    // $userCoins->gift_balance = $giftCoinsToAdd; // Comentado para mantener el saldo de regalo
     
     $userCoins->last_purchase_at = now();
     $userCoins->save();
@@ -90,9 +90,9 @@ try {
     
     DB::commit();
     
-    echo "✅ SALDO AGREGADO EXITOSAMENTE:\n";
-    echo "   - Purchased coins agregados: {$purchasedCoinsToAdd} coins ({$minutesToAdd} minutos)\n";
-    echo "   - Gift coins agregados: {$giftCoinsToAdd} coins\n\n";
+    echo "✅ SALDO ESTABLECIDO EXITOSAMENTE:\n";
+    echo "   - Purchased balance establecido: {$purchasedCoinsToAdd} coins ({$minutesToAdd} minutos)\n";
+    echo "   - Gift balance mantenido: {$userCoins->gift_balance} coins\n\n";
     
     echo "💰 NUEVO SALDO:\n";
     echo "   - Purchased Balance: {$userCoins->purchased_balance} coins (" . floor($userCoins->purchased_balance / 10) . " minutos)\n";

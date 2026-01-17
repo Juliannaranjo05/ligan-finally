@@ -1060,6 +1060,9 @@ class VideoChatGiftController extends Controller
             }
 
             // 8. 💰 PROCESAR TRANSACCIÓN ESPECÍFICA PARA VIDEOCHAT (igual que sendDirectGift)
+            // Calcular balance total antes de usarlo
+            $totalBalance = $clientUserCoins->purchased_balance + $clientUserCoins->gift_balance;
+            
             Log::info("💰 [VIDEOCHAT] Iniciando transacción", [
                 'client_balance_before' => $totalBalance,
                 'purchased_balance' => $clientUserCoins->purchased_balance,
