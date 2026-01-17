@@ -296,6 +296,7 @@ export const GiftsModal = ({
             {gifts.map((gift) => {
               // 🔥 VERIFICAR SI EL CLIENTE TIENE SALDO SUFICIENTE (modelo siempre puede pedir)
               const giftPriceMinutes = gift.price_minutes ?? gift.price ?? 0;
+              const giftPriceUsd = gift.price_usd ?? gift.price ?? 0;
               const canAfford = isModelo || userBalance >= giftPriceMinutes;
               
               return (
@@ -364,7 +365,7 @@ export const GiftsModal = ({
                         : 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 shadow-gray-500/20'
                     }`}>
                       <Sparkles size={8} />
-                      {giftPriceMinutes} {getGiftCardText('minutes', currentLanguage, 'minutos')}
+                      {isModelo ? `$${giftPriceUsd}` : `${giftPriceMinutes} ${getGiftCardText('minutes', currentLanguage, 'minutos')}`}
                       {!isModelo && !canAfford && (
                         <span className="ml-1 text-red-300">💸</span>
                       )}

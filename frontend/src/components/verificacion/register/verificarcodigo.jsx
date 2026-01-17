@@ -11,7 +11,14 @@ const RECAPTCHA_SITE_KEY = "6LfNonwrAAAAAIgJSmx1LpsprNhNct1VVWMWp2rz";
 export default function EmailVerification() {
   const navigate = useNavigate();
   const location = useLocation();
-  const email = location.state?.email;
+  const [email, setEmail] = useState(() => {
+    const stateEmail = location.state?.email;
+    if (stateEmail) return stateEmail;
+    const storedEmail = localStorage.getItem("emailToVerify");
+    if (storedEmail) return storedEmail;
+    const queryEmail = new URLSearchParams(window.location.search).get("email");
+    return queryEmail || "";
+  });
 
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [message, setMessage] = useState("");
@@ -34,6 +41,17 @@ export default function EmailVerification() {
       // No mostrar error - permitir verificar el código sin token
       // El código se puede verificar sin autenticación según la API
     }
+
+    // Rescatar email si viene por state o query y persistirlo
+    const stateEmail = location.state?.email;
+    const queryEmail = new URLSearchParams(window.location.search).get("email");
+    const fallbackEmail = stateEmail || queryEmail || localStorage.getItem("emailToVerify");
+    if (fallbackEmail && fallbackEmail !== email) {
+      setEmail(fallbackEmail);
+    }
+    if (fallbackEmail) {
+      localStorage.setItem("emailToVerify", fallbackEmail);
+    }
     
     // Mostrar advertencia si el correo no se envió
     if (emailNotSent === "true" && emailWarning) {
@@ -44,7 +62,7 @@ export default function EmailVerification() {
         localStorage.removeItem("email_warning");
       }, 10000); // Mostrar por 10 segundos
     }
-  }, [navigate]);
+  }, [navigate, location.state?.email, email]);
 
   const handleSalir = async () => {
     try {
@@ -150,6 +168,10 @@ export default function EmailVerification() {
     try {
       setResending(true);
       setMessage("Reenviando código...");
+      if (!email) {
+        setMessage("No se encontró el correo registrado.");
+        return;
+      }
       const result = await reenviarCodigo(email);
       setMessage("📧 Código reenviado exitosamente. Revisa tu correo electrónico.");
       // Limpiar advertencias si el reenvío fue exitoso

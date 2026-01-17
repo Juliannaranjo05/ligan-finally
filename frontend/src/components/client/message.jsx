@@ -680,32 +680,48 @@ useEffect(() => {
 
   const cargarMensajes = useCallback(async (roomName) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/messages/${roomName}`, {
-        method: 'GET',
-        headers: getAuthHeaders()
+      const clientRoomName = `${roomName}_client`;
+      const [mainResponse, clientResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/chat/messages/${roomName}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        }),
+        fetch(`${API_BASE_URL}/api/chat/messages/${clientRoomName}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        })
+      ]);
+
+      let allMessages = [];
+
+      if (mainResponse.ok) {
+        const data = await mainResponse.json();
+        if (data.success && data.messages) {
+          allMessages = [...allMessages, ...data.messages];
+        }
+      }
+
+      if (clientResponse.ok) {
+        const clientData = await clientResponse.json();
+        if (clientData.success && clientData.messages) {
+          allMessages = [...allMessages, ...clientData.messages];
+        }
+      }
+
+      // De-duplicar y ordenar por fecha
+      const seen = new Set();
+      const deduped = allMessages.filter(msg => {
+        const key = msg.id ?? `${msg.created_at}_${msg.user_id}_${msg.message || ''}_${msg.type || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.messages) {
-          // 🔍 DEBUG: Verificar mensajes cargados
-          console.log('📥 [message.jsx Client] Mensajes cargados:', {
-            total: data.messages.length,
-            room_name: roomName,
-            messages_with_avatar: data.messages.filter(m => m.avatar || m.avatar_url).length,
-            sample_messages: data.messages.slice(0, 5).map(m => ({
-              id: m.id,
-              user_id: m.user_id,
-              user_name: m.user_name,
-              avatar: m.avatar,
-              avatar_url: m.avatar_url,
-              type: m.type
-            }))
-          });
-          
-          setMensajes(data.messages);
-          localStorage.setItem(`messages_${roomName}`, JSON.stringify(data.messages));
-        }
+      deduped.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+      if (deduped.length > 0) {
+        setMensajes(deduped);
+        localStorage.setItem(`messages_${roomName}`, JSON.stringify(deduped));
       }
     } catch (error) {
       console.error('❌ [message.jsx Client] Error cargando mensajes:', error);
@@ -967,6 +983,8 @@ useEffect(() => {
     const savedMessages = JSON.parse(localStorage.getItem(`messages_${conversacion.room_name}`) || '[]');
     if (savedMessages.length > 0) {
       setMensajes(savedMessages);
+    } else {
+      setMensajes([]);
     }
     
     // Cargar mensajes

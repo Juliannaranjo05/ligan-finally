@@ -31,7 +31,6 @@ export default function RutaProtegidaModelo() {
   if (!user) return <Navigate to="/home" replace />;
 
   const pasoFinalCompletado =
-    user.email_verified_at &&
     user.rol &&
     user.name &&
     user.verificacion?.estado === "aprobada";

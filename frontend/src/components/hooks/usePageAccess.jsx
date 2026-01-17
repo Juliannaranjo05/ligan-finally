@@ -98,19 +98,15 @@ export function usePageAccess() {
 
   // 🎯 VERIFICAR SI EL USUARIO TIENE REGISTRO COMPLETADO
   const isRegistrationComplete = (user) => {
-    if (!user.email_verified_at) {
-      return false;
-    }
-
     // 🔧 CORREGIDO: Usar solo verificacion_estado
     const verificacionEstado = user.verificacion_estado;
 
     
     switch (user.rol) {
       case 'cliente':
-        // CLIENTE: Solo necesita email verificado + rol cliente
+        // CLIENTE: Solo necesita rol cliente
         const clienteCompleto = user.rol === 'cliente';
-                return clienteCompleto;
+        return clienteCompleto;
         
       case 'modelo':
         // MODELO: Si estado es 'aprobada', está completo independientemente de verificacion_completa
@@ -120,7 +116,7 @@ export function usePageAccess() {
       case 'admin':
         // ADMIN: Si estado es 'aprobada', está completo independientemente de verificacion_completa  
         const adminCompleto = verificacionEstado === 'aprobada' || (user.verificacion_completa && verificacionEstado === 'aprobada');
-                return adminCompleto;
+        return adminCompleto;
         
       default:
                 return false;
@@ -199,9 +195,7 @@ export function usePageAccess() {
         if (!isRegistrationComplete(user)) {
                               
           // Redirigir al inicio del flujo de registro
-          if (!user.email_verified_at) {
-            navigate("/verificaremail", { replace: true });
-          } else if (!user.rol || user.rol === 'user') {
+          if (!user.rol || user.rol === 'user') {
             navigate("/genero", { replace: true });
           } else if (user.rol === 'cliente') {
             // Cliente con email verificado debería estar completo
@@ -219,7 +213,7 @@ export function usePageAccess() {
               navigate("/anteveri", { replace: true });
             }
           } else {
-            navigate("/verificaremail", { replace: true });
+            navigate("/genero", { replace: true });
           }
           return;
         }

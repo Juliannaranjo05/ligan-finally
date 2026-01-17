@@ -5,7 +5,6 @@ import api from "../api/axios";
 export default function RutaProtegida() {
   const [estadoVerificacion, setEstadoVerificacion] = useState(null);
   const [autenticado, setAutenticado] = useState(true);
-  const [emailVerificado, setEmailVerificado] = useState(false);
   const [cargando, setCargando] = useState(true);
   const location = useLocation();
 
@@ -13,8 +12,6 @@ export default function RutaProtegida() {
     const verificar = async () => {
       try {
         const userRes = await api.get("/api/profile");
-        setEmailVerificado(!!userRes.data.user.email_verified_at);
-
         const estadoRes = await api.get("/api/verificacion/estado");
         setEstadoVerificacion(estadoRes.data.estado);
       } catch (error) {
@@ -45,16 +42,6 @@ export default function RutaProtegida() {
   if (!autenticado) return <Navigate to="/home" replace />;
 
   const rutaActual = location.pathname;
-
-  // 🛑 Si no ha verificado el correo, solo permitir /verificaremail y /home
-  if (!emailVerificado && rutaActual !== "/verificaremail" && rutaActual !== "/home") {
-    return <Navigate to="/verificaremail" replace />;
-  }
-
-  // 🔁 Si ya verificó el correo y está en /verificaremail, redirigir a /verificacion
-  if (emailVerificado && rutaActual === "/verificaremail") {
-    return <Navigate to="/verificacion" replace />;
-  }
 
   // ⏳ Si verificación está en pendiente, redirigir a /esperando
   if (estadoVerificacion === "pendiente" && rutaActual !== "/esperando") {

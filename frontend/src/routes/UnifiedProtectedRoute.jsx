@@ -17,14 +17,7 @@ export default function UnifiedProtectedRoute({ children }) {
 
         console.log("🔍 Usuario obtenido:", user);
 
-        // 📧 PASO 1: Verificación de email
-        if (!user?.email_verified_at) {
-          console.log("📧 Email no verificado, redirigiendo a /verificaremail");
-          setRedirectTo("/verificaremail");
-          return;
-        }
-
-        // 👤 PASO 2: Verificación de perfil básico
+        // 👤 PASO 1: Verificación de perfil básico
         if (!user.rol || !user.name) {
           console.log("👤 Perfil incompleto, redirigiendo a /genero");
           setRedirectTo("/genero");

@@ -19,7 +19,6 @@ const RutaClienteYaVerificado = () => {
       if (response?.data?.user?.rol === 'modelo') {
         if (
             pasosRestringidos.includes(location.pathname) &&
-            user.email_verified_at &&
             user.rol &&
             user.w &&
             user.estado === "aprobada"

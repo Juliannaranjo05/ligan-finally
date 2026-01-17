@@ -468,12 +468,6 @@ useEffect(() => {
               }
             }
 
-            // Verificar email verificado
-            if (!user.email_verified_at) {
-              navigate("/verificaremail", { replace: true });
-              return;
-            }
-
             // Verificar perfil completo
             if (!user.rol || !user.name) {
               navigate("/genero", { replace: true });

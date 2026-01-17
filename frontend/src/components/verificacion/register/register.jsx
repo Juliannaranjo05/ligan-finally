@@ -58,20 +58,11 @@ export default function Register({ onClose, onShowLogin }) {
         throw new Error("No se pudo guardar el token de autenticación");
       }
       
-      localStorage.setItem("emailToVerify", email);
-      // Guardar información sobre el estado del correo
-      if (result.email_sent === false) {
-        localStorage.setItem("email_not_sent", "true");
-        localStorage.setItem("email_warning", result.email_warning || "El correo de verificación no se pudo enviar. Usa 'Reenviar código' para recibirlo.");
-      } else {
-        localStorage.removeItem("email_not_sent");
-        localStorage.removeItem("email_warning");
-      }
-      
-      // Marcar que acabamos de registrar para evitar que los hooks redirijan antes de tiempo
-      localStorage.setItem("just_registered", "true");
-      // No limpiar la bandera aquí, dejarla para que el hook la maneje
-      navigate("/verificaremail", { state: { email }, replace: false });
+      localStorage.removeItem("email_not_sent");
+      localStorage.removeItem("email_warning");
+      localStorage.removeItem("just_registered");
+      localStorage.setItem('email_just_verified', 'true');
+      navigate("/genero", { replace: true });
     } catch (err) {
       // Mostrar mensaje específico para errores 429
       if (err.response?.status === 429) {

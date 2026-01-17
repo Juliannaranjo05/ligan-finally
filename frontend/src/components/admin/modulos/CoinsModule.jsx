@@ -555,9 +555,9 @@ const CoinsModule = () => {
                 }
                 className="px-3 py-1.5 rounded-lg bg-gray-900/80 border border-gray-700/70 text-xs text-gray-200 focus:outline-none focus:border-blue-400/80"
               >
-                <option value="all">Todos los roles</option>
-                <option value="modelo">Modelos</option>
+                <option value="all">Clientes</option>
                 <option value="cliente">Clientes</option>
+                <option value="modelo">Modelos</option>
               </select>
               <select
                 value={usersFilters.balance_status}
@@ -629,7 +629,7 @@ const CoinsModule = () => {
                         Agregar
                       </button>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-2 space-y-2">
                       <div className="text-gray-300">
                         <p className="text-[11px] text-gray-400">Saldo total</p>
                         <p className="text-sm font-semibold text-yellow-300">
@@ -650,6 +650,16 @@ const CoinsModule = () => {
                           Regalo:{" "}
                           <span className="text-purple-300 font-semibold">
                             {formatNumber(u.gift_balance)}
+                          </span>
+                        </p>
+                        <p className="border-t border-gray-700/50 pt-1 mt-1">
+                          <span className="text-gray-400">Total gastado: </span>
+                          <span className="text-green-400 font-semibold">
+                            ${(u.total_spent || 0).toLocaleString("es-ES", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            USD
                           </span>
                         </p>
                         <p className="flex items-center gap-1">

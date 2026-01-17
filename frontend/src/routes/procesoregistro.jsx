@@ -24,15 +24,10 @@ const RutaProcesoRegistro = () => {
         return;
       }
 
-      // Si está en la ruta de verificar email
+      // Si está en la ruta de verificar email, saltar a género
       if (location.pathname === '/verificaremail') {
-        // Si el email ya está verificado, redirige a género
-        if (user.email_verified || user.email_verificado) {
-          setRedirectTo('/genero');
-          return;
-        }
-        // Si no está verificado, puede acceder
-        setCanAccess(true);
+        setRedirectTo('/genero');
+        return;
       }
 
       // Si está en la ruta de género

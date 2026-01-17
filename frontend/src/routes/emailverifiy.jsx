@@ -6,7 +6,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 export default function RutaEmailVerificado() {
   const [cargando, setCargando] = useState(true);
   const [autenticado, setAutenticado] = useState(false);
-  const [emailVerificado, setEmailVerificado] = useState(false);
   const [completoPerfil, setCompletoPerfil] = useState(false);
   const location = useLocation();
 
@@ -17,7 +16,6 @@ export default function RutaEmailVerificado() {
         const user = res.data.user;
 
         setAutenticado(true);
-        setEmailVerificado(!!user.email_verified_at);
         setCompletoPerfil(!!user.name && !!user.rol);
 
         // 🔁 Si venimos de un cambio de nombre/rol, recarga una vez
@@ -37,8 +35,6 @@ export default function RutaEmailVerificado() {
 
   if (cargando) return <div className="text-white">Cargando...</div>;
   if (!autenticado) return <Navigate to="/home" replace />;
-  if (!emailVerificado) return <Navigate to="/verificaremail" replace />;
-
   const rutaActual = location.pathname;
 
   if (!completoPerfil && !["/genero", "/home"].includes(rutaActual)) {

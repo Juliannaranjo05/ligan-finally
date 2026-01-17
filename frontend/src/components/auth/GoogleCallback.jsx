@@ -127,10 +127,6 @@ const GoogleCallback = () => {
           if (!user.rol || !user.name) {
             navigate('/genero', { replace: true });
           } 
-          // Si no tiene email verificado, redirigir a verificación
-          else if (!user.email_verified) {
-            navigate('/verificaremail', { replace: true });
-          }
           // Si es cliente, verificar acción pendiente primero
           else if (user.rol === 'cliente') {
             // 🔄 Verificar si hay una acción pendiente de historias

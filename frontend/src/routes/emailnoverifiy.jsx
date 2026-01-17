@@ -51,22 +51,13 @@ export default function RutaProtegida() {
   }
 
   const ruta = location.pathname;
-  const emailVerificado = !!user.email_verified_at;
   const tieneRolYNombre = !!user.rol && !!user.name;
 
-  if (!emailVerificado && ruta !== "/verificaremail") {
-    return <Navigate to="/verificaremail" replace />;
-  }
-
-  if (emailVerificado && !tieneRolYNombre && ruta !== "/genero") {
+  if (!tieneRolYNombre && ruta !== "/genero") {
     return <Navigate to="/genero" replace />;
   }
 
-  if (
-    emailVerificado &&
-    tieneRolYNombre &&
-    ["/verificaremail", "/genero"].includes(ruta)
-  ) {
+  if (tieneRolYNombre && ["/verificaremail", "/genero"].includes(ruta)) {
     return <Navigate to="/verificacion" replace />;
   }
 

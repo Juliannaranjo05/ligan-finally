@@ -148,6 +148,8 @@ export const ModelGiftRequestModal = ({
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {gifts.map((gift) => {
+              const giftPriceUsd = gift.price_usd ?? gift.price ?? 0;
+
               return (
                 <div
                   key={gift.id}
@@ -203,7 +205,7 @@ export const ModelGiftRequestModal = ({
                     {/* Precio */}
                     <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold shadow-lg bg-gradient-to-r from-[#ff007a] to-[#cc0062] text-white shadow-[#ff007a]/20">
                       <Sparkles size={8} />
-                      {gift.price}
+                      ${giftPriceUsd}
                     </div>
                   </div>
                 </div>

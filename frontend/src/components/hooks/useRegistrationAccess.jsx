@@ -18,19 +18,17 @@ export function useRegistrationAccess() {
   const REGISTRATION_STEPS = {
     // ========== PASO 1: EMAIL NO VERIFICADO ==========
     'email_verification': {
-      condition: (user) => !user.email_verified_at,
-      allowedPaths: ['/verificaremail'],
-      redirectTo: '/verificaremail',
-      stepName: 'Verificación de Email'
+      condition: () => false,
+      allowedPaths: [],
+      redirectTo: '/genero',
+      stepName: 'Verificación de Email (desactivada)'
     },
     
     // ========== PASO 2: EMAIL VERIFICADO PERO SIN ROL ==========
     'role_selection': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const noRole = !user.rol || user.rol === 'user';
-        
-        return hasEmailVerified && noRole;
+        return noRole;
       },
       allowedPaths: ['/genero'],
       redirectTo: '/genero',
@@ -40,7 +38,6 @@ export function useRegistrationAccess() {
     // ========== FLUJO MODELO: DOCUMENTOS ENVIADOS - ESPERANDO ==========
     'modelo_waiting_admin': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isModelo = user.rol === 'modelo';
         const hasMainVerification = user.verificacion_completa; // 🔧 CAMBIADO: Ahora SÍ tiene verificación completa
         
@@ -49,7 +46,7 @@ export function useRegistrationAccess() {
         const isPending = verificacionEstado === 'pendiente';
         
                 
-        return hasEmailVerified && isModelo && hasMainVerification && isPending;
+        return isModelo && hasMainVerification && isPending;
       },
       allowedPaths: ['/esperando'],
       redirectTo: '/esperando',
@@ -59,7 +56,6 @@ export function useRegistrationAccess() {
     // ========== FLUJO MODELO: VERIFICACIÓN RECHAZADA ==========
     'modelo_rejected': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isModelo = user.rol === 'modelo';
         // Para rechazadas, puede tener o no verificacion_completa
         
@@ -68,7 +64,7 @@ export function useRegistrationAccess() {
         const isRejected = verificacionEstado === 'rechazada';
         
                 
-        return hasEmailVerified && isModelo && isRejected;
+        return isModelo && isRejected;
       },
       allowedPaths: ['/anteveri', '/verificacion'],
       redirectTo: '/anteveri',
@@ -78,7 +74,6 @@ export function useRegistrationAccess() {
     // ========== FLUJO MODELO: NECESITA VERIFICACIÓN DE DOCUMENTOS ==========
     'modelo_document_submission': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isModelo = user.rol === 'modelo';
         const noMainVerification = !user.verificacion_completa;
         
@@ -89,7 +84,7 @@ export function useRegistrationAccess() {
         const notApproved = verificacionEstado !== 'aprobada';
         
                 
-        return hasEmailVerified && isModelo && noMainVerification && notRejected && notPending && notApproved;
+        return isModelo && noMainVerification && notRejected && notPending && notApproved;
       },
       allowedPaths: ['/anteveri', '/verificacion'],
       redirectTo: '/anteveri',
@@ -99,7 +94,6 @@ export function useRegistrationAccess() {
     // ========== FLUJO MODELO: VERIFICACIÓN APROBADA (PRIORIDAD ALTA) ==========
     'modelo_completed': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isModelo = user.rol === 'modelo';
         
         // 🔧 CORREGIDO: Si el estado es 'aprobada', considerar como completo INDEPENDIENTEMENTE de verificacion_completa
@@ -110,7 +104,7 @@ export function useRegistrationAccess() {
         const isCompleted = isApproved || (user.verificacion_completa && isApproved);
         
                 
-        return hasEmailVerified && isModelo && isCompleted;
+        return isModelo && isCompleted;
       },
       allowedPaths: [], // 🚫 BLOQUEAR: No puede acceder a rutas de registro
       redirectTo: '/homellamadas',
@@ -120,11 +114,8 @@ export function useRegistrationAccess() {
     // ========== FLUJO CLIENTE: COMPLETADO TRAS SELECCIONAR ROL ==========
     'cliente_completed': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isCliente = user.rol === 'cliente';
-        
-                
-        return hasEmailVerified && isCliente;
+        return isCliente;
       },
       allowedPaths: [], // 🚫 BLOQUEAR: No puede acceder a rutas de registro
       redirectTo: '/homecliente',
@@ -134,7 +125,6 @@ export function useRegistrationAccess() {
     // ========== FLUJO ADMIN: VERIFICACIÓN APROBADA ==========
     'admin_completed': {
       condition: (user) => {
-        const hasEmailVerified = user.email_verified_at;
         const isAdmin = user.rol === 'admin';
         const hasMainVerification = user.verificacion_completa;
         
@@ -143,7 +133,7 @@ export function useRegistrationAccess() {
         const isApproved = verificacionEstado === 'aprobada';
         
                 
-        return hasEmailVerified && isAdmin && hasMainVerification && isApproved;
+        return isAdmin && hasMainVerification && isApproved;
       },
       allowedPaths: [], // 🚫 BLOQUEAR: No puede acceder a rutas de registro
       redirectTo: '/verificacionesadmin',
@@ -164,7 +154,7 @@ export function useRegistrationAccess() {
     
     // 🔧 IMPORTANTE: Evaluar en orden específico para modelos
     const stepOrder = [
-      'email_verification',           // 1. Sin email verificado
+      'email_verification',           // 1. Verificación de email (desactivada)
       'role_selection',               // 2. Email verificado pero sin rol
       'modelo_completed',             // 3. Modelo completado (PRIORIDAD - evaluar primero)
       'modelo_waiting_admin',         // 4. Modelo esperando 
@@ -218,9 +208,15 @@ export function useRegistrationAccess() {
         return;
       }
 
-      // ✅ PRIORIDAD: Si acabamos de registrar y estamos en verificaremail, NO hacer NINGUNA llamada API
+      // 🚫 Verificación de email desactivada: redirigir /verificaremail a /genero
+      if (currentPath === '/verificaremail') {
+        navigate('/genero', { replace: true });
+        return;
+      }
+
+      // ✅ PRIORIDAD: Si acabamos de registrar y estamos en genero, NO hacer NINGUNA llamada API
       const justRegistered = localStorage.getItem("just_registered") === "true";
-      if (justRegistered && currentPath === '/verificaremail') {
+      if (justRegistered && currentPath === '/genero') {
         // Mantener la bandera y NO procesar redirección - NO limpiar la bandera aquí
         // NO hacer llamadas API que puedan fallar y activar el interceptor
         setLoading(false);
@@ -230,9 +226,7 @@ export function useRegistrationAccess() {
       // Verificar token (solo si no acabamos de registrar)
       const token = localStorage.getItem('token');
       if (!token) {
-        // Si estamos en verificaremail sin token y sin just_registered, puede ser un error
-        // Pero no redirigir inmediatamente, dejar que el componente maneje
-        if (currentPath === '/verificaremail') {
+        if (currentPath === '/genero') {
           setLoading(false);
           return;
         }
@@ -245,8 +239,8 @@ export function useRegistrationAccess() {
         hasFetched.current = true;
         GLOBAL_PROCESSING = true;
         
-        // Limpiar la bandera solo si estamos navegando a otra ruta (fuera de verificaremail)
-        if (justRegistered && currentPath !== '/verificaremail') {
+        // Limpiar la bandera solo si estamos navegando a otra ruta (fuera de genero)
+        if (justRegistered && currentPath !== '/genero') {
           localStorage.removeItem("just_registered");
         }
 
@@ -280,8 +274,8 @@ export function useRegistrationAccess() {
           localStorage.setItem('last_registration_access_error', JSON.stringify(errorLog));
           console.error('❌ [REGISTRATION_ACCESS] Error en getUser:', errorLog);
           
-          // Si estamos en verificaremail y hay error, NO redirigir (puede ser un nuevo registro)
-          if (currentPath === '/verificaremail') {
+          // Si estamos en genero y hay error, NO redirigir (puede ser un nuevo registro)
+          if (currentPath === '/genero') {
             setLoading(false);
             return;
           }
@@ -292,8 +286,8 @@ export function useRegistrationAccess() {
         }
 
         if (!user) {
-          // Si estamos en verificaremail y no hay usuario, NO redirigir (puede ser un nuevo registro)
-          if (currentPath === '/verificaremail') {
+          // Si estamos en genero y no hay usuario, NO redirigir (puede ser un nuevo registro)
+          if (currentPath === '/genero') {
             setLoading(false);
             return;
           }
@@ -305,12 +299,11 @@ export function useRegistrationAccess() {
         const userStep = determineCurrentStep(user);
         
         if (!userStep) {
-          // Si estamos en verificaremail y no se determina paso, quedarse aquí
-          if (currentPath === '/verificaremail') {
+          if (currentPath === '/genero') {
             setLoading(false);
             return;
           }
-          navigate("/verificaremail", { replace: true }); // Fallback seguro
+          navigate("/genero", { replace: true });
           return;
         }
 
@@ -320,7 +313,7 @@ export function useRegistrationAccess() {
         if (userStep.key.includes('_completed')) {
                     
           // 🚫 BLOQUEAR: Si intenta acceder a cualquier ruta de registro, redirigir a su home
-          const allRegistrationPaths = ['/verificaremail', '/genero', '/anteveri', '/verificacion', '/esperando'];
+          const allRegistrationPaths = ['/genero', '/anteveri', '/verificacion', '/esperando'];
           if (allRegistrationPaths.includes(currentPath)) {
                                     navigate(userStep.config.redirectTo, { replace: true });
             return;
@@ -335,11 +328,6 @@ export function useRegistrationAccess() {
         const isAllowedPath = userStep.config.allowedPaths.includes(currentPath);
 
         if (!isAllowedPath) {
-          // Si estamos en verificaremail y el paso es email_verification, quedarse aquí
-          if (currentPath === '/verificaremail' && userStep.key === 'email_verification') {
-            setLoading(false);
-            return;
-          }
           navigate(userStep.config.redirectTo, { replace: true });
           return;
         }
@@ -359,8 +347,7 @@ export function useRegistrationAccess() {
         localStorage.setItem('last_registration_access_general_error', JSON.stringify(generalErrorLog));
         console.error('❌ [REGISTRATION_ACCESS] Error general:', generalErrorLog);
                 
-        // Si estamos en verificaremail, NO redirigir aunque haya error
-        if (currentPath === '/verificaremail') {
+        if (currentPath === '/genero') {
           setLoading(false);
           return;
         }
@@ -370,7 +357,7 @@ export function useRegistrationAccess() {
           navigate("/home", { replace: true });
         } else {
           // Para otros errores, ir al inicio del flujo
-          navigate("/verificaremail", { replace: true });
+          navigate("/genero", { replace: true });
         }
         
       } finally {
