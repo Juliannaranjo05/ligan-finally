@@ -33,17 +33,18 @@ const ModelMessageBubble = ({
 
   const messageType = message.type || 'text';
   const isGiftType = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(messageType);
+  const isSystemType = ['call_ended', 'system'].includes(messageType);
 
   return (
     <div 
-      className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} animate-fadeIn`}
+      className={`flex ${isSystemType ? "justify-center" : (isOwnMessage ? "justify-end" : "justify-start")} animate-fadeIn`}
       style={{ animationDelay: `${index * 50}ms` }}
       role="article"
       aria-label={`${isOwnMessage ? t('chat.yourMessage') || "Tu mensaje" : t('chat.messageFrom', { name: userName }) || `Mensaje de ${userName}`}`}
     >
-      <div className="flex flex-col max-w-sm md:max-w-md lg:max-w-lg">
+      <div className={`flex flex-col ${isSystemType ? 'max-w-full' : 'max-w-sm md:max-w-md lg:max-w-lg'}`}>
         {/* Nombre del usuario (solo para mensajes de otros) */}
-        {!isOwnMessage && userName && (
+        {!isSystemType && !isOwnMessage && userName && (
           <div className="flex items-center gap-2 mb-1 px-2">
             <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs shadow-md overflow-hidden relative">
               {(() => {
@@ -105,12 +106,14 @@ const ModelMessageBubble = ({
 
         {/* Burbuja de mensaje */}
         <div
-          className={`relative px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl text-sm break-words overflow-wrap-anywhere transition-all duration-200 ${
-            isGiftType
-              ? '' // Sin fondo adicional para regalos (ya tienen su propio diseño)
-              : isOwnMessage
-                ? "bg-gradient-to-r from-[#ff007a] to-[#e6006e] text-white rounded-br-md shadow-lg hover:shadow-xl"
-                : "bg-gradient-to-br from-[#2b2d31] to-[#1f2125] text-white/90 rounded-bl-md shadow-lg hover:shadow-xl border border-[#ff007a]/10"
+          className={`relative ${isSystemType ? 'px-0 py-0' : 'px-4 py-2.5 sm:px-5 sm:py-3'} rounded-2xl text-sm break-words overflow-wrap-anywhere transition-all duration-200 ${
+            isSystemType
+              ? ''
+              : isGiftType
+                ? '' // Sin fondo adicional para regalos (ya tienen su propio diseño)
+                : isOwnMessage
+                  ? "bg-gradient-to-r from-[#ff007a] to-[#e6006e] text-white rounded-br-md shadow-lg hover:shadow-xl"
+                  : "bg-gradient-to-br from-[#2b2d31] to-[#1f2125] text-white/90 rounded-bl-md shadow-lg hover:shadow-xl border border-[#ff007a]/10"
           }`}
         >
           {/* Contenido del mensaje */}
@@ -125,10 +128,10 @@ const ModelMessageBubble = ({
           {/* Timestamp */}
           {formatearTiempo && message.created_at && (
             <div className={`text-xs mt-1.5 flex items-center gap-1 ${
-              isOwnMessage ? 'text-white/70' : 'text-white/50'
+              isSystemType ? 'text-white/40 justify-center' : (isOwnMessage ? 'text-white/70' : 'text-white/50')
             }`}>
               <span>{formatearTiempo(message.created_at)}</span>
-              {isOwnMessage && (
+              {!isSystemType && isOwnMessage && (
                 <span className="text-white/50">•</span>
               )}
             </div>

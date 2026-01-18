@@ -1,7 +1,7 @@
 // contexts/GlobalTranslationContext.jsx
 // 🌍 SISTEMA DE TRADUCCIÓN GLOBAL PERSISTENTE
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 
 // 🔥 CONFIGURACIÓN DE TRADUCCIÓN
 const TRANSLATION_CONFIG = {
@@ -93,6 +93,7 @@ export const GlobalTranslationProvider = ({ children }) => {
       return {};
     }
   });
+  const inFlightTranslationsRef = useRef(new Map());
 
   // 💾 GUARDAR CONFIGURACIÓN AUTOMÁTICAMENTE
   useEffect(() => {
@@ -119,32 +120,46 @@ export const GlobalTranslationProvider = ({ children }) => {
       return globalTranslations[cacheKey].translated;
     }
 
+    let createdPromise = false;
     try {
-      
-      const result = await translateText(cleanText, globalSettings.targetLanguage);
-      
-      if (result && result.translated) {
-        // Guardar en cache global persistente
-        const translationData = {
-          original: cleanText,
-          translated: result.translated,
-          detectedLang: result.detectedLang,
-          targetLang: result.targetLang,
-          timestamp: Date.now(),
-          messageId: messageId
-        };
-
-        setGlobalTranslations(prev => ({
-          ...prev,
-          [cacheKey]: translationData
-        }));
-
-        return result.translated;
+      if (inFlightTranslationsRef.current.has(cacheKey)) {
+        return await inFlightTranslationsRef.current.get(cacheKey);
       }
-      
-      return text;
+
+      const translatePromise = (async () => {
+        const result = await translateText(cleanText, globalSettings.targetLanguage);
+        
+        if (result && result.translated) {
+          // Guardar en cache global persistente
+          const translationData = {
+            original: cleanText,
+            translated: result.translated,
+            detectedLang: result.detectedLang,
+            targetLang: result.targetLang,
+            timestamp: Date.now(),
+            messageId: messageId
+          };
+
+          setGlobalTranslations(prev => ({
+            ...prev,
+            [cacheKey]: translationData
+          }));
+
+          return result.translated;
+        }
+        
+        return text;
+      })();
+
+      createdPromise = true;
+      inFlightTranslationsRef.current.set(cacheKey, translatePromise);
+      return await translatePromise;
     } catch (error) {
       return text;
+    } finally {
+      if (createdPromise) {
+        inFlightTranslationsRef.current.delete(cacheKey);
+      }
     }
   };
 

@@ -1355,7 +1355,7 @@ const parseGiftData = useCallback((msg) => {
               <div className="flex-1 min-w-0 relative">
                 {isOtherTyping && (
                   <div className="absolute -top-5 left-2 text-xs text-[#ff007a] italic">
-                    Escribiendo...
+                    {t('chat.typing') || 'Escribiendo...'}
                   </div>
                 )}
                 <input

@@ -1,7 +1,7 @@
 // 🌍 SISTEMA DE TRADUCCIÓN GLOBAL PERSISTENTE
 // Archivo: contexts/GlobalTranslationContext.jsx
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useTranslation, translateText, TRANSLATION_CONFIG } from '../utils/translationSystem';
 import i18n from '../i18n';
 
@@ -67,6 +67,7 @@ export const GlobalTranslationProvider = ({ children }) => {
       return {};
     }
   });
+  const inFlightTranslationsRef = useRef(new Map());
 
   // 🔄 SINCRONIZAR CON i18n Y LOCALSTORAGE AL CARGAR Y CUANDO CAMBIA EL IDIOMA
   useEffect(() => {
@@ -152,35 +153,52 @@ export const GlobalTranslationProvider = ({ children }) => {
       return globalTranslations[cacheKey].translated;
     }
 
+    let createdPromise = false;
     try {
       console.log('🌍 Traduciendo globalmente:', text, 'a', globalSettings.targetLanguage);
-      
-      const result = await translateText(cleanText, globalSettings.targetLanguage);
-      
-      if (result && result.translated) {
-        // Guardar en cache global persistente
-        const translationData = {
-          original: cleanText,
-          translated: result.translated,
-          detectedLang: result.detectedLang,
-          targetLang: result.targetLang,
-          timestamp: Date.now(),
-          messageId: messageId
-        };
 
-        setGlobalTranslations(prev => ({
-          ...prev,
-          [cacheKey]: translationData
-        }));
-
-        console.log('✅ Traducción guardada globalmente:', result.translated);
-        return result.translated;
+      if (inFlightTranslationsRef.current.has(cacheKey)) {
+        return await inFlightTranslationsRef.current.get(cacheKey);
       }
+
+      const translatePromise = (async () => {
+        const result = await translateText(cleanText, globalSettings.targetLanguage);
+        
+        if (result && result.translated) {
+          // Guardar en cache global persistente
+          const translationData = {
+            original: cleanText,
+            translated: result.translated,
+            detectedLang: result.detectedLang,
+            targetLang: result.targetLang,
+            timestamp: Date.now(),
+            messageId: messageId
+          };
+
+          setGlobalTranslations(prev => ({
+            ...prev,
+            [cacheKey]: translationData
+          }));
+
+          console.log('✅ Traducción guardada globalmente:', result.translated);
+          return result.translated;
+        }
+        
+        return text;
+      })();
+
+      createdPromise = true;
+      inFlightTranslationsRef.current.set(cacheKey, translatePromise);
+      const translated = await translatePromise;
+      return translated;
       
-      return text;
     } catch (error) {
       console.warn('❌ Error en traducción global:', error);
       return text;
+    } finally {
+      if (createdPromise) {
+        inFlightTranslationsRef.current.delete(cacheKey);
+      }
     }
   };
 

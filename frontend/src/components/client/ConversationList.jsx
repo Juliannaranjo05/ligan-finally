@@ -204,7 +204,9 @@ const ConversationList = ({
                       )}
                     </div>
                     <div className="text-xs text-white/60 truncate">
-                      {conv.last_message_sender_id === currentUser?.id ? (
+                      {typeof isTyping === 'function' && isTyping(conv.room_name) ? (
+                        <span className="text-[#ff007a] italic">{t('chat.typing') || 'Escribiendo...'}</span>
+                      ) : conv.last_message_sender_id === currentUser?.id ? (
                         <span>
                           <span className="text-white/40">{t('chat.you') || "Tú"}:</span>{' '}
                           <span>{conv.last_message || t('chat.noMessages') || "Sin mensajes"}</span>

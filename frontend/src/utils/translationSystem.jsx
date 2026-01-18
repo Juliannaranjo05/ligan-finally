@@ -33,6 +33,7 @@ export const TRANSLATION_CONFIG = {
 // Cache para traducciones
 const translationCache = new Map();
 const processedMessages = new Set();
+const inFlightTranslations = new Map();
 
 // 🔍 DETECCIÓN DE IDIOMA MEJORADA
 export const detectLanguage = (text) => {
@@ -206,59 +207,76 @@ export const translateText = async (text, targetLang = 'es') => {
   const cleanText = text.trim();
   const cacheKey = `${cleanText}_auto_${targetLang}`;
 
-  // Verificar cache
+  // Verificar cache (incluye "sin traducción")
   if (translationCache.has(cacheKey)) {
     const cached = translationCache.get(cacheKey);
-    if (cached) {
-      return cached;
+    return cached || null;
+  }
+
+  // Evitar múltiples peticiones simultáneas para el mismo texto
+  if (inFlightTranslations.has(cacheKey)) {
+    return inFlightTranslations.get(cacheKey);
+  }
+
+  const translatePromise = (async () => {
+    // Detectar idioma
+    const detectedLang = detectLanguage(cleanText);
+    
+    // No traducir si ya está en el idioma objetivo
+    if (detectedLang === targetLang) {
+      translationCache.set(cacheKey, false);
+      return null;
     }
-  }
 
-  // Detectar idioma
-  const detectedLang = detectLanguage(cleanText);
-  
-  // No traducir si ya está en el idioma objetivo
-  if (detectedLang === targetLang) {
-    return null;
-  }
+    // Validar código de idioma objetivo
+    const validLangs = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'tr', 'hi', 'ja', 'ko', 'zh', 'ar', 'nl'];
+    if (!validLangs.includes(targetLang)) {
+      translationCache.set(cacheKey, false);
+      return null;
+    }
 
-  // Validar código de idioma objetivo
-  const validLangs = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'tr', 'hi', 'ja', 'ko', 'zh', 'ar', 'nl'];
-  if (!validLangs.includes(targetLang)) {
-    return null;
-  }
+    try {
+      let translation = null;
+
+      // Usar solo Google Translate (más confiable y sin errores 400)
+      translation = await tryGoogleTranslate(cleanText, targetLang);
+
+      // LibreTranslate deshabilitado temporalmente debido a errores 400
+      // if (!translation) {
+      //   translation = await tryLibreTranslate(cleanText, targetLang);
+      // }
+
+      if (translation && translation.trim() !== '' && translation.toLowerCase() !== cleanText.toLowerCase()) {
+        const result = {
+          original: cleanText,
+          translated: translation.trim(),
+          detectedLang: detectedLang || 'unknown',
+          targetLang: targetLang,
+          timestamp: Date.now()
+        };
+
+        // Guardar en cache
+        translationCache.set(cacheKey, result);
+        
+        return result;
+      }
+
+      translationCache.set(cacheKey, false);
+      return null;
+
+    } catch (error) {
+      // Silenciar errores
+      translationCache.set(cacheKey, false);
+      return null;
+    }
+  })();
+
+  inFlightTranslations.set(cacheKey, translatePromise);
 
   try {
-    let translation = null;
-
-    // Usar solo Google Translate (más confiable y sin errores 400)
-    translation = await tryGoogleTranslate(cleanText, targetLang);
-
-    // LibreTranslate deshabilitado temporalmente debido a errores 400
-    // if (!translation) {
-    //   translation = await tryLibreTranslate(cleanText, targetLang);
-    // }
-
-    if (translation && translation.trim() !== '' && translation.toLowerCase() !== cleanText.toLowerCase()) {
-      const result = {
-        original: cleanText,
-        translated: translation.trim(),
-        detectedLang: detectedLang || 'unknown',
-        targetLang: targetLang,
-        timestamp: Date.now()
-      };
-
-      // Guardar en cache
-      translationCache.set(cacheKey, result);
-      
-      return result;
-    }
-
-    return null;
-
-  } catch (error) {
-    // Silenciar errores
-    return null;
+    return await translatePromise;
+  } finally {
+    inFlightTranslations.delete(cacheKey);
   }
 };
 

@@ -636,7 +636,7 @@ export default function ChatPrivadoMobile() {
     mensajes.forEach((message) => {
       const shouldTranslate = (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
         !translations.has(message.id) &&
         !translatingIds.has(message.id) &&
         (message.text || message.message) &&
@@ -1268,13 +1268,39 @@ export default function ChatPrivadoMobile() {
   const renderMensaje = (mensaje) => {
     const textoMensaje = mensaje.message || mensaje.text || null;
     const esUsuarioActual = mensaje.user_id === usuario.id;
+    const formatCallDuration = (totalSeconds) => {
+      const safeSeconds = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+      const minutes = Math.floor(safeSeconds / 60);
+      const seconds = safeSeconds % 60;
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    };
 
     if ((!textoMensaje || textoMensaje.trim() === '') && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type)) {
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
       return null;
     }
 
     switch (mensaje.type) {
+      case 'call_ended': {
+        const extraData = mensaje.extra_data || {};
+        const durationSeconds = Number(extraData.duration_seconds ?? 0);
+        const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
+        const callEndedLabel = t('callEnded') || 'Llamada finalizada';
+        const durationLabel = t('time.callDuration') || 'Tiempo';
+
+        return (
+          <div className="w-full flex items-center justify-center">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
+              <span className="text-[#ff007a]">📞</span>
+              <span>{callEndedLabel}</span>
+              {durationFormatted && (
+                <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
+              )}
+            </div>
+          </div>
+        );
+      }
+
       case 'gift_request':
         const giftData = mensaje.gift_data || mensaje.extra_data || {};
         let finalGiftData = giftData;
@@ -2065,11 +2091,12 @@ export default function ChatPrivadoMobile() {
                     mensajes.map((mensaje) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
                       const isGiftMessage = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type);
+                      const isSystemMessage = ['call_ended', 'system'].includes(mensaje.type);
 
                       return (
-                        <div key={mensaje.id} className={`flex ${esUsuarioActual ? "justify-end" : "justify-start"}`}>
-                          <div className="flex flex-col max-w-[280px]">
-                            {!esUsuarioActual && !isGiftMessage && (
+                        <div key={mensaje.id} className={`flex ${isSystemMessage ? "justify-center" : (esUsuarioActual ? "justify-end" : "justify-start")}`}>
+                          <div className={`flex flex-col ${isSystemMessage ? 'max-w-full' : 'max-w-[280px]'}`}>
+                            {!isSystemMessage && !esUsuarioActual && !isGiftMessage && (
                               <div className="flex items-center gap-2 mb-1 px-2">
                                 <div className="w-5 h-5 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-xs">
                                   {getInitial(mensaje.user_name)}
@@ -2077,8 +2104,8 @@ export default function ChatPrivadoMobile() {
                                 <span className="text-xs text-white/60">{mensaje.user_name}</span>
                               </div>
                             )}
-                            {isGiftMessage ? (
-                              // Mensajes de regalo sin padding/fondo adicional
+                            {isGiftMessage || isSystemMessage ? (
+                              // Mensajes especiales sin padding/fondo adicional
                               renderMensaje(mensaje)
                             ) : (
                               <div
@@ -2107,7 +2134,9 @@ export default function ChatPrivadoMobile() {
                 <div className="bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-3 p-3">
                   <div className="flex flex-col flex-1">
                     {isOtherTyping && (
-                      <div className="text-xs text-[#ff007a] mb-1 italic">Escribiendo...</div>
+                      <div className="text-xs text-[#ff007a] mb-1 italic">
+                        {t('chat.typing') || 'Escribiendo...'}
+                      </div>
                     )}
                     <input
                       type="text"

@@ -93,7 +93,8 @@ export default function ChatPrivado() {
   // Estados de regalos
   const [showGiftsModal, setShowGiftsModal] = useState(false);
   const [loadingGift, setLoadingGift] = useState(false);
-  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  // Estado typing por conversación
+  const [typingStatus, setTypingStatus] = useState({});
 
   // Estados de apodos SIMPLIFICADOS
   const [showNicknameModal, setShowNicknameModal] = useState(false);
@@ -171,37 +172,39 @@ export default function ChatPrivado() {
     }, 2500);
   }, [conversacionActiva, sendTypingStatus]);
 
+  // Polling typing para todas las conversaciones
   useEffect(() => {
-    if (!conversacionActiva) {
-      setIsOtherTyping(false);
-      return;
-    }
-
-    const fetchTypingStatus = async () => {
+    let isMounted = true;
+    const fetchAllTypingStatus = async () => {
       const token = localStorage.getItem('token');
       if (!token) return;
       try {
-        const response = await fetch(`${API_BASE_URL}/api/chat/typing/${conversacionActiva}`, {
-          method: 'GET',
-          headers: getAuthHeaders()
-        });
-        if (!response.ok) return;
-        const data = await response.json();
-        setIsOtherTyping(!!data?.is_typing);
-      } catch (error) {
-        // Silenciar errores de typing
-      }
+        // Obtener todas las rooms de las conversaciones
+        const rooms = conversaciones.map(c => c.room_name);
+        const statusObj = {};
+        await Promise.all(rooms.map(async (room) => {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/chat/typing/${room}`, {
+              method: 'GET',
+              headers: getAuthHeaders()
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            statusObj[room] = !!data?.is_typing;
+          } catch {}
+        }));
+        if (isMounted) setTypingStatus(statusObj);
+      } catch {}
     };
-
-    fetchTypingStatus();
+    fetchAllTypingStatus();
     if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
-    typingIntervalRef.current = setInterval(fetchTypingStatus, 2000);
-
+    typingIntervalRef.current = setInterval(fetchAllTypingStatus, 2000);
     return () => {
+      isMounted = false;
       if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
       sendTypingStatus(false);
     };
-  }, [conversacionActiva, getAuthHeaders, sendTypingStatus]);
+  }, [conversaciones, getAuthHeaders, sendTypingStatus]);
 
 
   const playIncomingCallSound = useCallback(async () => {
@@ -1394,17 +1397,44 @@ const cargarMensajes = useCallback(async (roomName) => {
     );
   }, [translations, translatingIds, localTranslationEnabled]);
 
+  const formatCallDuration = useCallback((totalSeconds) => {
+    const safeSeconds = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+    const minutes = Math.floor(safeSeconds / 60);
+    const seconds = safeSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, []);
+
   const renderMensaje = useCallback((mensaje) => {
   const textoMensaje = mensaje.message || mensaje.text || null;
   const esUsuarioActual = mensaje.user_id === usuario.id;
 
   // 🔥 FIX: Permitir que los regalos se rendericen SIN texto
   if ((!textoMensaje || textoMensaje.trim() === '') && 
-      !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type)) {
+      !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
     return null; // Solo bloquear si NO es regalo
   }
 
   switch (mensaje.type) {
+    case 'call_ended': {
+      const extraData = mensaje.extra_data || {};
+      const durationSeconds = Number(extraData.duration_seconds ?? 0);
+      const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
+      const callEndedLabel = t('callEnded') || 'Llamada finalizada';
+      const durationLabel = t('time.callDuration') || 'Tiempo';
+
+      return (
+        <div className="w-full flex items-center justify-center">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
+            <span className="text-[#ff007a]">📞</span>
+            <span>{callEndedLabel}</span>
+            {durationFormatted && (
+              <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     case 'gift':
       return (
         <div className="flex items-center gap-2 text-yellow-400">
@@ -1675,7 +1705,7 @@ const cargarMensajes = useCallback(async (roomName) => {
       }
       return <span className="text-white break-words overflow-wrap-anywhere whitespace-pre-wrap">{textoMensaje}</span>;
   }
-  }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation, buildCompleteImageUrl]);
+  }, [usuario.id, localTranslationEnabled, renderMessageWithTranslation, buildCompleteImageUrl, formatCallDuration, t]);
   
   const formatearTiempo = useCallback((timestamp) => {
     const fecha = new Date(timestamp);
@@ -1751,7 +1781,7 @@ const cargarMensajes = useCallback(async (roomName) => {
     const messagesToTranslate = mensajes.filter(message => {
       return (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
         !translations.has(message.id) &&
         !translatingIds.has(message.id) &&
         (message.text || message.message) &&
@@ -2436,6 +2466,7 @@ const cargarMensajes = useCallback(async (roomName) => {
           isMobile={isMobile}
           onCloseSidebar={() => setShowSidebar(false)}
           showSidebar={showSidebar}
+          isTyping={(roomName) => !!typingStatus[roomName]}
         />
 
         {/* Panel de chat - MEJORADO CON GRADIENTES */}
@@ -2461,7 +2492,7 @@ const cargarMensajes = useCallback(async (roomName) => {
               <ModelChatHeader
                 conversation={conversacionSeleccionada}
                 isOnline={onlineUsers.has(conversacionSeleccionada?.other_user_id)}
-                isTyping={isOtherTyping}
+                isTyping={!!typingStatus[conversacionActiva]}
                 blockStatus={conversacionSeleccionada ? getBlockStatus(conversacionSeleccionada.other_user_id) : null}
                 isFavorite={conversacionSeleccionada ? favoritos.has(conversacionSeleccionada.other_user_id) : false}
                 loadingActions={loadingActions}
@@ -2666,6 +2697,11 @@ const cargarMensajes = useCallback(async (roomName) => {
                 )}
               </div>
 
+              {typingStatus[conversacionActiva] && (
+                <div className="px-4 pb-2 text-xs text-[#ff007a] italic">
+                  {t('chat.typing') || 'Escribiendo...'}
+                </div>
+              )}
               {/* Input mensaje - MODULARIZADO */}
               <ModelMessageInput
                 message={nuevoMensaje}

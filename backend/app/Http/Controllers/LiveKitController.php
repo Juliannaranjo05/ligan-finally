@@ -1736,6 +1736,27 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
                 ->where('status', 'active')
                 ->get();
 
+            $now = now();
+            $callDurationSeconds = 0;
+            $primaryVideoSessionId = null;
+
+            if (!$videoSessions->isEmpty()) {
+                foreach ($videoSessions as $session) {
+                    $duration = (int) ($session->actual_duration_seconds ?? 0);
+                    if ($duration <= 0) {
+                        $startedAt = $session->started_at ?? $session->created_at;
+                        if ($startedAt) {
+                            $duration = $startedAt->diffInSeconds($now);
+                        }
+                    }
+
+                    if ($duration > $callDurationSeconds) {
+                        $callDurationSeconds = $duration;
+                        $primaryVideoSessionId = $session->id;
+                    }
+                }
+            }
+
             if ($chatSessions->isEmpty() && $videoSessions->isEmpty()) {
                 return response()->json([
                     'success' => false,
@@ -1782,6 +1803,37 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
             // 🛑 FINALIZAR TODAS LAS SESIONES RELACIONADAS (MEJORADO - LIMPIEZA AGRESIVA)
             // Esta función ya limpia todas las sesiones de ambos usuarios
             $this->terminateAllRoomSessions($roomName, $clienteId, $modeloId, $endReason);
+
+            // 🧾 Guardar resumen de llamada en el chat privado (no videochat)
+            if ($callDurationSeconds > 0 && $clienteId && $modeloId) {
+                $chatRoomName = $this->getPrivateChatRoomName($clienteId, $modeloId);
+                $durationFormatted = $this->formatCallDuration($callDurationSeconds);
+                $callMessageText = "📞 Llamada finalizada ({$durationFormatted})";
+
+                $existingCallMessage = ChatMessage::where('room_name', $chatRoomName)
+                    ->where('type', 'call_ended')
+                    ->where('extra_data', 'like', '%"call_room_name":"' . $roomName . '"%')
+                    ->where('created_at', '>=', $now->copy()->subMinutes(5))
+                    ->exists();
+
+                if (!$existingCallMessage) {
+                    ChatMessage::create([
+                        'room_name' => $chatRoomName,
+                        'user_id' => $user->id,
+                        'user_name' => $user->name,
+                        'user_role' => $user->rol,
+                        'message' => $callMessageText,
+                        'type' => 'call_ended',
+                        'extra_data' => [
+                            'duration_seconds' => $callDurationSeconds,
+                            'duration_formatted' => $durationFormatted,
+                            'call_room_name' => $roomName,
+                            'video_session_id' => $primaryVideoSessionId,
+                            'end_reason' => $endReason
+                        ]
+                    ]);
+                }
+            }
             
             // 🔥 LIMPIEZA ADICIONAL DEL USUARIO ACTUAL (por si acaso)
             // Esto asegura que no queden residuos del usuario que está colgando
@@ -3300,6 +3352,21 @@ private function getNotificationMessage($endReason)
                     ] : null
                 ], 500);
             }
+        }
+
+        private function getPrivateChatRoomName(int $userId1, int $userId2): string
+        {
+            $ids = [$userId1, $userId2];
+            sort($ids);
+            return "chat_user_{$ids[0]}_{$ids[1]}";
+        }
+
+        private function formatCallDuration(int $seconds): string
+        {
+            $safeSeconds = max(0, $seconds);
+            $minutes = floor($safeSeconds / 60);
+            $remainingSeconds = $safeSeconds % 60;
+            return sprintf('%02d:%02d', $minutes, $remainingSeconds);
         }
 
         private function getTypingCacheKey(string $roomName): string

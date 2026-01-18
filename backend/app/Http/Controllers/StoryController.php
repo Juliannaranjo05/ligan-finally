@@ -30,20 +30,44 @@ class StoryController extends Controller
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
-        // 🔥 AGREGAR ESTOS LOGS DE DEBUG AQUÍ
-        Log::info('=== 🔍 DEBUG COMPLETO DE SUBIDA ===');
+        // 🔥 LOGS DETALLADOS AL INICIO - ANTES DE CUALQUIER VERIFICACIÓN  
+        Log::info('=== 🔍 INICIO DEBUG COMPLETO DE SUBIDA ===');
+        
+        // 🔥 VERIFICAR SI HAY ARCHIVO INMEDIATAMENTE, INCLUSO SI hasFile() ES FALSE
+        $rawFiles = $_FILES ?? [];
+        Log::info('📁 $_FILES (RAW PHP):', [
+            '_FILES' => $rawFiles,
+            '_FILES_keys' => array_keys($rawFiles),
+            'file_error' => isset($_FILES['file']) ? $_FILES['file']['error'] : 'NO_EXISTE',
+            'file_name' => isset($_FILES['file']) ? $_FILES['file']['name'] : null,
+            'file_size' => isset($_FILES['file']) ? $_FILES['file']['size'] : null,
+            'file_tmp_name' => isset($_FILES['file']) ? ($_FILES['file']['tmp_name'] ?? 'NO_TMP') : null,
+        ]);
         Log::info('📋 Request Info:', [
             'method' => $request->method(),
             'url' => $request->fullUrl(),
             'content_type' => $request->header('Content-Type'),
             'content_length' => $request->header('Content-Length'),
-            'user_agent' => $request->header('User-Agent')
+            'content_length_mb' => $request->header('Content-Length') ? round($request->header('Content-Length') / 1024 / 1024, 2) . ' MB' : null,
+            'user_agent' => substr($request->header('User-Agent'), 0, 150),
+            'ip' => $request->ip(),
         ]);
 
-        Log::info('📦 Request Data:', [
-            'all_data' => $request->all(),
+        Log::info('⚙️ Límites de PHP AL INICIO:', [
+            'upload_max_filesize' => ini_get('upload_max_filesize'),
+            'post_max_size' => ini_get('post_max_size'),
+            'upload_max_bytes' => $this->convertToBytes(ini_get('upload_max_filesize')),
+            'post_max_bytes' => $this->convertToBytes(ini_get('post_max_size')),
+            'max_execution_time' => ini_get('max_execution_time'),
+            'memory_limit' => ini_get('memory_limit'),
+        ]);
+
+        Log::info('📦 Estado inicial de archivos:', [
             'has_file' => $request->hasFile('file'),
-            'files_count' => count($request->allFiles())
+            'files_count' => count($request->allFiles()),
+            'files_keys' => array_keys($request->allFiles()),
+            'request_keys' => array_keys($request->all()),
+            'request_input_count' => count($request->input()),
         ]);
 
         if ($request->hasFile('file')) {
@@ -146,15 +170,46 @@ class StoryController extends Controller
         // 🔥 AGREGAR LOG ANTES DE LA VALIDACIÓN
         Log::info('🔍 Iniciando validación de Laravel...');
         
+        // 🔥 LOGS DETALLADOS ANTES DE VALIDAR
+        Log::info('🔍 === INICIO VALIDACIÓN DE ARCHIVO ===');
+        Log::info('📋 Headers de la petición:', [
+            'Content-Type' => $request->header('Content-Type'),
+            'Content-Length' => $request->header('Content-Length'),
+            'Content-Length-MB' => $request->header('Content-Length') ? round($request->header('Content-Length') / 1024 / 1024, 2) . ' MB' : null,
+            'User-Agent' => substr($request->header('User-Agent'), 0, 100),
+        ]);
+        
+        Log::info('📦 Estado de archivos:', [
+            'has_file' => $request->hasFile('file'),
+            'hasFile_result' => $request->hasFile('file') ? 'SÍ' : 'NO',
+            'allFiles_count' => count($request->allFiles()),
+            'allFiles_keys' => array_keys($request->allFiles()),
+            'request_all_keys' => array_keys($request->all()),
+            'request_method' => $request->method(),
+        ]);
+        
+        Log::info('⚙️ Límites de PHP:', [
+            'upload_max_filesize' => ini_get('upload_max_filesize'),
+            'post_max_size' => ini_get('post_max_size'),
+            'max_execution_time' => ini_get('max_execution_time'),
+            'memory_limit' => ini_get('memory_limit'),
+            'max_input_time' => ini_get('max_input_time'),
+            'upload_tmp_dir' => ini_get('upload_tmp_dir'),
+            'file_uploads' => ini_get('file_uploads'),
+        ]);
+        
         // Verificar si el archivo llegó ANTES de validar
         if (!$request->hasFile('file')) {
-            Log::error('❌ El archivo no se recibió en la petición');
-            Log::info('📋 Información de la petición:', [
+            Log::error('❌ EL ARCHIVO NO SE RECIBIÓ EN LA PETICIÓN');
+            Log::error('📋 Información completa de la petición:', [
                 'content_type' => $request->header('Content-Type'),
                 'content_length' => $request->header('Content-Length'),
+                'content_length_mb' => $request->header('Content-Length') ? round($request->header('Content-Length') / 1024 / 1024, 2) . ' MB' : null,
                 'has_file' => $request->hasFile('file'),
                 'all_files' => $request->allFiles(),
-                'post_data' => $request->all()
+                'post_data' => $request->all(),
+                'request_all' => $request->all(),
+                'request_input_all' => $request->input(),
             ]);
             
             // Verificar si el problema es tamaño de archivo
@@ -168,15 +223,63 @@ class StoryController extends Controller
                     'content_length' => $contentLength,
                     'size_mb' => $sizeInMB,
                     'upload_max_filesize' => $uploadMaxFilesize,
-                    'post_max_size' => $postMaxSize
+                    'post_max_size' => $postMaxSize,
+                    'upload_max_bytes' => $this->convertToBytes($uploadMaxFilesize),
+                    'post_max_bytes' => $this->convertToBytes($postMaxSize),
+                    'exceeds_upload_max' => $contentLength > $this->convertToBytes($uploadMaxFilesize),
+                    'exceeds_post_max' => $contentLength > $this->convertToBytes($postMaxSize),
                 ]);
             }
+            
+            // 🔥 VERIFICAR ERRORES DE SUBIDA EN $_FILES
+            if (isset($_FILES['file'])) {
+                $uploadError = $_FILES['file']['error'];
+                $errorMessages = [
+                    UPLOAD_ERR_OK => 'Sin errores',
+                    UPLOAD_ERR_INI_SIZE => 'El archivo excede upload_max_filesize',
+                    UPLOAD_ERR_FORM_SIZE => 'El archivo excede post_max_size',
+                    UPLOAD_ERR_PARTIAL => 'El archivo se subió parcialmente',
+                    UPLOAD_ERR_NO_FILE => 'No se subió ningún archivo',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal',
+                    UPLOAD_ERR_CANT_WRITE => 'Error al escribir el archivo en el disco',
+                    UPLOAD_ERR_EXTENSION => 'Una extensión de PHP detuvo la subida',
+                ];
+                
+                Log::error('❌ Error de subida en $_FILES:', [
+                    'error_code' => $uploadError,
+                    'error_message' => $errorMessages[$uploadError] ?? 'Error desconocido',
+                    'file_name' => $_FILES['file']['name'] ?? null,
+                    'file_size' => $_FILES['file']['size'] ?? null,
+                    'tmp_name' => $_FILES['file']['tmp_name'] ?? null,
+                    'tmp_exists' => isset($_FILES['file']['tmp_name']) ? file_exists($_FILES['file']['tmp_name']) : false,
+                ]);
+            }
+            
+            // Obtener límites REALES de PHP (pueden estar en diferentes formatos)
+            $uploadMax = ini_get('upload_max_filesize');
+            $postMax = ini_get('post_max_size');
+            
+            // Convertir a bytes para comparación
+            $uploadMaxBytes = $this->convertToBytes($uploadMax);
+            $postMaxBytes = $this->convertToBytes($postMax);
+            
+            // Si el archivo es menor a los límites, el problema puede ser otra cosa
+            $contentLength = $request->header('Content-Length');
+            $fileSizeMB = $contentLength ? round($contentLength / 1024 / 1024, 2) : 0;
             
             return response()->json([
                 'message' => 'No se recibió ningún archivo en la petición',
                 'errors' => ['file' => [
-                    'El archivo no se recibió correctamente. Verifica que el archivo no exceda los límites del servidor (actualmente: upload_max_filesize=' . ini_get('upload_max_filesize') . ', post_max_size=' . ini_get('post_max_size') . ')'
-                ]]
+                    'El archivo no se recibió correctamente. Verifica que el archivo no exceda los límites del servidor.'
+                ]],
+                'debug_info' => app()->environment('local') ? [
+                    'content_length' => $contentLength,
+                    'file_size_mb' => $fileSizeMB,
+                    'upload_max_filesize' => $uploadMax . ' (' . $uploadMaxBytes . ' bytes)',
+                    'post_max_size' => $postMax . ' (' . $postMaxBytes . ' bytes)',
+                    'size_exceeds_upload_max' => $contentLength && $contentLength > $uploadMaxBytes,
+                    'size_exceeds_post_max' => $contentLength && $contentLength > $postMaxBytes,
+                ] : null
             ], 422);
         }
         
@@ -659,7 +762,7 @@ class StoryController extends Controller
             'status' => 'approved',
             'approved_at' => now(),
             'approved_by' => $adminId,
-            'expires_at' => now()->addHours(24) // 🚨 ESTO ES CRÍTICO
+            'expires_at' => now()->addDays(7) // 🚨 Histórias duran 1 semana
         ]);
 
         return response()->json([
@@ -1003,6 +1106,24 @@ class StoryController extends Controller
         }
     }
 
+    /**
+     * Convertir valor de tamaño (ej: "500M", "8M") a bytes
+     */
+    private function convertToBytes($value)
+    {
+        $value = trim($value);
+        $last = strtolower($value[strlen($value)-1]);
+        $value = (int)$value;
+        
+        switch($last) {
+            case 'g': $value *= 1024;
+            case 'm': $value *= 1024;
+            case 'k': $value *= 1024;
+        }
+        
+        return $value;
+    }
+    
     /**
      * Obtener la duración de un video en segundos
      * Intenta usar ffprobe si está disponible, si no retorna null

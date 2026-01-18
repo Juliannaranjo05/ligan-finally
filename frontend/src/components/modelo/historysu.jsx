@@ -1,4 +1,4 @@
-// SubirHistoria.jsx - Versión actualizada con control de 24 horas
+// SubirHistoria.jsx - Versión actualizada con control de 1 semana
 import React, { useRef, useState, useEffect } from "react";
 import {
   UploadCloud,
