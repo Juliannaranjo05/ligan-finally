@@ -21,6 +21,8 @@ import {
   Globe
 } from "lucide-react";
 import EmojiPickerButton from '../common/EmojiPickerButton.jsx';
+import CallEventBadge from '../common/CallEventBadge.jsx';
+import { buildConversationCallPreview, CALL_PREVIEW_TONE_CLASSES } from '../../utils/callEventUtils';
 
 // Importaciones de sistema de regalos
 import { useGiftSystem, GiftNotificationOverlay, GiftsModal } from '../GiftSystem/index.jsx';
@@ -57,12 +59,15 @@ export default function ChatPrivadoMobile() {
   const [sendingGiftId, setSendingGiftId] = useState(null); // ID del request que se está procesando
 
   // 🔥 OBTENER CONTEXTO GLOBAL COMPLETO DE TRADUCCIÓN
-  const { 
-    translateGlobalText, 
-    isEnabled: translationEnabled,
-    changeGlobalLanguage,
-    currentLanguage: globalCurrentLanguage 
-  } = useGlobalTranslation();
+  const globalTranslation = useGlobalTranslation() || {};
+  const translateGlobalText = typeof globalTranslation.translateGlobalText === 'function'
+    ? globalTranslation.translateGlobalText
+    : async (text) => text;
+  const translationEnabled = Boolean(globalTranslation.isEnabled);
+  const globalCurrentLanguage = globalTranslation.currentLanguage || 'es';
+  const changeGlobalLanguageRef = typeof globalTranslation.changeGlobalLanguage === 'function'
+    ? globalTranslation.changeGlobalLanguage
+    : null;
 
   // 🔥 ESTADOS PARA MODAL DE CONFIGURACIÓN Y TRADUCCIÓN
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -100,9 +105,9 @@ export default function ChatPrivadoMobile() {
         localStorage.setItem('translationEnabled', shouldEnableTranslation.toString());
         
         // Actualizar el contexto global también
-        if (typeof changeGlobalLanguage === 'function') {
+        if (changeGlobalLanguageRef) {
           try {
-            changeGlobalLanguage(lng);
+            changeGlobalLanguageRef(lng);
           } catch (error) {
           }
         }
@@ -125,12 +130,15 @@ export default function ChatPrivadoMobile() {
     return () => {
       i18nInstance.off('languageChanged', handleLanguageChange);
     };
-  }, [currentLanguage, changeGlobalLanguage, i18nInstance]);
+  }, [currentLanguage, changeGlobalLanguageRef, i18nInstance]);
 
   const navigate = useNavigate();
   const location = useLocation();
   const mensajesRef = useRef(null);
-  const openChatWith = location.state?.openChatWith;
+  const locationState = (location && typeof location === 'object') ? location.state : undefined;
+  const openChatWith = locationState && typeof locationState === 'object'
+    ? locationState.openChatWith
+    : null;
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const hasOpenedSpecificChatRef = useRef(false);
   
@@ -655,7 +663,7 @@ export default function ChatPrivadoMobile() {
     mensajes.forEach((message) => {
       const shouldTranslate = (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(message.type) &&
         !translations.has(message.id) &&
         !translatingIds.has(message.id) &&
         (message.text || message.message) &&
@@ -755,30 +763,22 @@ export default function ChatPrivadoMobile() {
     };
 
     if ((!textoMensaje || textoMensaje.trim() === '') && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(mensaje.type)) {
       return null;
     }
 
     switch (mensaje.type) {
-      case 'call_ended': {
-        const extraData = mensaje.extra_data || {};
-        const durationSeconds = Number(extraData.duration_seconds ?? 0);
-        const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
-        const callEndedLabel = t('callEnded') || 'Llamada finalizada';
-        const durationLabel = t('time.callDuration') || 'Tiempo';
-
+      case 'call_ended':
+      case 'call_missed':
         return (
-          <div className="w-full flex items-center justify-center">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
-              <span className="text-[#ff007a]">📞</span>
-              <span>{callEndedLabel}</span>
-              {durationFormatted && (
-                <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
-              )}
-            </div>
-          </div>
+          <CallEventBadge
+            message={mensaje}
+            currentUserId={usuario.id}
+            t={t}
+            formatDuration={formatCallDuration}
+            formatTimestamp={formatearTiempo}
+          />
         );
-      }
 
       case 'gift_request':
         const giftData = mensaje.gift_data || mensaje.extra_data || {};
@@ -1993,7 +1993,7 @@ export default function ChatPrivadoMobile() {
   };
 
   // 🔥 CARGAR MENSAJES CON TIEMPO REAL
-  const cargarMensajes = async (roomName, isPolling = false) => {
+  async function cargarMensajes(roomName, isPolling = false) {
     try {
       if (!isPolling) {
         // Solo mostrar loading en carga inicial
@@ -2095,7 +2095,7 @@ export default function ChatPrivadoMobile() {
       }
     } catch (error) {
           }
-  };
+  }
 
   // 🔥 FUNCIÓN PARA INICIAR POLLING EN TIEMPO REAL
   const iniciarPolling = useCallback((roomName) => {
@@ -2219,6 +2219,34 @@ export default function ChatPrivadoMobile() {
     { code: 'zh', name: '中文', flag: '🇨🇳' }
   ];
 
+  const formatConversationCallDuration = useCallback((seconds) => {
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const minutes = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const getConversationCallPreview = useCallback((conversation) => {
+    if (!usuario?.id) {
+      return null;
+    }
+
+    return buildConversationCallPreview({
+      conversation,
+      currentUserId: usuario.id,
+      currentUserName: usuario.display_name || usuario.nickname || usuario.name,
+      t,
+      formatDuration: formatConversationCallDuration
+    });
+  }, [
+    usuario?.id,
+    usuario?.display_name,
+    usuario?.nickname,
+    usuario?.name,
+    t,
+    formatConversationCallDuration
+  ]);
+
   // 🔥 FUNCIÓN PARA CAMBIAR IDIOMA - CLEAN VERSION
   const handleLanguageChange = (languageCode) => {
     setCurrentLanguage(languageCode);
@@ -2228,9 +2256,9 @@ export default function ChatPrivadoMobile() {
     setLocalTranslationEnabled(shouldEnableTranslation);
     localStorage.setItem('translationEnabled', shouldEnableTranslation.toString());
     
-    if (typeof changeGlobalLanguage === 'function') {
+    if (changeGlobalLanguageRef) {
       try {
-        changeGlobalLanguage(languageCode);
+        changeGlobalLanguageRef(languageCode);
       } catch (error) {
         // Silenciar error
       }
@@ -2505,8 +2533,8 @@ export default function ChatPrivadoMobile() {
         }
 
         // Limpiar el estado de navegación para evitar re-ejecuciones
-        if (location.state?.openChatWith) {
-          navigate(location.pathname + location.search, { replace: true, state: {} });
+        if (locationState && locationState.openChatWith) {
+          navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
         }
         
       } catch (error) {
@@ -2526,7 +2554,7 @@ export default function ChatPrivadoMobile() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [openChatWith, usuario.id, conversaciones]);
+  }, [openChatWith, usuario.id, conversaciones, location.pathname, location.search, locationState]);
 
   // 🔥 UTILIDADES
   const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
@@ -2746,11 +2774,28 @@ export default function ChatPrivadoMobile() {
                             {conv.other_user_display_name || conv.other_user_name}
                           </p>
                           <div className="text-xs text-white/60 truncate">
-                            {conv.last_message_sender_id === usuario.id ? (
-                              <span><span className="text-white/40">{t('chat.you')}:</span> {conv.last_message}</span>
-                            ) : (
-                              conv.last_message
-                            )}
+                            {(() => {
+                              const callPreview = getConversationCallPreview(conv);
+
+                              if (callPreview) {
+                                const toneClasses = CALL_PREVIEW_TONE_CLASSES[callPreview.tone] || CALL_PREVIEW_TONE_CLASSES.neutral;
+                                const PreviewIcon = callPreview.Icon;
+                                return (
+                                  <span className={`flex items-center gap-1 ${toneClasses.text} truncate`}>
+                                    <PreviewIcon className={`w-3.5 h-3.5 ${toneClasses.icon}`} />
+                                    <span className="truncate">{callPreview.text}</span>
+                                  </span>
+                                );
+                              }
+
+                              if (conv.last_message_sender_id === usuario.id) {
+                                return (
+                                  <span><span className="text-white/40">{t('chat.you')}:</span> {conv.last_message}</span>
+                                );
+                              }
+
+                              return conv.last_message;
+                            })()}
                           </div>
                         </div>
 
@@ -2883,7 +2928,7 @@ export default function ChatPrivadoMobile() {
                     mensajes.map((mensaje) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
                       const isGiftMessage = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type);
-                      const isSystemMessage = ['call_ended', 'system'].includes(mensaje.type);
+                      const isSystemMessage = ['call_ended', 'call_missed', 'system'].includes(mensaje.type);
 
                       return (
                         <div key={mensaje.id} className={`flex ${isSystemMessage ? "justify-center" : (esUsuarioActual ? "justify-end" : "justify-start")}`}>

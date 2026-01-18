@@ -21,6 +21,8 @@ import {
   Globe
 } from "lucide-react";
 import EmojiPickerButton from '../common/EmojiPickerButton.jsx';
+import CallEventBadge from '../common/CallEventBadge.jsx';
+import { buildConversationCallPreview, CALL_PREVIEW_TONE_CLASSES } from '../../utils/callEventUtils';
 
 // 🔥 IMPORTACIONES NECESARIAS
 import { useGiftSystem, GiftNotificationOverlay, GiftsModal } from '../GiftSystem/index.jsx';
@@ -127,7 +129,10 @@ export default function ChatPrivadoMobile() {
   const navigate = useNavigate();
   const location = useLocation();
   const mensajesRef = useRef(null);
-  const openChatWith = location.state?.openChatWith;
+  const locationState = (location && typeof location === 'object') ? location.state : undefined;
+  const openChatWith = locationState && typeof locationState === 'object'
+    ? locationState.openChatWith
+    : null;
   const typingTimeoutRef = useRef(null);
   const typingIntervalRef = useRef(null);
   const lastTypingSentRef = useRef(0);
@@ -636,7 +641,7 @@ export default function ChatPrivadoMobile() {
     mensajes.forEach((message) => {
       const shouldTranslate = (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(message.type) &&
         !translations.has(message.id) &&
         !translatingIds.has(message.id) &&
         (message.text || message.message) &&
@@ -1217,6 +1222,71 @@ export default function ChatPrivadoMobile() {
     }
   }, [conversaciones, usuario.id]);
 
+  // 🔥 MANEJAR openChatWith DESDE NAVEGACIÓN
+  useEffect(() => {
+    if (!openChatWith || !usuario.id) {
+      return;
+    }
+
+    const handleOpenChatFromNavigation = async () => {
+      try {
+        console.log('🟣 [MODELO MOBILE] Abriendo chat solicitado:', openChatWith);
+
+        const existingConversation = conversaciones.find(
+          (conv) =>
+            conv.room_name === openChatWith.room_name ||
+            conv.other_user_id === openChatWith.other_user_id
+        );
+
+        if (existingConversation) {
+          await abrirConversacion(existingConversation);
+        } else if (openChatWith.room_name && openChatWith.other_user_id) {
+          const nuevaConversacion = {
+            id: Date.now(),
+            other_user_id: openChatWith.other_user_id,
+            other_user_name: openChatWith.other_user_name,
+            other_user_role: openChatWith.other_user_role || 'cliente',
+            room_name: openChatWith.room_name,
+            last_message: 'Conversación iniciada - Envía tu primer mensaje',
+            last_message_time: new Date().toISOString(),
+            last_message_sender_id: null,
+            unread_count: 0
+          };
+
+          setConversaciones((prev) => {
+            const exists = prev.some(
+              (conv) =>
+                conv.room_name === nuevaConversacion.room_name ||
+                conv.other_user_id === nuevaConversacion.other_user_id
+            );
+
+            if (exists) {
+              return prev;
+            }
+
+            return [nuevaConversacion, ...prev];
+          });
+
+          setTimeout(() => {
+            abrirConversacion(nuevaConversacion);
+          }, 200);
+        }
+
+        if (locationState && locationState.openChatWith) {
+          navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
+        }
+      } catch (error) {
+        console.error('❌ [MODELO MOBILE] Error abriendo chat desde navegación:', error);
+      }
+    };
+
+    const timeoutId = setTimeout(handleOpenChatFromNavigation, 300);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [openChatWith, usuario.id, conversaciones, location.pathname, location.search, locationState]);
+
   // 🔥 UTILIDADES
   const getInitial = (name) => name ? name.charAt(0).toUpperCase() : '?';
   const formatearTiempo = (timestamp) => {
@@ -1276,30 +1346,22 @@ export default function ChatPrivadoMobile() {
     };
 
     if ((!textoMensaje || textoMensaje.trim() === '') && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(mensaje.type)) {
       return null;
     }
 
     switch (mensaje.type) {
-      case 'call_ended': {
-        const extraData = mensaje.extra_data || {};
-        const durationSeconds = Number(extraData.duration_seconds ?? 0);
-        const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
-        const callEndedLabel = t('callEnded') || 'Llamada finalizada';
-        const durationLabel = t('time.callDuration') || 'Tiempo';
-
+      case 'call_ended':
+      case 'call_missed':
         return (
-          <div className="w-full flex items-center justify-center">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
-              <span className="text-[#ff007a]">📞</span>
-              <span>{callEndedLabel}</span>
-              {durationFormatted && (
-                <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
-              )}
-            </div>
-          </div>
+          <CallEventBadge
+            message={mensaje}
+            currentUserId={usuario.id}
+            t={t}
+            formatDuration={formatCallDuration}
+            formatTimestamp={formatearTiempo}
+          />
         );
-      }
 
       case 'gift_request':
         const giftData = mensaje.gift_data || mensaje.extra_data || {};
@@ -1779,6 +1841,34 @@ export default function ChatPrivadoMobile() {
     { code: 'zh', name: '中文', flag: '🇨🇳' }
   ];
 
+  const formatConversationCallDuration = useCallback((seconds) => {
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const minutes = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const getConversationCallPreview = useCallback((conversation) => {
+    if (!usuario?.id) {
+      return null;
+    }
+
+    return buildConversationCallPreview({
+      conversation,
+      currentUserId: usuario.id,
+      currentUserName: usuario.display_name || usuario.nickname || usuario.name,
+      t,
+      formatDuration: formatConversationCallDuration
+    });
+  }, [
+    usuario?.id,
+    usuario?.display_name,
+    usuario?.nickname,
+    usuario?.name,
+    t,
+    formatConversationCallDuration
+  ]);
+
   // 🔥 FUNCIÓN PARA CAMBIAR IDIOMA - CLEAN VERSION
   const handleLanguageChange = (languageCode) => {
     setCurrentLanguage(languageCode);
@@ -1980,11 +2070,28 @@ export default function ChatPrivadoMobile() {
                             {conv.other_user_display_name || conv.other_user_name}
                           </p>
                           <div className="text-xs text-white/60 truncate">
-                            {conv.last_message_sender_id === usuario.id ? (
-                              <span><span className="text-white/40">Tú:</span> {conv.last_message}</span>
-                            ) : (
-                              conv.last_message
-                            )}
+                            {(() => {
+                              const callPreview = getConversationCallPreview(conv);
+
+                              if (callPreview) {
+                                const toneClasses = CALL_PREVIEW_TONE_CLASSES[callPreview.tone] || CALL_PREVIEW_TONE_CLASSES.neutral;
+                                const PreviewIcon = callPreview.Icon;
+                                return (
+                                  <span className={`flex items-center gap-1 ${toneClasses.text} truncate`}>
+                                    <PreviewIcon className={`w-3.5 h-3.5 ${toneClasses.icon}`} />
+                                    <span className="truncate">{callPreview.text}</span>
+                                  </span>
+                                );
+                              }
+
+                              if (conv.last_message_sender_id === usuario.id) {
+                                return (
+                                  <span><span className="text-white/40">Tú:</span> {conv.last_message}</span>
+                                );
+                              }
+
+                              return conv.last_message;
+                            })()}
                           </div>
                         </div>
 
@@ -2091,7 +2198,7 @@ export default function ChatPrivadoMobile() {
                     mensajes.map((mensaje) => {
                       const esUsuarioActual = mensaje.user_id === usuario.id;
                       const isGiftMessage = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(mensaje.type);
-                      const isSystemMessage = ['call_ended', 'system'].includes(mensaje.type);
+                      const isSystemMessage = ['call_ended', 'call_missed', 'system'].includes(mensaje.type);
 
                       return (
                         <div key={mensaje.id} className={`flex ${isSystemMessage ? "justify-center" : (esUsuarioActual ? "justify-end" : "justify-start")}`}>

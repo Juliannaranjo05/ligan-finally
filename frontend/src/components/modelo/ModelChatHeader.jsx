@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Gift, Star, Settings, Ban, ArrowLeft } from 'lucide-react';
+import { Video, Star, Settings, Ban, ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -15,11 +15,9 @@ const ModelChatHeader = ({
   isChatBlocked = false,
   isTyping = false,
   typingLabel = null,
-  onGiftClick,
+  onVideoCall,
   onToggleFavorite,
   onOpenSettings,
-  onOpenNickname,
-  onToggleBlock,
   getDisplayName,
   getInitial,
   isMobile = false,
@@ -41,7 +39,6 @@ const ModelChatHeader = ({
       aria-label={`Chat con ${displayName}`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        {/* Botón de volver (móvil) */}
         {isMobile && onBackToConversations && (
           <button
             onClick={onBackToConversations}
@@ -52,28 +49,25 @@ const ModelChatHeader = ({
           </button>
         )}
 
-        {/* Avatar */}
         <div className="relative flex-shrink-0">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 hover:scale-105 overflow-hidden relative">
-            {conversation.avatar_url || conversation.avatar ? (
-              <img 
-                src={conversation.avatar_url || (conversation.avatar && conversation.avatar.startsWith('http') ? conversation.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conversation.avatar}`)}
-                alt={displayName}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  if (e.target.nextSibling) {
-                    e.target.nextSibling.style.display = 'flex';
-                  }
-                }}
-              />
-            ) : null}
-            <div className={`absolute inset-0 flex items-center justify-center ${conversation.avatar_url || conversation.avatar ? 'hidden' : ''}`}>
-              {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
-            </div>
+          {conversation.avatar_url || conversation.avatar ? (
+            <img 
+              src={conversation.avatar_url || (conversation.avatar && conversation.avatar.startsWith('http') ? conversation.avatar : `${import.meta.env.VITE_API_BASE_URL}/storage/${conversation.avatar}`)}
+              alt={displayName}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-[#ff007a] transition-all duration-200 hover:border-[#ff3399] hover:scale-105 shadow-lg"
+              loading="lazy"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                if (e.target.nextSibling) {
+                  e.target.nextSibling.style.display = 'flex';
+                }
+              }}
+            />
+          ) : null}
+          <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff007a] to-[#cc0062] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg ${conversation.avatar_url || conversation.avatar ? 'hidden' : ''}`}>
+            {getInitial ? getInitial(displayName) : displayName.charAt(0).toUpperCase()}
           </div>
-          
-          {/* Indicador de estado */}
+
           {blockStatus ? (
             blockStatus === 'yo_bloquee' ? (
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-[#2b2d31] shadow-lg animate-pulse" title={t('chat.status.blockedByYou') || "Bloqueado por ti"} />
@@ -89,7 +83,6 @@ const ModelChatHeader = ({
           )}
         </div>
 
-        {/* Información del usuario */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-base sm:text-lg text-white truncate">
@@ -99,17 +92,18 @@ const ModelChatHeader = ({
               <Star size={16} className="text-yellow-400 fill-yellow-400 flex-shrink-0" title={t('chat.favorite') || "Favorito"} />
             )}
           </div>
-          {/* Estado de bloqueo, typing u online */}
           {blockStatus ? (
-            <span className={`text-xs flex items-center gap-1 ${
-              blockStatus === 'yo_bloquee' ? 'text-red-400' :
-              blockStatus === 'me_bloquearon' ? 'text-orange-400' :
-              'text-red-600'
-            }`}>
+            <span
+              className={`text-xs flex items-center gap-1 ${
+                blockStatus === 'yo_bloquee' ? 'text-red-400' :
+                blockStatus === 'me_bloquearon' ? 'text-orange-400' :
+                'text-red-600'
+              }`}
+            >
               <Ban size={12} />
-              {blockStatus === 'yo_bloquee' && (t('chat.status.blockedByYou') || "Bloqueado por ti")}
-              {blockStatus === 'me_bloquearon' && (t('chat.status.blockedYou') || "Te bloqueó")}
-              {blockStatus === 'mutuo' && (t('chat.status.mutualBlock') || "Bloqueo mutuo")}
+              {blockStatus === 'yo_bloquee' && (t('chat.status.blockedByYou') || 'Bloqueado por ti')}
+              {blockStatus === 'me_bloquearon' && (t('chat.status.blockedYou') || 'Te bloqueó')}
+              {blockStatus === 'mutuo' && (t('chat.status.mutualBlock') || 'Bloqueo mutuo')}
             </span>
           ) : isTyping ? (
             <span className="text-xs text-[#ff007a] italic">
@@ -125,38 +119,49 @@ const ModelChatHeader = ({
         </div>
       </div>
 
-      {/* Acciones */}
       <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-        {/* Botón de regalo (para modelos - pedir regalo) */}
-        {onGiftClick && (
+        {!isChatBlocked && (
           <button
-            onClick={onGiftClick}
-            disabled={isChatBlocked || bloqueados.has(conversation.other_user_id) || loadingActions}
-            className={`px-2 py-2 rounded-lg text-xs hover:scale-105 transition-transform flex items-center gap-1 ${
-              isChatBlocked || bloqueados.has(conversation.other_user_id) || loadingActions
-                ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-md hover:shadow-lg'
+            onClick={onVideoCall}
+            disabled={loadingActions}
+            className={`p-2 sm:p-2.5 rounded-lg transition-all duration-200 ${
+              loadingActions
+                ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed opacity-50'
+                : 'bg-gradient-to-br from-[#ff007a]/10 to-[#e6006e]/10 hover:from-[#ff007a]/20 hover:to-[#e6006e]/20 text-white hover:text-[#ff007a] hover:scale-110 active:scale-95 shadow-md hover:shadow-lg hover:shadow-[#ff007a]/30'
             }`}
-            title={t('chat.gift') || "Regalo"}
-            aria-label={t('chat.sendGift') || "Abrir modal de regalos"}
+            title={t('chat.videoCall') || "Videollamada"}
+            aria-label={t('chat.videoCall') || "Iniciar videollamada"}
           >
-            <Gift size={14} />
-            {!isMobile && (t("chat.gift") || "Regalo")}
+            <Video size={20} className="sm:w-5 sm:h-5" />
           </button>
         )}
 
-        {/* Botón de configuración */}
-        <div className="relative">
-          <button
-            onClick={onOpenSettings}
-            disabled={loadingActions}
-            className="p-2 sm:p-2.5 rounded-lg transition-all duration-200 bg-gradient-to-br from-[#ff007a]/10 to-[#e6006e]/10 hover:from-[#ff007a]/20 hover:to-[#e6006e]/20 text-white/60 hover:text-white hover:scale-110 active:scale-95 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            title={t('chat.menu.settings') || "Configuración"}
-            aria-label={t('chat.menu.settings') || "Abrir configuración"}
-          >
-            <Settings size={18} />
-          </button>
-        </div>
+        <button
+          onClick={onToggleFavorite}
+          disabled={loadingActions}
+          className={`p-2 sm:p-2.5 rounded-lg transition-all duration-200 ${
+            isFavorite
+              ? 'bg-gradient-to-br from-yellow-500/20 to-amber-500/20 text-yellow-400 hover:text-yellow-300'
+              : 'bg-gradient-to-br from-[#ff007a]/10 to-[#e6006e]/10 hover:from-[#ff007a]/20 hover:to-[#e6006e]/20 text-white/60 hover:text-yellow-400'
+          } hover:scale-110 active:scale-95 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`}
+          title={isFavorite ? (t('chat.removeFavorite') || "Quitar de favoritos") : (t('chat.addFavorite') || "Agregar a favoritos")}
+          aria-label={isFavorite ? (t('chat.removeFavorite') || "Quitar de favoritos") : (t('chat.addFavorite') || "Agregar a favoritos")}
+        >
+          <Star 
+            size={20} 
+            className={`sm:w-5 sm:h-5 transition-all ${isFavorite ? 'fill-yellow-400' : ''}`} 
+          />
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          disabled={loadingActions}
+          className="p-2 sm:p-2.5 rounded-lg transition-all duration-200 bg-gradient-to-br from-[#ff007a]/10 to-[#e6006e]/10 hover:from-[#ff007a]/20 hover:to-[#e6006e]/20 text-white/60 hover:text-white hover:scale-110 active:scale-95 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          title={t('chat.settings') || "Configuración"}
+          aria-label={t('chat.settings') || "Abrir configuración"}
+        >
+          <Settings size={20} className="sm:w-5 sm:h-5" />
+        </button>
       </div>
     </div>
   );

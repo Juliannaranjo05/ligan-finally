@@ -33,7 +33,7 @@ const ModelMessageBubble = ({
 
   const messageType = message.type || 'text';
   const isGiftType = ['gift_request', 'gift_sent', 'gift_received', 'gift'].includes(messageType);
-  const isSystemType = ['call_ended', 'system'].includes(messageType);
+  const isSystemType = ['call_ended', 'call_missed', 'system'].includes(messageType);
 
   return (
     <div 

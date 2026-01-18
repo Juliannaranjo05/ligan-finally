@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { MessageSquare, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import SkeletonLoader from '../client/SkeletonLoader';
+import { buildConversationCallPreview, CALL_PREVIEW_TONE_CLASSES } from '../../utils/callEventUtils';
 
 /**
  * ModelConversationList - Componente modular para la lista de conversaciones de la modelo
@@ -27,9 +28,30 @@ const ModelConversationList = ({
   currentUser,
   isMobile = false,
   onCloseSidebar,
-  showSidebar = true
+  showSidebar = true,
+  isTyping
 }) => {
   const { t } = useTranslation();
+  const formatPreviewDuration = (seconds) => {
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const minutes = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getCallPreview = (conversation) => {
+    if (!currentUser?.id) {
+      return null;
+    }
+
+    return buildConversationCallPreview({
+      conversation,
+      currentUserId: currentUser.id,
+      currentUserName: currentUser.display_name || currentUser.name || currentUser.alias,
+      t,
+      formatDuration: formatPreviewDuration
+    });
+  };
 
   // Función helper para obtener estado de bloqueo
   const getBlockStatusForUser = (userId) => {
@@ -216,14 +238,31 @@ const ModelConversationList = ({
                       <div className="text-xs text-white/60 truncate">
                         {typeof isTyping === 'function' && isTyping(conv.room_name) ? (
                           <span className="text-[#ff007a] italic">{t('chat.typing') || 'Escribiendo...'}</span>
-                        ) : conv.last_message_sender_id === currentUser?.id ? (
-                          <span>
-                            <span className="text-white/40">{t('chat.you') || "Tú"}:</span>{' '}
-                            <span>{conv.last_message || t('chat.noMessages') || "Sin mensajes"}</span>
-                          </span>
-                        ) : (
-                          <span>{conv.last_message || t('chat.noMessages') || "Sin mensajes"}</span>
-                        )}
+                        ) : (() => {
+                          const callPreview = getCallPreview(conv);
+
+                          if (callPreview) {
+                            const toneClasses = CALL_PREVIEW_TONE_CLASSES[callPreview.tone] || CALL_PREVIEW_TONE_CLASSES.neutral;
+                            const PreviewIcon = callPreview.Icon;
+                            return (
+                              <span className={`flex items-center gap-1 ${toneClasses.text} truncate`}>
+                                <PreviewIcon className={`w-3.5 h-3.5 ${toneClasses.icon}`} />
+                                <span className="truncate">{callPreview.text}</span>
+                              </span>
+                            );
+                          }
+
+                          if (conv.last_message_sender_id === currentUser?.id) {
+                            return (
+                              <span>
+                                <span className="text-white/40">{t('chat.you') || "Tú"}:</span>{' '}
+                                <span>{conv.last_message || t('chat.noMessages') || "Sin mensajes"}</span>
+                              </span>
+                            );
+                          }
+
+                          return <span>{conv.last_message || t('chat.noMessages') || "Sin mensajes"}</span>;
+                        })()}
                       </div>
                     </div>
 

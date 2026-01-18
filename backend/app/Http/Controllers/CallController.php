@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\User;
 use App\Models\UserNickname;
@@ -1188,6 +1189,8 @@ class CallController extends Controller
                     'end_reason' => 'rejected_by_receiver'
                 ]);
 
+                $this->logMissedCallMessage($call, 'rejected_by_receiver', $user->id);
+
                 VideoChatLogger::end('ANSWER_CALL', 'Llamada rechazada', [
                     'call_id' => $call->id,
                     'caller' => $caller->name,
@@ -1572,6 +1575,8 @@ class CallController extends Controller
                     'end_reason' => 'cancelled_by_caller'
                 ]);
 
+                $this->logMissedCallMessage($call, 'cancelled_by_caller', $user->id);
+
                 Log::info('✅ [CALL] Llamada cancelada', [
                     'call_id' => $call->id,
                     'cancelled_by' => $user->name
@@ -1798,6 +1803,8 @@ class CallController extends Controller
                         'end_reason' => 'timeout'
                     ]);
 
+                    $this->logMissedCallMessage($incomingCall, 'timeout', $user->id);
+
                     return response()->json([
                         'success' => true,
                         'has_incoming' => false
@@ -2003,6 +2010,8 @@ class CallController extends Controller
                     'ended_at' => now(),
                     'end_reason' => 'timeout'
                 ]);
+
+                $this->logMissedCallMessage($call, 'timeout');
             }
 
             Log::info('✅ [CALL] Limpieza completada', [
@@ -2024,6 +2033,111 @@ class CallController extends Controller
                 'error' => 'Error en limpieza: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * 📝 Registra en el chat privado que una llamada fue perdida
+     */
+    protected function logMissedCallMessage(ChatSession $call, ?string $customReason = null, ?int $recordedByUserId = null): void
+    {
+        try {
+            if ($call->session_type !== 'call') {
+                return;
+            }
+
+            if ($call->answered_at) {
+                return;
+            }
+
+            if (!in_array($call->status, ['cancelled', 'rejected'], true)) {
+                return;
+            }
+
+            if (!$call->cliente_id || !$call->modelo_id) {
+                return;
+            }
+
+            $finalReason = $customReason ?? $call->end_reason;
+            $finalStatus = $call->status;
+
+            if (!$finalReason) {
+                $finalReason = $finalStatus === 'rejected' ? 'rejected_by_receiver' : 'cancelled_by_caller';
+            }
+
+            $allowedReasons = ['cancelled_by_caller', 'timeout', 'rejected_by_receiver'];
+            if (!in_array($finalReason, $allowedReasons, true)) {
+                return;
+            }
+
+            $chatRoomName = $this->buildPrivateChatRoomName($call->cliente_id, $call->modelo_id);
+
+            $alreadyLogged = ChatMessage::where('room_name', $chatRoomName)
+                ->where('type', 'call_missed')
+                ->where('extra_data->call_session_id', $call->id)
+                ->exists();
+
+            if ($alreadyLogged) {
+                return;
+            }
+
+            $callerId = $call->caller_id ?: $call->cliente_id;
+            $caller = $callerId ? User::find($callerId) : null;
+
+            if (!$caller) {
+                return;
+            }
+
+            $receiverId = $call->cliente_id === $caller->id ? $call->modelo_id : $call->cliente_id;
+            $receiver = $receiverId ? User::find($receiverId) : null;
+
+            $userRole = in_array($caller->rol, ['cliente', 'modelo'], true) ? $caller->rol : 'cliente';
+
+            ChatMessage::create([
+                'room_name' => $chatRoomName,
+                'user_id' => $caller->id,
+                'user_name' => $caller->name,
+                'user_role' => $userRole,
+                'message' => 'Llamada perdida',
+                'type' => 'call_missed',
+                'extra_data' => [
+                    'call_session_id' => $call->id,
+                    'call_room_name' => $call->room_name,
+                    'initiated_by_user_id' => $caller->id,
+                    'initiated_by_name' => $caller->name,
+                    'initiated_by_role' => $caller->rol,
+                    'missed_by_user_id' => $receiver?->id,
+                    'missed_by_name' => $receiver?->name,
+                    'receiver_user_id' => $receiver?->id,
+                    'receiver_name' => $receiver?->name,
+                    'receiver_role' => $receiver?->rol,
+                    'missed_reason' => $finalReason,
+                    'status' => $finalStatus,
+                    'started_at' => optional($call->started_at)->toIso8601String(),
+                    'ended_at' => optional($call->ended_at)->toIso8601String(),
+                    'recorded_by_user_id' => $recordedByUserId
+                ]
+            ]);
+
+            Log::info('📝 [CALL] Llamada perdida registrada en chat', [
+                'call_id' => $call->id,
+                'cliente_id' => $call->cliente_id,
+                'modelo_id' => $call->modelo_id,
+                'reason' => $finalReason
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('⚠️ [CALL] Error registrando llamada perdida', [
+                'call_id' => $call->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    protected function buildPrivateChatRoomName(int $userId1, int $userId2): string
+    {
+        $ids = [$userId1, $userId2];
+        sort($ids);
+
+        return "chat_user_{$ids[0]}_{$ids[1]}";
     }
 
     /**

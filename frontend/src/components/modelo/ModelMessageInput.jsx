@@ -73,7 +73,7 @@ const ModelMessageInput = ({
             flex-shrink-0 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-semibold transition-all duration-300 flex items-center gap-2 relative z-10
             ${!hasConversation || isChatBlocked || disabled
               ? 'bg-gray-800/50 text-gray-500 opacity-50 cursor-not-allowed'
-              : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl border border-purple-400/30 hover:border-purple-300/50'
+              : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl border border-amber-400/30 hover:border-amber-300/50'
             }
           `}
           style={{ pointerEvents: 'auto' }}
@@ -87,11 +87,6 @@ const ModelMessageInput = ({
           aria-label={t('chat.sendGift') || "Abrir modal de regalos"}
         >
           <Gift size={16} className="sm:w-5 sm:h-5" />
-          {!isMobile && (
-            <span className="hidden sm:inline text-sm">
-              {hasConversation ? t('chat.gift') || "Regalo" : ""}
-            </span>
-          )}
         </button>
       )}
 
@@ -110,7 +105,7 @@ const ModelMessageInput = ({
           flex-shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-semibold transition-all duration-300 flex items-center gap-2
           ${!message.trim() || isChatBlocked || disabled || sending
             ? 'bg-gray-800/50 text-gray-500 opacity-50 cursor-not-allowed'
-            : 'bg-gradient-to-r from-[#ff007a] to-[#e6006e] hover:from-[#ff007a] hover:to-[#cc0062] text-white hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl border border-[#ff007a]/30 hover:border-[#ff007a]/50'
+            : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl border border-blue-400/30 hover:border-blue-300/50'
           }
         `}
         title={
@@ -126,11 +121,6 @@ const ModelMessageInput = ({
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
         ) : (
           <Send size={16} className="sm:w-5 sm:h-5" />
-        )}
-        {!isMobile && (
-          <span className="hidden sm:inline text-sm">
-            {t('chat.send') || "Enviar"}
-          </span>
         )}
       </button>
     </div>

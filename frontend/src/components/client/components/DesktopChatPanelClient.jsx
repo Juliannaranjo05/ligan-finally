@@ -212,7 +212,7 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
         'bonita': 'pretty'
       };
       
-      return translations[cleanText] || `[EN] ${text}`;
+      return translations[cleanText] || text;
     }
     
     if (targetLang === 'es') {
@@ -228,12 +228,12 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
         'beautiful': 'hermosa'
       };
       
-      return translations[cleanText] || `[ES] ${text}`;
+        return translations[cleanText] || text;
     }
     
-    return `[${targetLang.toUpperCase()}] ${text}`;
+      return text;
   } catch (error) {
-    return `[ERROR-${targetLang.toUpperCase()}] ${text}`;
+      return text;
   }
 }, []);
 

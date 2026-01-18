@@ -41,6 +41,7 @@ import ConversationList from './ConversationList';
 import ChatHeader from './ChatHeader';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
+import CallEventBadge from '../common/CallEventBadge.jsx';
 
 const logger = createLogger('MessageClient');
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -2425,7 +2426,7 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
         'bonita': 'pretty'
       };
       
-      return translations[cleanText] || `[EN] ${text}`;
+      return translations[cleanText] || text;
     }
     
     if (targetLang === 'es') {
@@ -2449,12 +2450,12 @@ const translateWithFallback = useCallback(async (text, targetLang) => {
         'pretty': 'bonita'
       };
       
-      return translations[cleanText] || `[ES] ${text}`;
+        return translations[cleanText] || text;
     }
     
-    return `[${targetLang.toUpperCase()}] ${text}`;
+      return text;
   } catch (error) {
-    return `[ERROR-${targetLang.toUpperCase()}] ${text}`;
+      return text;
   }
 }, []);
 
@@ -2555,30 +2556,22 @@ const renderMensaje = useCallback((mensaje) => {
 
   // 🔥 FIX: Permitir que los regalos se rendericen SIN texto
   if ((!textoMensaje || textoMensaje.trim() === '') && 
-      !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
+      !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(mensaje.type)) {
     return null; // Solo bloquear si NO es regalo
   }
 
   switch (mensaje.type) {
-    case 'call_ended': {
-      const extraData = mensaje.extra_data || {};
-      const durationSeconds = Number(extraData.duration_seconds ?? 0);
-      const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
-      const callEndedLabel = t('callEnded') || 'Llamada finalizada';
-      const durationLabel = t('time.callDuration') || 'Tiempo';
-
+    case 'call_ended':
+    case 'call_missed':
       return (
-        <div className="w-full flex items-center justify-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
-            <span className="text-[#ff007a]">📞</span>
-            <span>{callEndedLabel}</span>
-            {durationFormatted && (
-              <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
-            )}
-          </div>
-        </div>
+        <CallEventBadge
+          message={mensaje}
+          currentUserId={usuario.id}
+          t={t}
+          formatDuration={formatCallDuration}
+          formatTimestamp={formatearTiempo}
+        />
       );
-    }
 
     case 'gift':
       return (
@@ -3030,7 +3023,7 @@ const renderMensaje = useCallback((mensaje) => {
       
       return (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(message.type) &&
         !translations.has(messageId) &&
         !translatingIds.has(messageId) &&
         (message.text || message.message) &&
@@ -3686,11 +3679,6 @@ const renderMensaje = useCallback((mensaje) => {
                   )}
                 </div>
 
-                {typingStatus[conversacionActiva] && (
-                  <div className="px-4 pb-2 text-xs text-[#ff007a] italic">
-                    {t('chat.typing') || 'Escribiendo...'}
-                  </div>
-                )}
                 {/* Input mensaje - Componente modular mejorado */}
                 <MessageInput
                   message={nuevoMensaje}

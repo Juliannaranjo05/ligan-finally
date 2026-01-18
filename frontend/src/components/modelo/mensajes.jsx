@@ -40,6 +40,7 @@ import ModelConversationList from './ModelConversationList';
 import ModelChatHeader from './ModelChatHeader';
 import ModelMessageBubble from './ModelMessageBubble';
 import ModelMessageInput from './ModelMessageInput';
+import CallEventBadge from '../common/CallEventBadge.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -361,20 +362,20 @@ useEffect(() => {
   }, [apodos]);
 
   const getBlockStatus = useCallback((userId) => {
-    if (!userId) return 'normal';
+    if (!userId) return null;
     
     const yoBloqueado = bloqueados.has(userId);
     const meBloquearon = bloqueadoPor.has(userId);
     
     if (yoBloqueado && meBloquearon) {
-      return 'mutuo'; // Bloqueo mutuo
+      return 'mutuo';
     } else if (yoBloqueado) {
-      return 'yo_bloquee'; // Yo bloqueé al usuario
+      return 'yo_bloquee';
     } else if (meBloquearon) {
-      return 'me_bloquearon'; // El usuario me bloqueó
-    } else {
-      return 'normal'; // Sin bloqueos
+      return 'me_bloquearon';
     }
+    
+    return null;
   }, [bloqueados, bloqueadoPor]);
 
   // 🔥 DEFINIR playAlternativeGiftSound PRIMERO para evitar errores de inicialización
@@ -1288,7 +1289,7 @@ const cargarMensajes = useCallback(async (roomName) => {
           'bonita': 'pretty'
         };
         
-        return translations[cleanText] || `[EN] ${text}`;
+        return translations[cleanText] || text;
       }
       
       if (targetLang === 'es') {
@@ -1312,12 +1313,12 @@ const cargarMensajes = useCallback(async (roomName) => {
           'pretty': 'bonita'
         };
         
-        return translations[cleanText] || `[ES] ${text}`;
+        return translations[cleanText] || text;
       }
       
-      return `[${targetLang.toUpperCase()}] ${text}`;
+      return text;
     } catch (error) {
-      return `[ERROR-${targetLang.toUpperCase()}] ${text}`;
+      return text;
     }
   }, []);
 
@@ -1407,33 +1408,24 @@ const cargarMensajes = useCallback(async (roomName) => {
   const renderMensaje = useCallback((mensaje) => {
   const textoMensaje = mensaje.message || mensaje.text || null;
   const esUsuarioActual = mensaje.user_id === usuario.id;
-
   // 🔥 FIX: Permitir que los regalos se rendericen SIN texto
   if ((!textoMensaje || textoMensaje.trim() === '') && 
-      !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(mensaje.type)) {
+      !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(mensaje.type)) {
     return null; // Solo bloquear si NO es regalo
   }
 
   switch (mensaje.type) {
-    case 'call_ended': {
-      const extraData = mensaje.extra_data || {};
-      const durationSeconds = Number(extraData.duration_seconds ?? 0);
-      const durationFormatted = extraData.duration_formatted || formatCallDuration(durationSeconds);
-      const callEndedLabel = t('callEnded') || 'Llamada finalizada';
-      const durationLabel = t('time.callDuration') || 'Tiempo';
-
+    case 'call_ended':
+    case 'call_missed':
       return (
-        <div className="w-full flex items-center justify-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1f2125] border border-[#ff007a]/20 text-xs text-white/80">
-            <span className="text-[#ff007a]">📞</span>
-            <span>{callEndedLabel}</span>
-            {durationFormatted && (
-              <span className="text-white/60">• {durationLabel}: {durationFormatted}</span>
-            )}
-          </div>
-        </div>
+        <CallEventBadge
+          message={mensaje}
+          currentUserId={usuario.id}
+          t={t}
+          formatDuration={formatCallDuration}
+          formatTimestamp={formatearTiempo}
+        />
       );
-    }
 
     case 'gift':
       return (
@@ -1781,7 +1773,7 @@ const cargarMensajes = useCallback(async (roomName) => {
     const messagesToTranslate = mensajes.filter(message => {
       return (
         message.type !== 'system' && 
-        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended'].includes(message.type) &&
+        !['gift_request', 'gift_sent', 'gift_received', 'gift', 'call_ended', 'call_missed'].includes(message.type) &&
         !translations.has(message.id) &&
         !translatingIds.has(message.id) &&
         (message.text || message.message) &&
@@ -2384,24 +2376,18 @@ const cargarMensajes = useCallback(async (roomName) => {
   
   return (
   <div 
-    className="min-h-screen bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white" 
+    className="bg-gradient-to-br from-[#1a1c20] to-[#2b2d31] text-white overflow-hidden flex flex-col p-4 sm:p-6"
     style={isMobile ? {
-      minHeight: '-webkit-fill-available',
       height: '-webkit-fill-available',
-      position: 'relative',
-      width: '100%',
-      overflow: 'hidden',
-      backgroundColor: '#1a1c20' // 🔥 Forzar color de fondo
+      minHeight: '-webkit-fill-available'
     } : {
-      position: 'relative',
-      width: '100%',
-      backgroundColor: '#1a1c20'
+      height: '100vh'
     }}
   >
     {/* 🔥 DEBUG: Verificar que el contenido se renderiza */}
     
     {/* 🔥 HEADER CON Z-INDEX ALTO PARA QUE NO SE SUPERPONGA */}
-    <div className="relative" style={{ zIndex: 100, position: 'relative' }}>
+    <div className="relative">
       <Header />
       
       {/* Botón chat móvil - ARREGLADO */}
@@ -2420,29 +2406,10 @@ const cargarMensajes = useCallback(async (roomName) => {
       )}
     </div>
 
-    {/* 🔥 CONTENEDOR PRINCIPAL CON ALTURA FIJA MÓVIL - ARREGLADO PARA iOS */}
-    <div className="px-2 pb-2" style={{ 
-      position: 'relative',
-      zIndex: 1,
-      width: '100%',
-      height: isMobile ? 'calc(100vh - 80px)' : 'auto',
-      minHeight: isMobile ? 'calc(100vh - 80px)' : 'auto',
-      marginTop: isMobile ? '0' : '0' // Asegurar que no se superponga
-    }}>
-      <div className={`flex rounded-xl overflow-hidden shadow-lg border border-[#ff007a]/10 relative ${
-        isMobile 
-          ? 'min-h-[500px]' // Altura mínima en móvil
-          : 'h-[83vh]'
-      }`} style={isMobile ? {
-        height: 'calc(100vh - 80px)',
-        minHeight: 'calc(100vh - 80px)',
-        maxHeight: 'calc(100vh - 80px)',
-        WebkitOverflowScrolling: 'touch',
-        overflow: 'hidden',
-        position: 'relative',
-        zIndex: 1,
-        backgroundColor: '#2b2d31'
-      } : {}}>
+    <div className="flex-1 min-h-0 flex flex-col p-2">
+      <div className={`flex rounded-xl overflow-hidden shadow-lg flex-1 min-h-0 border border-[#ff007a]/10 relative ${
+        isMobile ? '' : ''
+      }`}>
         
         {/* Sidebar de conversaciones - MODULARIZADO */}
         <ModelConversationList
@@ -2474,7 +2441,7 @@ const cargarMensajes = useCallback(async (roomName) => {
           isMobile
             ? `${showSidebar ? 'hidden' : 'w-full h-full'}`
             : 'w-2/3'
-        } bg-gradient-to-br from-[#0a0d10] via-[#1a1c20] to-[#0a0d10] flex flex-col relative overflow-hidden shadow-xl`}>
+        } bg-gradient-to-b from-[#0a0d10] via-[#131418] to-[#0a0d10] flex flex-col relative overflow-hidden shadow-inner`}>
           
           {!conversacionActiva ? (
             !isMobile && (
@@ -2615,12 +2582,9 @@ const cargarMensajes = useCallback(async (roomName) => {
               {/* Mensajes - MEJORADO CON SCROLLBAR PERSONALIZADO */}
               <div
                 ref={mensajesRef}
-                className="flex-1 overflow-y-auto p-4 space-y-3 chat-scroll-transparent"
-                style={{
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: '#ff007a #2b2d31',
-                  WebkitOverflowScrolling: 'touch'
-                }}
+                className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 custom-scrollbar bg-gradient-to-b from-[#0a0d10] via-[#131418] to-[#0a0d10]"
+                role="log"
+                aria-label={t('chat.messages') || "Mensajes"}
               >
                 {/* Indicador de bloqueo */}
                 {conversacionSeleccionada && bloqueados.has(conversacionSeleccionada.other_user_id) && (
@@ -2697,11 +2661,6 @@ const cargarMensajes = useCallback(async (roomName) => {
                 )}
               </div>
 
-              {typingStatus[conversacionActiva] && (
-                <div className="px-4 pb-2 text-xs text-[#ff007a] italic">
-                  {t('chat.typing') || 'Escribiendo...'}
-                </div>
-              )}
               {/* Input mensaje - MODULARIZADO */}
               <ModelMessageInput
                 message={nuevoMensaje}

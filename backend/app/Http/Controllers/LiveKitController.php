@@ -1767,15 +1767,18 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
             // 🎯 OBTENER INFORMACIÓN DE LOS PARTICIPANTES
             $clienteId = null;
             $modeloId = null;
+            $primaryChatSession = null;
             $endReason = 'manual_stop'; // Por defecto manual
 
             if (!$chatSessions->isEmpty()) {
-                $clienteId = $chatSessions->first()->cliente_id;
-                $modeloId = $chatSessions->first()->modelo_id;
+                $primaryChatSession = $chatSessions->first();
+                $clienteId = $primaryChatSession->cliente_id;
+                $modeloId = $primaryChatSession->modelo_id;
             } elseif (!$videoSessions->isEmpty()) {
                 // Si solo hay videochat, buscar en chat session por room
                 $relatedChat = ChatSession::where('room_name', $roomName)->first();
                 if ($relatedChat) {
+                    $primaryChatSession = $relatedChat;
                     $clienteId = $relatedChat->cliente_id;
                     $modeloId = $relatedChat->modelo_id;
                 }
@@ -1817,6 +1820,32 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
                     ->exists();
 
                 if (!$existingCallMessage) {
+                    $callerId = null;
+                    $receiverId = null;
+
+                    if ($primaryChatSession) {
+                        $callerId = $primaryChatSession->caller_id ?: $primaryChatSession->cliente_id;
+
+                        if ($callerId === $primaryChatSession->cliente_id) {
+                            $receiverId = $primaryChatSession->modelo_id;
+                        } else {
+                            $receiverId = $primaryChatSession->cliente_id;
+                        }
+                    } else {
+                        $callerId = $clienteId;
+                        $receiverId = $modeloId;
+                    }
+
+                    $participantIds = array_values(array_filter([$callerId, $receiverId]));
+                    $participants = collect();
+
+                    if (!empty($participantIds)) {
+                        $participants = User::whereIn('id', $participantIds)->get()->keyBy('id');
+                    }
+
+                    $callerUser = $callerId ? $participants->get($callerId) : null;
+                    $receiverUser = $receiverId ? $participants->get($receiverId) : null;
+
                     ChatMessage::create([
                         'room_name' => $chatRoomName,
                         'user_id' => $user->id,
@@ -1829,7 +1858,17 @@ protected function findReallyActiveUsersOptimized($currentUserId, $excludeUserId
                             'duration_formatted' => $durationFormatted,
                             'call_room_name' => $roomName,
                             'video_session_id' => $primaryVideoSessionId,
-                            'end_reason' => $endReason
+                            'end_reason' => $endReason,
+                            'call_session_id' => $primaryChatSession?->id,
+                            'initiated_by_user_id' => $callerUser?->id,
+                            'initiated_by_name' => $callerUser?->name,
+                            'initiated_by_role' => $callerUser?->rol,
+                            'receiver_user_id' => $receiverUser?->id,
+                            'receiver_name' => $receiverUser?->name,
+                            'receiver_role' => $receiverUser?->rol,
+                            'ended_by_user_id' => $user->id,
+                            'ended_by_name' => $user->name,
+                            'ended_by_role' => $user->rol
                         ]
                     ]);
                 }

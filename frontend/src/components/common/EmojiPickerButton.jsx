@@ -132,10 +132,10 @@ const EmojiPickerButton = ({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex-shrink-0 input-button rounded-lg transition-all duration-300 hover:scale-110 bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30 ${buttonClassName}`}
+        className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 border border-[#ff007a]/30 bg-[#1a1c20] text-[#ff007a] hover:text-white hover:bg-[#ff007a]/30 hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl ${buttonClassName}`}
         aria-label="Abrir selector de emojis"
       >
-        <Smile size={buttonSize} />
+        <Smile size={buttonSize || 22} />
       </button>
 
       {isOpen && (

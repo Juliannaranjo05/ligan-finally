@@ -49,3 +49,36 @@
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
+
+/* Scrollbars estilizados para listas y paneles */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #ff007a66 #111217;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #111217, #1a1c20 70%);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 0, 122, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255, 0, 122, 0.85), rgba(230, 0, 110, 0.85));
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 8px rgba(255, 0, 122, 0.35);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #ff3399, #e6006e);
+  box-shadow: 0 4px 12px rgba(255, 0, 122, 0.45);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, #ff66b2, #ff007a);
+}
