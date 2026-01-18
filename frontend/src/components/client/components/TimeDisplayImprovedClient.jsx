@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wifi, WifiOff, User, Signal, Timer, Gift, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, MoreVertical, ArrowRightLeft } from 'lucide-react';
+import { Wifi, WifiOff, User, Signal, Timer, Info, X, Mic, MicOff, Video, VideoOff, PhoneOff, Settings, Volume2, VolumeX, MoreVertical, ArrowRightLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
@@ -41,7 +41,6 @@ const TimeDisplayImprovedClient = ({
   
   // 🔥 USAR TRADUCCIONES HARDCODEADAS
   const texts = {
-    gifts: getVideoChatText('gifts', currentLanguage, hardcodedTexts.gifts || "Regalos:"),
     minutes: getVideoChatText('minutes', currentLanguage, hardcodedTexts.minutes || "Minutos:"),
     connected: getVideoChatText('connected', currentLanguage, hardcodedTexts.connected || "Conectado"),
     online: getVideoChatText('online', currentLanguage, hardcodedTexts.online || "En línea"),
@@ -88,17 +87,6 @@ const TimeDisplayImprovedClient = ({
         {showMobile && (
         <div className="mobile-version lg:hidden">
           <div className="mobile-content">
-            {/* 🔥 SALDO DE REGALOS */}
-            <div className="balance-section gifts-section">
-              <div className="balance-icon-wrapper gifts-icon">
-                <Gift className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">{texts.gifts}</div>
-                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
-              </div>
-            </div>
-
             {/* 🔥 MINUTOS RESTANTES OCULTOS EN VIDEOCHAT */}
             
             {/* Estado de conexión CON BOTÓN INFO */}
@@ -198,17 +186,6 @@ const TimeDisplayImprovedClient = ({
           {/* Panel izquierdo - Balances */}
           <div className="left-panel">
             
-            {/* 🔥 Saldo de REGALOS */}
-            <div className="balance-item gifts-item">
-              <div className="balance-icon-wrapper gifts-icon">
-                <Gift className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">{texts.gifts}</div>
-                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
-              </div>
-            </div>
-
             {/* 🔥 MINUTOS RESTANTES OCULTOS EN VIDEOCHAT */}
           </div>
 

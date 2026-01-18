@@ -208,6 +208,8 @@ Route::post('/blocks/block-user', [App\Http\Controllers\UserBlockController::cla
     // 💬 SISTEMA DE CHAT - CRÍTICO para mensajería en tiempo real
     Route::get('/chat/messages/{roomName}', [LiveKitController::class, 'getChatMessages']);
     Route::post('/chat/send', [LiveKitController::class, 'sendChatMessage']);
+    Route::post('/chat/typing', [LiveKitController::class, 'setTypingStatus']);
+    Route::get('/chat/typing/{roomName}', [LiveKitController::class, 'getTypingStatus']);
     
     // 🔧 GESTIÓN DE SALAS - CRÍTICO para operaciones de sala
     Route::post('/livekit/end-room', [LiveKitController::class, 'endRoom']);

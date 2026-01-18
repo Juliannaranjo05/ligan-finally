@@ -39,9 +39,10 @@ class SecurityHeaders
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
         // Permissions-Policy (anteriormente Feature-Policy)
+        // Permitir cámara y micrófono para la funcionalidad de grabación de historias
         $response->headers->set(
             'Permissions-Policy',
-            'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()'
+            'geolocation=(), microphone=(self), camera=(self), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()'
         );
 
         // Content Security Policy (CSP)

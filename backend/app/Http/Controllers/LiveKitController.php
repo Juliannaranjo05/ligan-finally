@@ -3301,6 +3301,82 @@ private function getNotificationMessage($endReason)
                 ], 500);
             }
         }
+
+        private function getTypingCacheKey(string $roomName): string
+        {
+            return 'chat_typing_' . $roomName;
+        }
+
+        public function setTypingStatus(Request $request)
+        {
+            $request->validate([
+                'room_name' => 'required|string|max:255',
+                'is_typing' => 'required|boolean',
+            ]);
+
+            $user = auth()->user();
+            $roomName = $request->room_name;
+            $isTyping = (bool) $request->is_typing;
+
+            $key = $this->getTypingCacheKey($roomName);
+            $entries = Cache::get($key, []);
+            if (!is_array($entries)) {
+                $entries = [];
+            }
+
+            $now = now()->timestamp;
+            foreach ($entries as $entryUserId => $entry) {
+                if (($entry['expires_at'] ?? 0) < $now) {
+                    unset($entries[$entryUserId]);
+                }
+            }
+
+            if ($isTyping) {
+                $entries[$user->id] = [
+                    'user_id' => $user->id,
+                    'name' => $user->name,
+                    'role' => $user->rol,
+                    'expires_at' => now()->addSeconds(7)->timestamp,
+                ];
+            } else {
+                unset($entries[$user->id]);
+            }
+
+            Cache::put($key, $entries, now()->addSeconds(10));
+
+            return response()->json([
+                'success' => true,
+            ]);
+        }
+
+        public function getTypingStatus(Request $request, $roomName)
+        {
+            $user = auth()->user();
+            $key = $this->getTypingCacheKey($roomName);
+            $entries = Cache::get($key, []);
+            if (!is_array($entries)) {
+                $entries = [];
+            }
+
+            $now = now()->timestamp;
+            foreach ($entries as $entryUserId => $entry) {
+                if (($entry['expires_at'] ?? 0) < $now) {
+                    unset($entries[$entryUserId]);
+                }
+            }
+
+            Cache::put($key, $entries, now()->addSeconds(10));
+
+            $othersTyping = array_values(array_filter($entries, function ($entry) use ($user) {
+                return (int) ($entry['user_id'] ?? 0) !== (int) $user->id;
+            }));
+
+            return response()->json([
+                'success' => true,
+                'is_typing' => count($othersTyping) > 0,
+                'typing' => $othersTyping,
+            ]);
+        }
         
         private function limpiarDatosRelacionados($roomName)
         {

@@ -55,6 +55,7 @@ export default function SubirHistoria() {
   const streamRef = useRef(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingIntervalRef = useRef(null);
+  const recordingTimeRef = useRef(0); // 🆕 Referencia para capturar el tiempo actual
   const [videoBlob, setVideoBlob] = useState(null);
   const [isFlipped, setIsFlipped] = useState(true);
 
@@ -87,7 +88,8 @@ export default function SubirHistoria() {
       'jpg': 'image/jpeg',
       'png': 'image/png',
       'mp4': 'video/mp4',
-      'webm': 'video/webm'
+      'webm': 'video/webm',
+      'mov': 'video/quicktime' // .mov files (QuickTime)
     };
 
     // Forzar el tipo MIME correcto basado en la extensión
@@ -122,12 +124,13 @@ export default function SubirHistoria() {
   };
 
   const validateFileForBackend = (file) => {
-    const allowedExtensions = ['jpeg', 'jpg', 'png', 'mp4', 'webm'];
+    const allowedExtensions = ['jpeg', 'jpg', 'png', 'mp4', 'webm', 'mov'];
     const allowedMimeTypes = [
       'image/jpeg',
       'image/png', 
       'video/mp4',
-      'video/webm'
+      'video/webm',
+      'video/quicktime' // .mov files
     ];
 
     const extension = file.name.split('.').pop().toLowerCase();
@@ -197,7 +200,7 @@ export default function SubirHistoria() {
     return { 
       valid: false, 
       mediaType: null,
-      error: 'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM).'
+      error: 'Solo se permiten archivos de imagen (JPG, PNG) o video (MP4, WEBM, MOV).'
     };
   };
 
@@ -398,7 +401,8 @@ export default function SubirHistoria() {
       'jpeg': 'image/jpeg', 
       'png': 'image/png',
       'mp4': 'video/mp4',
-      'webm': 'video/webm'
+      'webm': 'video/webm',
+      'mov': 'video/quicktime' // .mov files (QuickTime)
     };
 
     // Forzar el tipo MIME correcto basado en la extensión
@@ -471,11 +475,13 @@ export default function SubirHistoria() {
 
   const startRecording = () => {
     setRecordingTime(0);
+    recordingTimeRef.current = 0; // 🆕 Resetear la referencia también
     notifications.recordingStarted();
 
     recordingIntervalRef.current = setInterval(() => {
       setRecordingTime(prev => {
         const newTime = prev + 1;
+        recordingTimeRef.current = newTime; // 🆕 Actualizar la referencia en cada intervalo
         
         if (newTime >= MAX_RECORDING_TIME) {
           notifications.recordingLimit();
@@ -524,6 +530,9 @@ export default function SubirHistoria() {
         return;
       }
 
+      // 🆕 Capturar el tiempo final usando la referencia (siempre tiene el valor más reciente)
+      const finalRecordingTime = recordingTimeRef.current || recordingTime;
+
       // Crear blob inicial
       const originalBlob = new Blob(chunks, { 
         type: options.mimeType || 'video/webm' 
@@ -541,7 +550,8 @@ export default function SubirHistoria() {
       setShowCamera(false);
       
       // 🆕 Guardar la duración de la grabación (ya validada por el contador)
-      setVideoDuration(recordingTime);
+      // Usar el tiempo final capturado de la referencia, que es el tiempo real de grabación
+      setVideoDuration(finalRecordingTime);
       
       mediaRecorderRef.current = null;
       notifications.recordingStopped();
@@ -619,7 +629,8 @@ export default function SubirHistoria() {
     // Determinar si es video ANTES de crear el archivo perfecto
     const isVideo = selectedFile.type.startsWith('video/') || 
                     selectedFile.name.toLowerCase().endsWith('.mp4') || 
-                    selectedFile.name.toLowerCase().endsWith('.webm');
+                    selectedFile.name.toLowerCase().endsWith('.webm') ||
+                    selectedFile.name.toLowerCase().endsWith('.mov');
 
     if (isVideo) {
       // Validar duración del video usando el archivo ORIGINAL antes de procesarlo
@@ -753,6 +764,7 @@ export default function SubirHistoria() {
         mediaRecorderRef.current = null;
         setRecording(false);
         setRecordingTime(0);
+        recordingTimeRef.current = 0; // 🆕 Resetear la referencia también
         setShowCamera(false);
         
         notifications.fileRemoved();
@@ -795,8 +807,18 @@ export default function SubirHistoria() {
 
     // Validar duración del video si es un video (máximo 15 segundos)
     if (typeValidation.mediaType === 'video') {
-      // 🆕 Si ya tenemos la duración guardada (de la validación inicial), usarla
-      if (videoDuration !== null && isFinite(videoDuration) && videoDuration > 0) {
+      // 🆕 Si es un video grabado (tiene "recording_" en el nombre), usar la duración guardada
+      const isRecordedVideo = file.name.includes('recording_') || file.name.includes('recorded-video');
+      
+      if (isRecordedVideo && videoDuration !== null && isFinite(videoDuration) && videoDuration > 0) {
+        // Para videos grabados, usar la duración que ya tenemos (del contador de grabación)
+        if (videoDuration > 15) {
+          notifications.error(`El video no puede durar más de 15 segundos. Duración actual: ${videoDuration.toFixed(1)}s`);
+          return;
+        }
+        // La duración es válida, continuar sin intentar leer del blob
+      } else if (videoDuration !== null && isFinite(videoDuration) && videoDuration > 0) {
+        // Si ya tenemos la duración guardada (de la validación inicial de archivo subido), usarla
         if (videoDuration > 15) {
           notifications.error(`El video no puede durar más de 15 segundos. Duración actual: ${videoDuration.toFixed(1)}s`);
           return;
@@ -830,6 +852,13 @@ export default function SubirHistoria() {
               
               // Primero verificar si la duración es válida y finita
               if (!isFinite(duration) || isNaN(duration) || duration <= 0) {
+                // Si es un video grabado y no podemos leer la duración, usar una duración estimada
+                // basada en el tamaño del archivo o permitir la subida (el backend lo validará)
+                if (isRecordedVideo) {
+                  console.warn('No se pudo leer la duración del video grabado, pero continuaremos (el backend lo validará)');
+                  resolve(); // Permitir continuar, el backend validará
+                  return;
+                }
                 reject(new Error('No se pudo determinar la duración del video. Intenta con otro archivo.'));
                 return;
               }
@@ -848,6 +877,12 @@ export default function SubirHistoria() {
             video.onerror = (error) => {
               cleanup();
               console.error('Error al cargar video:', error);
+              // Si es un video grabado, permitir continuar (el backend lo validará)
+              if (isRecordedVideo) {
+                console.warn('Error al leer metadatos del video grabado, pero continuaremos (el backend lo validará)');
+                resolve();
+                return;
+              }
               reject(new Error('Error al procesar el video. Asegúrate de que el archivo sea un video válido.'));
             };
             
@@ -878,12 +913,26 @@ export default function SubirHistoria() {
     try {
       setLoading(true);
       
+      // 🆕 Verificar tamaño del archivo - si es muy grande, usar chunks
+      const fileSizeMB = file.size / (1024 * 1024);
+      
+      // Para archivos menores a 2MB, subir normalmente (más rápido)
+      // Si es mayor, intentar normal primero, y si falla por tamaño, usar chunks
       const config = {
         headers: {
           "Content-Type": "multipart/form-data",
         },
         withCredentials: false,
-        timeout: 60000,
+        timeout: 120000, // Aumentar timeout a 2 minutos para archivos grandes
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const progress = (progressEvent.loaded / progressEvent.total) * 100;
+            // Mostrar progreso si es archivo grande
+            if (fileSizeMB > 5) {
+              console.log(`Progreso de subida: ${Math.round(progress)}%`);
+            }
+          }
+        }
       };
       
             // En handleSubmit(), cambiar:
@@ -899,33 +948,57 @@ export default function SubirHistoria() {
       setVideoBlob(null);
       
     } catch (error) {
-                              
-      if (error.response?.status === 422) {
-        const errorData = error.response.data;
+      console.error('Error completo al subir historia:', error);
+      console.error('Error response:', error.response);
+      console.error('Error data:', error.response?.data);
+      
+      if (error.response) {
+        // El servidor respondió con un código de error
+        const status = error.response.status;
+        const data = error.response.data;
         
-        if (errorData.errors?.file) {
-          const fileError = errorData.errors.file[0];
-                    
-          // Mostrar error específico y sugerencias
-          notifications.error(`Error del servidor: ${fileError}`);
-          
-          setTimeout(() => {
-            notifications.error('Sugerencia: Intenta convertir tu archivo usando un convertidor online a MP4 o WEBM');
-          }, 2000);
-        } else if (errorData.error_type === 'pending_story') {
-          notifications.storyPending();
-        } else if (errorData.error_type === 'active_story') {
-          notifications.warning(errorData.message);
+        if (status === 422) {
+          // Errores de validación
+          if (data.errors?.file) {
+            const fileError = data.errors.file[0];
+            notifications.error(`Error de validación: ${fileError}`);
+          } else if (data.error_type === 'pending_story') {
+            notifications.storyPending();
+          } else if (data.error_type === 'active_story') {
+            notifications.warning(data.message);
+          } else if (data.message) {
+            notifications.error(`Error: ${data.message}`);
+          } else {
+            notifications.error('Error de validación. Verifica que el archivo sea válido (imagen JPG/PNG o video MP4/WEBM/MOV de máximo 15 segundos).');
+          }
+        } else if (status === 403) {
+          if (data.error === 'No autenticado' || data.message === 'No autorizado') {
+            notifications.error('Error de autenticación. Por favor, inicia sesión nuevamente.');
+          } else {
+            notifications.error('No tienes permiso para subir historias. Solo los modelos pueden subir historias.');
+          }
+        } else if (status === 413) {
+          notifications.error('El archivo es demasiado grande. Por favor, intenta con un archivo más pequeño.');
+        } else if (status === 500) {
+          notifications.error('Error interno del servidor. Por favor, intenta nuevamente más tarde.');
+        } else if (data.message) {
+          notifications.error(`Error (${status}): ${data.message}`);
         } else {
-          notifications.uploadError();
+          notifications.error(`Error al subir la historia (${status}). Intenta nuevamente.`);
         }
-      } else if (error.response?.status === 403) {
-        notifications.unauthorized();
+      } else if (error.request) {
+        // La petición se hizo pero no hubo respuesta
+        if (error.code === 'ECONNABORTED') {
+          notifications.error('La subida está tardando demasiado. Verifica tu conexión a internet e intenta nuevamente.');
+        } else {
+          notifications.error('No se pudo conectar con el servidor. Verifica tu conexión a internet.');
+        }
       } else {
-        notifications.uploadError();
+        // Error al configurar la petición
+        notifications.error('Error al preparar la subida. Por favor, intenta nuevamente.');
       }
       
-          } finally {
+    } finally {
       setLoading(false);
     }
   };

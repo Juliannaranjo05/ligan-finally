@@ -161,35 +161,75 @@ export default function VideoRecorderUpload() {
   };
 
   const uploadStory = async () => {
-  try {
-                
-    const formData = new FormData();
-    formData.append("file", videoBlob, "recorded-video.webm"); // ✅ Agregamos filename
-    formData.append("source_type", "record");
-    
-    // Debug: Ver qué se está enviando
-        for (let [key, value] of formData.entries()) {
-          }
-    
-        const response = await instance.post("/api/historias", formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-        
-    deleteRecording();
-  } catch (error) {
-                
-    // ✅ IMPORTANTE: Ver los errores específicos
-    if (error.response?.data?.errors) {
-            
-      // Mostrar errores específicos al usuario
-      const errorMessages = Object.values(error.response.data.errors).flat();
-      alert(`Errores de validación:\n${errorMessages.join('\n')}`);
-    } else {
-      alert("Error al subir el video. Inténtalo de nuevo.");
+    if (!videoBlob) {
+      alert("No hay video para subir. Por favor, graba un video primero.");
+      return;
     }
-  }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", videoBlob, "recorded-video.webm");
+      formData.append("source_type", "record");
+      
+      const response = await instance.post("/api/stories", formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 60000, // 60 segundos de timeout para archivos grandes
+      });
+      
+      if (response.status === 201) {
+        alert("¡Historia subida correctamente! Está esperando aprobación.");
+        deleteRecording();
+      }
+    } catch (error) {
+      console.error("Error al subir historia:", error);
+      
+      // Manejo de errores más detallado
+      if (error.response) {
+        // El servidor respondió con un código de error
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 403) {
+          if (data.error === 'No autenticado' || data.message === 'No autorizado') {
+            alert("Error de autenticación. Por favor, inicia sesión nuevamente.");
+          } else {
+            alert("No tienes permiso para subir historias. Solo los modelos pueden subir historias.");
+          }
+        } else if (status === 422) {
+          // Errores de validación
+          if (data.errors) {
+            const errorMessages = Object.values(data.errors).flat();
+            alert(`Error de validación:\n${errorMessages.join('\n')}`);
+          } else if (data.message) {
+            alert(data.message);
+          } else if (data.error_type === 'pending_story') {
+            alert("Ya tienes una historia esperando aprobación. Debes esperar a que sea procesada antes de subir otra.");
+          } else if (data.error_type === 'active_story') {
+            alert(data.message || "Ya tienes una historia activa. Debes esperar antes de subir otra.");
+          } else {
+            alert("Error al validar el archivo. Verifica que sea un video válido (MP4 o WEBM) de máximo 15 segundos.");
+          }
+        } else if (status === 413) {
+          alert("El archivo es demasiado grande. Por favor, intenta con un video más corto o de menor calidad.");
+        } else if (status === 500) {
+          alert("Error interno del servidor. Por favor, intenta nuevamente más tarde.");
+        } else {
+          alert(`Error al subir el video (${status}). ${data.message || 'Inténtalo de nuevo.'}`);
+        }
+      } else if (error.request) {
+        // La petición se hizo pero no hubo respuesta
+        if (error.code === 'ECONNABORTED') {
+          alert("La subida está tardando demasiado. Verifica tu conexión a internet e intenta nuevamente.");
+        } else {
+          alert("No se pudo conectar con el servidor. Verifica tu conexión a internet.");
+        }
+      } else {
+        // Error al configurar la petición
+        alert("Error al preparar la subida. Por favor, intenta nuevamente.");
+      }
+    }
   };
 
   return (

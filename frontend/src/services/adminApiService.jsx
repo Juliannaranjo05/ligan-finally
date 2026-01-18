@@ -932,35 +932,48 @@ export const storiesAdminApi = {
     try {
       console.log('📖 [ADMIN] Obteniendo historias pendientes...');
       const response = await adminApi.get('/admin/stories/pending');
+      
+      // El backend devuelve directamente un array, no un objeto con {success, data}
+      let stories = [];
+      if (Array.isArray(response.data)) {
+        stories = response.data;
+      } else if (response.data && Array.isArray(response.data.data)) {
+        stories = response.data.data;
+      } else if (response.data && response.data.success && Array.isArray(response.data.data)) {
+        stories = response.data.data;
+      }
+      
+      console.log(`📖 [ADMIN] Historias pendientes recibidas: ${stories.length}`, stories);
+      
       return {
         success: true,
-        data: Array.isArray(response.data) ? response.data : []
+        data: stories
       };
     } catch (error) {
       console.error('❌ Error al obtener historias pendientes:', error);
+      console.error('❌ Detalles del error:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       
+      // Si es error 403 (no autorizado), puede ser problema de autenticación
+      if (error.response?.status === 403) {
+        console.warn('⚠️ [ADMIN] Error 403 - No autorizado. Verificar token de admin.');
+        return {
+          success: false,
+          data: [],
+          error: 'No autorizado. Verifica tu sesión de administrador.'
+        };
+      }
+      
+      // Si es error 401 o 500, usar datos mock (solo para desarrollo)
       if (error.response?.status === 401 || error.response?.status === 500) {
-        console.log('🔧 Usando datos mock de historias');
+        console.log('🔧 Usando datos mock de historias (desarrollo)');
         return {
           success: true,
-          data: [
-            {
-              id: 1,
-              user_id: 1,
-              user: {
-                id: 1,
-                name: 'María Fernanda',
-                email: 'maria@email.com'
-              },
-              file_path: '/storage/stories/mock1.jpg',
-              file_url: 'https://via.placeholder.com/400x600/333/fff?text=STORY+MOCK',
-              mime_type: 'image/jpeg',
-              status: 'pending',
-              views_count: 0,
-              likes_count: 0,
-              created_at: new Date().toISOString()
-            }
-          ],
+          data: [],
           mock: true
         };
       }

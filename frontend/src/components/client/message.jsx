@@ -117,6 +117,7 @@ export default function ChatPrivado() {
   const [showNoBalanceModal, setShowNoBalanceModal] = useState(false);
   const [balanceDetails, setBalanceDetails] = useState(null);
   const [showBuyMinutes, setShowBuyMinutes] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
 
   // Estados de llamadas simplificados
   const [isCallActive, setIsCallActive] = useState(false);
@@ -165,6 +166,9 @@ export default function ChatPrivado() {
   const hasOpenedSpecificChat = useRef(false);
   const mensajesRefForTranslation = useRef([]);
   const translateMessageRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const typingIntervalRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
   const [isReceivingCall, setIsReceivingCall] = useState(false);
 const searchParams = new URLSearchParams(location.search);
 // Usamos user (alias/nombre) solo informativo; no exponemos IDs en URL
@@ -1132,6 +1136,72 @@ useEffect(() => {
   
   return () => clearInterval(interval);
 }, []);
+
+  const sendTypingStatus = useCallback(async (isTyping) => {
+    if (!conversacionSeleccionada?.room_name) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/chat/typing`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          room_name: conversacionSeleccionada.room_name,
+          is_typing: !!isTyping
+        })
+      });
+    } catch (error) {
+      // Silenciar errores de typing
+    }
+  }, [conversacionSeleccionada?.room_name, getAuthHeaders]);
+
+  const handleMessageChange = useCallback((value) => {
+    setNuevoMensaje(value);
+    if (!conversacionSeleccionada?.room_name) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1500) {
+      sendTypingStatus(true);
+      lastTypingSentRef.current = now;
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2500);
+  }, [conversacionSeleccionada?.room_name, sendTypingStatus]);
+
+  useEffect(() => {
+    if (!conversacionSeleccionada?.room_name) {
+      setIsOtherTyping(false);
+      return;
+    }
+
+    const fetchTypingStatus = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/chat/typing/${conversacionSeleccionada.room_name}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setIsOtherTyping(!!data?.is_typing);
+      } catch (error) {
+        // Silenciar errores de typing
+      }
+    };
+
+    fetchTypingStatus();
+    if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+    typingIntervalRef.current = setInterval(fetchTypingStatus, 2000);
+
+    return () => {
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+      sendTypingStatus(false);
+    };
+  }, [conversacionSeleccionada?.room_name, getAuthHeaders, sendTypingStatus]);
 
 // 🔥 TAMBIÉN AGREGA ESTE useEffect PARA REORDENAR CUANDO LLEGUEN MENSAJES NUEVOS
 useEffect(() => {
@@ -3352,6 +3422,7 @@ const renderMensaje = useCallback((mensaje) => {
                 <ChatHeader
                   conversation={conversacionSeleccionada}
                   isOnline={onlineUsers.has(conversacionSeleccionada?.other_user_id)}
+                  isTyping={isOtherTyping}
                   blockStatus={conversacionSeleccionada ? getBlockStatus(conversacionSeleccionada.other_user_id) : null}
                   isFavorite={conversacionSeleccionada ? favoritos.has(conversacionSeleccionada.other_user_id) : false}
                   isCallActive={isCallActive}
@@ -3587,7 +3658,7 @@ const renderMensaje = useCallback((mensaje) => {
                 {/* Input mensaje - Componente modular mejorado */}
                 <MessageInput
                   message={nuevoMensaje}
-                  onMessageChange={setNuevoMensaje}
+                  onMessageChange={handleMessageChange}
                   onSend={enviarMensaje}
                   onGiftClick={async (e) => {
                     if (e) {

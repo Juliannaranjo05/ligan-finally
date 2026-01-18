@@ -53,18 +53,33 @@ const StoriesModule = () => {
     setError(null);
     
     try {
+      console.log('📖 [StoriesModule] Cargando datos de historias pendientes...');
       const response = await storiesAdminApi.getPending();
+      
+      console.log('📖 [StoriesModule] Respuesta recibida:', response);
 
       if (response.success) {
-        setPendingStories(response.data || []);
+        const stories = response.data || [];
+        console.log(`📖 [StoriesModule] ${stories.length} historias pendientes encontradas`, stories);
+        setPendingStories(stories);
         setStats(prev => ({
           ...prev,
-          pending: response.data?.length || 0
+          pending: stories.length
         }));
+        
+        if (stories.length === 0) {
+          console.log('⚠️ [StoriesModule] No se encontraron historias pendientes. Verificar base de datos.');
+        }
+      } else {
+        console.error('❌ [StoriesModule] La respuesta no fue exitosa:', response);
+        setError(response.error || 'Error al cargar historias pendientes');
+        setPendingStories([]);
       }
 
     } catch (error) {
+      console.error('❌ [StoriesModule] Error al cargar datos:', error);
       setError(adminUtils.manejarError(error));
+      setPendingStories([]);
     } finally {
       setLoading(false);
     }

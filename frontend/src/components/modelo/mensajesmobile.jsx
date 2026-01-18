@@ -18,9 +18,9 @@ import {
   ArrowLeft,
   Ban,
   Gift,
-  Globe,
-  Smile
+  Globe
 } from "lucide-react";
+import EmojiPickerButton from '../common/EmojiPickerButton.jsx';
 
 // 🔥 IMPORTACIONES NECESARIAS
 import { useGiftSystem, GiftNotificationOverlay, GiftsModal } from '../GiftSystem/index.jsx';
@@ -39,6 +39,7 @@ export default function ChatPrivadoMobile() {
   const [mensajes, setMensajes] = useState([]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [busquedaConversacion, setBusquedaConversacion] = useState("");
   const [showSidebar, setShowSidebar] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
@@ -127,6 +128,9 @@ export default function ChatPrivadoMobile() {
   const location = useLocation();
   const mensajesRef = useRef(null);
   const openChatWith = location.state?.openChatWith;
+  const typingTimeoutRef = useRef(null);
+  const typingIntervalRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
 
   // 🔥 FUNCIÓN PARA OBTENER HEADERS
   const getAuthHeaders = () => {
@@ -138,6 +142,72 @@ export default function ChatPrivadoMobile() {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
   };
+
+  const sendTypingStatus = async (isTyping) => {
+    if (!conversacionActiva) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/chat/typing`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          room_name: conversacionActiva,
+          is_typing: !!isTyping
+        })
+      });
+    } catch (error) {
+      // Silenciar errores de typing
+    }
+  };
+
+  const handleMessageChange = (value) => {
+    setNuevoMensaje(value);
+    if (!conversacionActiva) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1500) {
+      sendTypingStatus(true);
+      lastTypingSentRef.current = now;
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2500);
+  };
+
+  useEffect(() => {
+    if (!conversacionActiva) {
+      setIsOtherTyping(false);
+      return;
+    }
+
+    const fetchTypingStatus = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/chat/typing/${conversacionActiva}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setIsOtherTyping(!!data?.is_typing);
+      } catch (error) {
+        // Silenciar errores de typing
+      }
+    };
+
+    fetchTypingStatus();
+    if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+    typingIntervalRef.current = setInterval(fetchTypingStatus, 2000);
+
+    return () => {
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+      sendTypingStatus(false);
+    };
+  }, [conversacionActiva]);
 
   // 🎁 SISTEMA DE REGALOS
   const {
@@ -2035,26 +2105,25 @@ export default function ChatPrivadoMobile() {
 
                 {/* Input mensaje */}
                 <div className="bg-[#2b2d31] border-t border-[#ff007a]/20 flex gap-3 p-3">
-                  <input
-                    type="text"
-                    placeholder="Escribe un mensaje..."
-                    className="flex-1 px-4 py-3 rounded-full bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
-                    value={nuevoMensaje}
-                    onChange={(e) => setNuevoMensaje(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && enviarMensaje()}
-                  />
+                  <div className="flex flex-col flex-1">
+                    {isOtherTyping && (
+                      <div className="text-xs text-[#ff007a] mb-1 italic">Escribiendo...</div>
+                    )}
+                    <input
+                      type="text"
+                      placeholder="Escribe un mensaje..."
+                      className="flex-1 px-4 py-3 rounded-full bg-[#1a1c20] text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-[#ff007a]/50"
+                      value={nuevoMensaje}
+                      onChange={(e) => handleMessageChange(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && enviarMensaje()}
+                    />
+                  </div>
                   
-                  {/* 🔥 BOTÓN DE EMOJI */}
-                  <button
-                    onClick={() => {
-                      const emojis = ['😊', '❤️', '😍', '🥰', '😘', '💕', '🔥', '✨', '💋', '😋'];
-                      const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                      setNuevoMensaje(prev => prev + randomEmoji);
-                    }}
-                    className="px-3 py-3 rounded-full bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 transition-colors flex items-center gap-2"
-                  >
-                    <Smile size={16} />
-                  </button>
+                  <EmojiPickerButton
+                    onSelect={(emoji) => setNuevoMensaje((prev) => prev + emoji)}
+                    buttonClassName="px-3 py-3 rounded-full"
+                    buttonSize={16}
+                  />
                   
                   <button
                     onClick={enviarMensaje}

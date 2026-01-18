@@ -5,7 +5,7 @@ import { initializeAuth } from "./utils/auth";
 
 // 🔥 IMPORTAR AMBOS SISTEMAS DE PROTECCIÓN
 import { ProtectedPage } from "./components/hooks/usePageAccess.jsx";
-import useUserLanguage  from "./components/hooks/useUserLanguage.js";
+import { useUserLanguage } from "./components/hooks/useUserLanguage.js";
 import { RegistrationProtectedPage } from "./components/hooks/useRegistrationAccess.jsx";
 import VerificarSesionActiva from "./components/verificacion/login/verifysession.jsx"; 
 

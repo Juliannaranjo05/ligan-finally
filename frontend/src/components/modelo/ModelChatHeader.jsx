@@ -13,6 +13,8 @@ const ModelChatHeader = ({
   isFavorite = false,
   loadingActions = false,
   isChatBlocked = false,
+  isTyping = false,
+  typingLabel = null,
   onGiftClick,
   onToggleFavorite,
   onOpenSettings,
@@ -97,7 +99,7 @@ const ModelChatHeader = ({
               <Star size={16} className="text-yellow-400 fill-yellow-400 flex-shrink-0" title={t('chat.favorite') || "Favorito"} />
             )}
           </div>
-          {/* Estado de bloqueo o online */}
+          {/* Estado de bloqueo, typing u online */}
           {blockStatus ? (
             <span className={`text-xs flex items-center gap-1 ${
               blockStatus === 'yo_bloquee' ? 'text-red-400' :
@@ -108,6 +110,10 @@ const ModelChatHeader = ({
               {blockStatus === 'yo_bloquee' && (t('chat.status.blockedByYou') || "Bloqueado por ti")}
               {blockStatus === 'me_bloquearon' && (t('chat.status.blockedYou') || "Te bloqueó")}
               {blockStatus === 'mutuo' && (t('chat.status.mutualBlock') || "Bloqueo mutuo")}
+            </span>
+          ) : isTyping ? (
+            <span className="text-xs text-[#ff007a] italic">
+              {typingLabel || t('chat.typing') || 'Escribiendo...'}
             </span>
           ) : (
             <span className={`text-xs ${

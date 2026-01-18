@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Clock, Info, X, Mic, MicOff, PhoneOff, Settings, Volume2, VolumeX, Gift, Timer } from 'lucide-react';
+import { Clock, Info, X, Mic, MicOff, PhoneOff, Settings, Volume2, VolumeX, Timer } from 'lucide-react';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { getVideoChatText } from '../../videochatTranslations';
 
@@ -92,17 +92,6 @@ const TimeDisplayImproved = ({
                 </div>
               </div>
               
-            {/* 🔥 SALDO DE REGALOS */}
-            <div className="balance-section gifts-section">
-              <div className="balance-icon-wrapper gifts-icon">
-                <Gift className="balance-icon" />
-                </div>
-              <div className="balance-info">
-                <div className="balance-label">{getVideoChatText('gifts', currentLanguage, 'Regalos:')}</div>
-                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
-              </div>
-            </div>
-            
             {/* Solo botón de información en móvil */}
             <div className="connection-section">
               <button
@@ -197,16 +186,6 @@ const TimeDisplayImproved = ({
               </div>
             </div>
             
-            {/* 🔥 SALDO DE REGALOS */}
-            <div className="balance-item gifts-item">
-              <div className="balance-icon-wrapper gifts-icon">
-                <Gift className="balance-icon" />
-              </div>
-              <div className="balance-info">
-                <div className="balance-label">{getVideoChatText('gifts', currentLanguage, 'Regalos:')}</div>
-                <div className="balance-value gifts-value">{giftBalance !== undefined && giftBalance !== null ? giftBalance : 0}</div>
-              </div>
-            </div>
           </div>
           
           {/* Panel central - CONTROLES CENTRADOS */}

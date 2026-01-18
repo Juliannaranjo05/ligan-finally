@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { Gift, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import EmojiPickerButton from '../common/EmojiPickerButton.jsx';
 
 /**
  * ModelMessageInput - Componente modular para el input de mensajes de la modelo
@@ -24,6 +25,11 @@ const ModelMessageInput = ({
       e.preventDefault();
       onSend();
     }
+  };
+
+  const handleEmojiSelect = (emoji) => {
+    if (!emoji || isChatBlocked || disabled) return;
+    onMessageChange(`${message}${emoji}`);
   };
 
   return (
@@ -88,6 +94,13 @@ const ModelMessageInput = ({
           )}
         </button>
       )}
+
+      <EmojiPickerButton
+        onSelect={handleEmojiSelect}
+        disabled={isChatBlocked || disabled}
+        buttonClassName={isMobile ? 'px-3 py-2' : 'px-3 py-2.5'}
+        buttonSize={16}
+      />
 
       {/* Botón de enviar mejorado */}
       <button

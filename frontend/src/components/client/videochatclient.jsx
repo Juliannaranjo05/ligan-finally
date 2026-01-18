@@ -8066,6 +8066,7 @@ const checkBalanceRealTime = useCallback(async () => {
                         handleKeyPress={(e) => e.key === 'Enter' && enviarMensaje()}
                         userData={userData || {}}
                         userBalance={userBalance || 0}
+                        roomName={roomName}
                         playGiftSound={playGiftSound}
                         t={t}
                       />
@@ -8088,6 +8089,7 @@ const checkBalanceRealTime = useCallback(async () => {
                       userData={userData}
                       userBalance={userBalance}
                       giftBalance={giftBalance}           // Balance de GIFTS  
+                      roomName={roomName}
                       handleAcceptGift={handleAcceptGift}
                       handleRejectGift={handleRejectGift}
                       playGiftSound={playGiftSound}

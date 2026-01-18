@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { Star, UserX, Gift, Send, Smile, Settings, Crown, MessageCircle, Globe, X } from 'lucide-react';
+import { Star, UserX, Gift, Send, Settings, Crown, MessageCircle, Globe, X } from 'lucide-react';
 import { GiftMessageComponent } from '../../GiftSystem/GiftMessageComponent';
 import { useGlobalTranslation } from '../../../contexts/GlobalTranslationContext';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../../i18n';
 import { getTranslatedGiftName, getGiftCardText } from '../../GiftSystem/giftTranslations';
+import EmojiPickerButton from '../../common/EmojiPickerButton.jsx';
 
 const DesktopChatPanel = ({
   getDisplayName,
@@ -25,6 +26,7 @@ const DesktopChatPanel = ({
   userBalance,
   handleAcceptGift,
   playGiftSound,
+  roomName,
   t
 }) => {
 
@@ -53,9 +55,89 @@ const DesktopChatPanel = ({
   // 🔥 SOLUCIÓN DE TRADUCCIÓN SIMPLIFICADA - SIN COMPONENTE ANIDADO
   const [translations, setTranslations] = useState(new Map());
   const [translatingIds, setTranslatingIds] = useState(new Set());
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
+  const typingIntervalRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
 
   // 🔥 OBTENER EL HOOK DE i18n PARA ESCUCHAR CAMBIOS
   const { i18n: i18nInstance } = useTranslation();
+
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem("token");
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+  }, []);
+
+  const sendTypingStatus = useCallback(async (isTyping) => {
+    if (!roomName) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chat/typing`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          room_name: roomName,
+          is_typing: !!isTyping
+        })
+      });
+    } catch (error) {
+      // Silenciar errores de typing
+    }
+  }, [roomName, getAuthHeaders]);
+
+  const handleMessageChange = useCallback((value) => {
+    setMensaje(value);
+    if (!roomName) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1500) {
+      sendTypingStatus(true);
+      lastTypingSentRef.current = now;
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2500);
+  }, [roomName, sendTypingStatus, setMensaje]);
+
+  useEffect(() => {
+    if (!roomName) {
+      setIsOtherTyping(false);
+      return;
+    }
+
+    const fetchTypingStatus = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chat/typing/${roomName}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setIsOtherTyping(!!data?.is_typing);
+      } catch (error) {
+        // Silenciar errores de typing
+      }
+    };
+
+    fetchTypingStatus();
+    if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+    typingIntervalRef.current = setInterval(fetchTypingStatus, 2000);
+
+    return () => {
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+      sendTypingStatus(false);
+    };
+  }, [roomName, getAuthHeaders, sendTypingStatus]);
 
   // 🔥 SINCRONIZAR CON EL IDIOMA GLOBAL CUANDO CAMBIA LA BANDERA
   useEffect(() => {
@@ -1492,9 +1574,14 @@ const DesktopChatPanel = ({
             
             {/* Input que ocupa TODO el espacio disponible */}
             <div className="flex-1 min-w-0 relative">
+              {isOtherTyping && (
+                <div className="absolute -top-5 left-2 text-xs text-[#ff007a] italic">
+                  Escribiendo...
+                </div>
+              )}
               <input
                 value={mensaje}
-                onChange={(e) => setMensaje(e.target.value)}
+                onChange={(e) => handleMessageChange(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={typeof t === 'function' ? (t('chat.respondToClient') || 'Responde al chico...') : 'Responde al chico...'}
                 maxLength={200}
@@ -1538,16 +1625,11 @@ const DesktopChatPanel = ({
               <Gift size={18} />
             </button>
             
-            <button 
-              onClick={() => {
-                const emojis = ['😊', '❤️', '😍', '🥰', '😘', '💕', '🔥', '✨', '💋', '😋'];
-                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                setMensaje(prev => prev + randomEmoji);
-              }}
-              className="flex-shrink-0 input-button rounded-lg transition-all duration-300 hover:scale-110 bg-[#ff007a]/20 text-[#ff007a] hover:bg-[#ff007a]/30 border border-[#ff007a]/30"
-            >
-              <Smile size={14} />
-            </button>
+            <EmojiPickerButton
+              onSelect={(emoji) => setMensaje((prev) => prev + emoji)}
+              buttonClassName="px-3 py-2"
+              buttonSize={14}
+            />
             
             {/* Botón enviar */}
             <button

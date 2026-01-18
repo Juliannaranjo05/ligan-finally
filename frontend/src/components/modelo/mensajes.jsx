@@ -93,6 +93,7 @@ export default function ChatPrivado() {
   // Estados de regalos
   const [showGiftsModal, setShowGiftsModal] = useState(false);
   const [loadingGift, setLoadingGift] = useState(false);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
 
   // Estados de apodos SIMPLIFICADOS
   const [showNicknameModal, setShowNicknameModal] = useState(false);
@@ -119,6 +120,9 @@ export default function ChatPrivado() {
   const hasOpenedSpecificChat = useRef(false);
   const mensajesRefForTranslation = useRef([]);
   const translateMessageRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const typingIntervalRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
 
 
 
@@ -132,6 +136,72 @@ export default function ChatPrivado() {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
   }, []);
+
+  const sendTypingStatus = useCallback(async (isTyping) => {
+    if (!conversacionActiva) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/chat/typing`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          room_name: conversacionActiva,
+          is_typing: !!isTyping
+        })
+      });
+    } catch (error) {
+      // Silenciar errores de typing
+    }
+  }, [conversacionActiva, getAuthHeaders]);
+
+  const handleMessageChange = useCallback((value) => {
+    setNuevoMensaje(value);
+    if (!conversacionActiva) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1500) {
+      sendTypingStatus(true);
+      lastTypingSentRef.current = now;
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2500);
+  }, [conversacionActiva, sendTypingStatus]);
+
+  useEffect(() => {
+    if (!conversacionActiva) {
+      setIsOtherTyping(false);
+      return;
+    }
+
+    const fetchTypingStatus = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/chat/typing/${conversacionActiva}`, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setIsOtherTyping(!!data?.is_typing);
+      } catch (error) {
+        // Silenciar errores de typing
+      }
+    };
+
+    fetchTypingStatus();
+    if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+    typingIntervalRef.current = setInterval(fetchTypingStatus, 2000);
+
+    return () => {
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+      sendTypingStatus(false);
+    };
+  }, [conversacionActiva, getAuthHeaders, sendTypingStatus]);
 
 
   const playIncomingCallSound = useCallback(async () => {
@@ -2391,6 +2461,7 @@ const cargarMensajes = useCallback(async (roomName) => {
               <ModelChatHeader
                 conversation={conversacionSeleccionada}
                 isOnline={onlineUsers.has(conversacionSeleccionada?.other_user_id)}
+                isTyping={isOtherTyping}
                 blockStatus={conversacionSeleccionada ? getBlockStatus(conversacionSeleccionada.other_user_id) : null}
                 isFavorite={conversacionSeleccionada ? favoritos.has(conversacionSeleccionada.other_user_id) : false}
                 loadingActions={loadingActions}
@@ -2598,7 +2669,7 @@ const cargarMensajes = useCallback(async (roomName) => {
               {/* Input mensaje - MODULARIZADO */}
               <ModelMessageInput
                 message={nuevoMensaje}
-                onMessageChange={setNuevoMensaje}
+                onMessageChange={handleMessageChange}
                 onSend={enviarMensaje}
                 onGiftClick={() => setShowGiftsModal(true)}
                 isChatBlocked={isChatBlocked()}

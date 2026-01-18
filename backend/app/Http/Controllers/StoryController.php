@@ -14,9 +14,15 @@ class StoryController extends Controller
 {
     public function store(Request $request)
     {
-        if (!auth()->check()) {
-            return response()->json(['error' => 'No autenticado'], 403);
-        }
+        try {
+            // Los límites de upload_max_filesize y post_max_size se configuran en php.ini
+            // Solo podemos aumentar otros límites aquí
+            ini_set('max_execution_time', '300'); // 5 minutos
+            ini_set('memory_limit', '512M');
+            
+            if (!auth()->check()) {
+                return response()->json(['error' => 'No autenticado'], 403);
+            }
 
         $user = auth()->user();
 
@@ -85,7 +91,7 @@ class StoryController extends Controller
             }
 
             // 🔥 VERIFICAR VALIDACIÓN MANUAL
-            $allowedMimes = ['jpeg', 'png', 'jpg', 'mp4', 'webm'];
+            $allowedMimes = ['jpeg', 'png', 'jpg', 'mp4', 'webm', 'mov'];
             $detectedExtension = strtolower($file->getClientOriginalExtension());
             $detectedMime = $file->getMimeType();
             
@@ -140,6 +146,40 @@ class StoryController extends Controller
         // 🔥 AGREGAR LOG ANTES DE LA VALIDACIÓN
         Log::info('🔍 Iniciando validación de Laravel...');
         
+        // Verificar si el archivo llegó ANTES de validar
+        if (!$request->hasFile('file')) {
+            Log::error('❌ El archivo no se recibió en la petición');
+            Log::info('📋 Información de la petición:', [
+                'content_type' => $request->header('Content-Type'),
+                'content_length' => $request->header('Content-Length'),
+                'has_file' => $request->hasFile('file'),
+                'all_files' => $request->allFiles(),
+                'post_data' => $request->all()
+            ]);
+            
+            // Verificar si el problema es tamaño de archivo
+            $contentLength = $request->header('Content-Length');
+            if ($contentLength) {
+                $sizeInMB = round($contentLength / 1024 / 1024, 2);
+                $uploadMaxFilesize = ini_get('upload_max_filesize');
+                $postMaxSize = ini_get('post_max_size');
+                
+                Log::warning('⚠️ Límites de PHP detectados:', [
+                    'content_length' => $contentLength,
+                    'size_mb' => $sizeInMB,
+                    'upload_max_filesize' => $uploadMaxFilesize,
+                    'post_max_size' => $postMaxSize
+                ]);
+            }
+            
+            return response()->json([
+                'message' => 'No se recibió ningún archivo en la petición',
+                'errors' => ['file' => [
+                    'El archivo no se recibió correctamente. Verifica que el archivo no exceda los límites del servidor (actualmente: upload_max_filesize=' . ini_get('upload_max_filesize') . ', post_max_size=' . ini_get('post_max_size') . ')'
+                ]]
+            ], 422);
+        }
+        
         try {
             $request->validate([
                 'file' => [
@@ -156,8 +196,24 @@ class StoryController extends Controller
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('❌ Validación de Laravel FALLÓ:', [
                 'errors' => $e->errors(),
-                'validator_errors' => $e->validator->errors()->toArray()
+                'validator_errors' => $e->validator->errors()->toArray(),
+                'request_has_file' => $request->hasFile('file'),
+                'content_type' => $request->header('Content-Type')
             ]);
+            
+            // Si el error es "validation.uploaded", el archivo no se subió correctamente
+            $errors = $e->errors();
+            if (isset($errors['file']) && (in_array('validation.uploaded', $errors['file']) || in_array('The file failed to upload.', $errors['file']))) {
+                $uploadMaxFilesize = ini_get('upload_max_filesize');
+                $postMaxSize = ini_get('post_max_size');
+                
+                return response()->json([
+                    'message' => 'El archivo no se pudo subir correctamente',
+                    'errors' => ['file' => [
+                        'El archivo no se subió correctamente. Posibles causas: el archivo es demasiado grande (límites actuales: upload_max_filesize=' . $uploadMaxFilesize . ', post_max_size=' . $postMaxSize . ') o hay un problema con la conexión.'
+                    ]]
+                ], 422);
+            }
             
             // Re-lanzar la excepción para que siga el flujo normal
             throw $e;
@@ -167,9 +223,38 @@ class StoryController extends Controller
         $file = $request->file('file');
     
         if (!$file) {
+            Log::error('❌ Archivo no encontrado en request');
             return response()->json([
                 'message' => 'No se proporcionó ningún archivo',
                 'errors' => ['file' => ['El archivo es requerido']]
+            ], 422);
+        }
+
+        // Verificar si el archivo tiene errores de carga
+        if (!$file->isValid()) {
+            $errorCode = $file->getError();
+            $errorMessages = [
+                UPLOAD_ERR_INI_SIZE => 'El archivo excede el tamaño máximo permitido por el servidor',
+                UPLOAD_ERR_FORM_SIZE => 'El archivo excede el tamaño máximo permitido por el formulario',
+                UPLOAD_ERR_PARTIAL => 'El archivo se subió parcialmente',
+                UPLOAD_ERR_NO_FILE => 'No se subió ningún archivo',
+                UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal',
+                UPLOAD_ERR_CANT_WRITE => 'Error al escribir el archivo en el disco',
+                UPLOAD_ERR_EXTENSION => 'Una extensión de PHP detuvo la subida del archivo',
+            ];
+            
+            $errorMessage = $errorMessages[$errorCode] ?? "Error desconocido al subir el archivo (código: {$errorCode})";
+            
+            Log::error('❌ Archivo inválido:', [
+                'error_code' => $errorCode,
+                'error_message' => $errorMessage,
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize()
+            ]);
+            
+            return response()->json([
+                'message' => $errorMessage,
+                'errors' => ['file' => [$errorMessage]]
             ], 422);
         }
 
@@ -230,26 +315,43 @@ class StoryController extends Controller
 
         // Validar duración del video si es un video (máximo 15 segundos)
         if ($isVideo) {
-            $videoDuration = $this->getVideoDuration($file);
-            
-            if ($videoDuration === null) {
-                Log::warning('No se pudo determinar la duración del video', [
-                    'file' => $file->getClientOriginalName()
+            try {
+                $videoDuration = $this->getVideoDuration($file);
+                
+                if ($videoDuration === null) {
+                    Log::warning('No se pudo determinar la duración del video - confiando en validación del frontend', [
+                        'file' => $file->getClientOriginalName(),
+                        'file_size' => $file->getSize()
+                    ]);
+                    // Continuar - la validación del frontend ya lo validó
+                    // No rechazar el archivo si no podemos leer la duración
+                } elseif ($videoDuration <= 0) {
+                    Log::warning('Duración del video inválida (0 o negativa) - confiando en validación del frontend', [
+                        'file' => $file->getClientOriginalName(),
+                        'duration' => $videoDuration
+                    ]);
+                    // Continuar - puede ser un error de lectura, confiamos en el frontend
+                } elseif ($videoDuration > 15) {
+                    return response()->json([
+                        'message' => 'El video excede la duración máxima',
+                        'errors' => ['file' => [
+                            'Los videos no pueden durar más de 15 segundos. Duración actual: ' . round($videoDuration, 1) . 's'
+                        ]]
+                    ], 422);
+                } else {
+                    Log::info('✅ Duración del video validada', [
+                        'duration' => $videoDuration,
+                        'file' => $file->getClientOriginalName()
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error al validar duración del video - continuando con subida', [
+                    'file' => $file->getClientOriginalName(),
+                    'error' => $e->getMessage()
                 ]);
-                // Continuar - la validación del frontend ya lo validó
-            } elseif ($videoDuration > 15) {
-                return response()->json([
-                    'message' => 'El video excede la duración máxima',
-                    'errors' => ['file' => [
-                        'Los videos no pueden durar más de 15 segundos. Duración actual: ' . round($videoDuration, 1) . 's'
-                    ]]
-                ], 422);
+                // No rechazar el archivo si hay un error al leer la duración
+                // Confiamos en la validación del frontend
             }
-            
-            Log::info('✅ Duración del video validada', [
-                'duration' => $videoDuration,
-                'file' => $file->getClientOriginalName()
-            ]);
         }
 
         // ✅ Si llegamos aquí, el archivo es válido
@@ -282,10 +384,39 @@ class StoryController extends Controller
             'created_at' => now(),
         ]);
 
-        return response()->json([
-            'message' => 'Historia subida correctamente, esperando aprobación',
-            'story' => $story
-        ], 201);
+            return response()->json([
+                'message' => 'Historia subida correctamente, esperando aprobación',
+                'story' => $story
+            ], 201);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Errores de validación ya están manejados arriba, pero por si acaso
+            Log::error('❌ Error de validación no capturado:', [
+                'errors' => $e->errors(),
+                'message' => $e->getMessage()
+            ]);
+            throw $e; // Re-lanzar para que Laravel lo maneje correctamente
+            
+        } catch (\Exception $e) {
+            // Capturar cualquier otro error y devolver respuesta JSON clara
+            Log::error('❌ ERROR INTERNO al subir historia:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => [
+                    'has_file' => $request->hasFile('file'),
+                    'content_type' => $request->header('Content-Type'),
+                    'content_length' => $request->header('Content-Length')
+                ]
+            ]);
+            
+            return response()->json([
+                'message' => 'Error interno del servidor al subir la historia',
+                'error' => app()->environment('local') ? $e->getMessage() : 'Error interno del servidor',
+                'errors' => ['file' => ['Hubo un problema al procesar el archivo. Por favor, intenta nuevamente.']]
+            ], 500);
+        }
     }
 
     public function myStory()
@@ -475,7 +606,15 @@ class StoryController extends Controller
     {
         // Validar que el admin_user_id esté presente (agregado por AdminAuthMiddleware)
         $adminId = $request->input('admin_user_id') ?? $request->header('ligand-admin-id');
+        
+        \Log::info('📖 [ADMIN STORIES] indexPending llamado', [
+            'admin_id' => $adminId,
+            'has_admin_id' => !empty($adminId),
+            'headers' => $request->headers->all()
+        ]);
+        
         if (!$adminId) {
+            \Log::warning('⚠️ [ADMIN STORIES] No autorizado - falta admin_user_id');
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -483,6 +622,19 @@ class StoryController extends Controller
             ->pending()
             ->latest()
             ->get();
+
+        \Log::info('📖 [ADMIN STORIES] Historias pendientes encontradas', [
+            'count' => $stories->count(),
+            'stories' => $stories->map(function($story) {
+                return [
+                    'id' => $story->id,
+                    'user_id' => $story->user_id,
+                    'user_name' => $story->user->name ?? 'N/A',
+                    'status' => $story->status,
+                    'created_at' => $story->created_at
+                ];
+            })->toArray()
+        ]);
 
         return response()->json($stories);
     }
@@ -860,27 +1012,56 @@ class StoryController extends Controller
         try {
             $filePath = $file->getRealPath();
             
+            if (!$filePath || !file_exists($filePath)) {
+                Log::warning('Archivo temporal no encontrado para obtener duración', [
+                    'file' => $file->getClientOriginalName()
+                ]);
+                return null;
+            }
+            
             // Intentar usar ffprobe si está disponible
-            if (shell_exec('which ffprobe')) {
+            $ffprobePath = shell_exec('which ffprobe');
+            if ($ffprobePath) {
                 $command = sprintf(
                     'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "%s" 2>&1',
                     escapeshellarg($filePath)
                 );
                 
                 $output = shell_exec($command);
+                
+                if ($output === null || trim($output) === '') {
+                    Log::warning('ffprobe no devolvió resultado', [
+                        'file' => $file->getClientOriginalName()
+                    ]);
+                    return null;
+                }
+                
                 $duration = floatval(trim($output));
                 
-                if ($duration > 0 && is_finite($duration)) {
+                // Validar que la duración sea válida
+                if ($duration > 0 && is_finite($duration) && $duration <= 3600) { // Máximo 1 hora como sanity check
                     return $duration;
+                } else {
+                    Log::warning('Duración inválida obtenida de ffprobe', [
+                        'file' => $file->getClientOriginalName(),
+                        'duration' => $duration,
+                        'output' => $output
+                    ]);
+                    return null;
                 }
             }
             
-            // Si ffprobe no está disponible o falló, intentar con getID3 si está instalado
-            // Por ahora retornamos null y confiamos en la validación del frontend
+            // Si ffprobe no está disponible, retornamos null y confiamos en la validación del frontend
+            Log::info('ffprobe no disponible - confiando en validación del frontend', [
+                'file' => $file->getClientOriginalName()
+            ]);
             return null;
             
         } catch (\Exception $e) {
-            Log::warning('Error al obtener duración del video: ' . $e->getMessage());
+            Log::warning('Error al obtener duración del video: ' . $e->getMessage(), [
+                'file' => $file->getClientOriginalName() ?? 'unknown',
+                'trace' => $e->getTraceAsString()
+            ]);
             return null;
         }
     }
