@@ -89,3 +89,4 @@ echo "⚠️  IMPORTANTE: Los cambios se aplicarán después de reiniciar PHP-FP
 echo "   Si el comando anterior no reinició PHP-FPM, ejecuta manualmente:"
 echo "   sudo systemctl restart php*-fpm"
 
+

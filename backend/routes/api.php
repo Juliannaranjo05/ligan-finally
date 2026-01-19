@@ -528,6 +528,12 @@ Route::post('/livekit/token-secure', [LiveKitController::class, 'generateTokenWi
 Route::post('/livekit/periodic-deduction', [LiveKitController::class, 'processPeriodicDeduction'])
     ->middleware(['auth:sanctum']);
 
+Route::post('/livekit/pause-session', [LiveKitController::class, 'pauseVideoChatSession'])
+    ->middleware(['auth:sanctum']);
+
+Route::post('/livekit/resume-session', [LiveKitController::class, 'resumeVideoChatSession'])
+    ->middleware(['auth:sanctum']);
+
 Route::get('/livekit/balance-check', [LiveKitController::class, 'checkBalanceRealTime'])
     ->middleware(['auth:sanctum']);
 

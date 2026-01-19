@@ -23,6 +23,7 @@ use App\Http\Controllers\SessionEarningsController;
 use App\Services\PlatformSettingsService;
 use App\Services\CallPricingService;
 use App\Models\CoinConsumption;
+use App\Models\UserCoins;
 use App\Helpers\VideoChatLogger;
 
 class LiveKitController extends Controller
@@ -174,6 +175,50 @@ class LiveKitController extends Controller
                     
                     VideoChatLogger::response('GENERATE_TOKEN', $response);
                     return $response;
+                }
+
+                // 🔥 CREAR/ACTUALIZAR VideoChatSession PARA CONTROLAR CONSUMO
+                try {
+                    $existingSession = VideoChatSession::where('user_id', $user->id)
+                        ->where('room_name', $roomName)
+                        ->where('status', 'active')
+                        ->first();
+
+                    if ($existingSession) {
+                        $updates = [
+                            'is_consuming' => true,
+                            'status' => 'active',
+                            'updated_at' => now()
+                        ];
+
+                        if (!$existingSession->started_at) {
+                            $updates['started_at'] = now();
+                        }
+
+                        if (!$existingSession->last_consumption_at) {
+                            $updates['last_consumption_at'] = now();
+                        }
+
+                        $existingSession->update($updates);
+                    } else {
+                        VideoChatSession::create([
+                            'user_id' => $user->id,
+                            'room_name' => $roomName,
+                            'user_role' => 'cliente',
+                            'status' => 'active',
+                            'is_consuming' => true,
+                            'consumption_rate' => VideoChatCoinController::COST_PER_MINUTE,
+                            'total_consumed' => 0,
+                            'started_at' => now(),
+                            'last_consumption_at' => now()
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('❌ Error creando/actualizando VideoChatSession en generateToken', [
+                        'user_id' => $user->id,
+                        'room_name' => $roomName,
+                        'error' => $e->getMessage()
+                    ]);
                 }
             } else {
                 VideoChatLogger::log('GENERATE_TOKEN', 'Usuario es modelo, no se verifica saldo', [
@@ -5031,6 +5076,132 @@ private function getNotificationMessage($endReason)
         }
     }
 
+    /**
+     * ⏸️ Pausar sesión de videochat (evita descuentos durante refresh)
+     */
+    public function pauseVideoChatSession(Request $request)
+    {
+        try {
+            $request->validate([
+                'room_name' => 'required|string'
+            ]);
+
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'error' => 'No autenticado'], 401);
+            }
+
+            if ($user->rol !== 'cliente') {
+                return response()->json(['success' => false, 'error' => 'Solo clientes pueden pausar'], 403);
+            }
+
+            $roomName = preg_replace('/\s+/', '', trim($request->room_name));
+
+            $session = VideoChatSession::where('user_id', $user->id)
+                ->where('room_name', $roomName)
+                ->where('status', 'active')
+                ->first();
+
+            if ($session) {
+                $session->update([
+                    'is_consuming' => false,
+                    'updated_at' => now()
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'paused' => $session ? true : false,
+                'room_name' => $roomName
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error pausando sesión de videochat', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error pausando sesión'
+            ], 500);
+        }
+    }
+
+    /**
+     * ▶️ Reanudar sesión de videochat (reactiva descuentos)
+     */
+    public function resumeVideoChatSession(Request $request)
+    {
+        try {
+            $request->validate([
+                'room_name' => 'required|string'
+            ]);
+
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'error' => 'No autenticado'], 401);
+            }
+
+            if ($user->rol !== 'cliente') {
+                return response()->json(['success' => false, 'error' => 'Solo clientes pueden reanudar'], 403);
+            }
+
+            $roomName = preg_replace('/\s+/', '', trim($request->room_name));
+
+            $session = VideoChatSession::where('user_id', $user->id)
+                ->where('room_name', $roomName)
+                ->where('status', 'active')
+                ->first();
+
+            if ($session) {
+                $updates = [
+                    'is_consuming' => true,
+                    'status' => 'active',
+                    'updated_at' => now()
+                ];
+
+                if (!$session->started_at) {
+                    $updates['started_at'] = now();
+                }
+
+                // Evitar cobro por tiempo en pausa
+                $updates['last_consumption_at'] = now();
+
+                $session->update($updates);
+            } else {
+                $session = VideoChatSession::create([
+                    'user_id' => $user->id,
+                    'room_name' => $roomName,
+                    'user_role' => 'cliente',
+                    'status' => 'active',
+                    'is_consuming' => true,
+                    'consumption_rate' => VideoChatCoinController::COST_PER_MINUTE,
+                    'total_consumed' => 0,
+                    'started_at' => now(),
+                    'last_consumption_at' => now()
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'resumed' => true,
+                'room_name' => $roomName
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error reanudando sesión de videochat', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error reanudando sesión'
+            ], 500);
+        }
+    }
+
     // 🔥 FUNCIÓN 2: processPeriodicDeduction COMPLETA
     public function processPeriodicDeduction(Request $request)
     {
@@ -5042,7 +5213,8 @@ private function getNotificationMessage($endReason)
             ]);
 
             $user = auth()->user();
-            $roomName = $request->room_name;
+            // 🔥 NORMALIZAR roomName: trim y eliminar espacios extra
+            $roomName = preg_replace('/\s+/', '', trim($request->room_name));
             $durationSeconds = $request->session_duration_seconds;
             $manualCoinsAmount = $request->manual_coins_amount; // 🔥 NUEVA VARIABLE
 
@@ -5065,6 +5237,54 @@ private function getNotificationMessage($endReason)
                     'success' => false,
                     'error' => 'Solo clientes pueden usar este endpoint'
                 ], 403);
+            }
+
+            // 🔥 BLOQUEAR DESCUENTO SI LA SESIÓN ESTÁ PAUSADA
+            $activeSession = VideoChatSession::where('user_id', $user->id)
+                ->where('room_name', $roomName)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$activeSession) {
+                Log::warning('⚠️ [DEBUG] Descuento omitido: no hay sesión activa', [
+                    'user_id' => $user->id,
+                    'room_name' => $roomName
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'skipped' => true,
+                    'reason' => 'session_missing'
+                ]);
+            }
+
+            if ($activeSession && !$activeSession->is_consuming) {
+                $userCoins = UserCoins::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'purchased_balance' => 0,
+                        'gift_balance' => 0,
+                        'total_purchased' => 0,
+                        'total_consumed' => 0
+                    ]
+                );
+
+                $remainingMinutes = floor($userCoins->purchased_balance / VideoChatCoinController::COST_PER_MINUTE);
+
+                Log::info('⏸️ [DEBUG] Descuento omitido: sesión pausada', [
+                    'user_id' => $user->id,
+                    'room_name' => $roomName,
+                    'remaining_minutes' => $remainingMinutes
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'skipped' => true,
+                    'reason' => 'session_paused',
+                    'remaining_balance' => $userCoins->purchased_balance + $userCoins->gift_balance,
+                    'minutes_remaining' => $remainingMinutes,
+                    'can_continue' => $userCoins->purchased_balance >= VideoChatCoinController::COST_PER_MINUTE
+                ]);
             }
 
             $minutesConsumed = max(1, (int) floor($durationSeconds / 60));

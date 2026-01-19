@@ -70,3 +70,4 @@ echo "   - PHP: límites configurados en el código (se aplican en tiempo de eje
 echo ""
 echo "⚠️  IMPORTANTE: Para cambios permanentes, edita los archivos de configuración de PHP mencionados arriba"
 
+

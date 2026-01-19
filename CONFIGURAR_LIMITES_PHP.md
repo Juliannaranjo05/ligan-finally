@@ -64,3 +64,4 @@ Recuerda recargar nginx después de los cambios:
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+

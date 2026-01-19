@@ -737,6 +737,188 @@ function VideoChatClientInner() {
   const timeoutLoggedRef = useRef(false); // 🔥 REF PARA EVITAR LOGS REPETITIVOS DEL TIMEOUT
   const participantDisconnectGracePeriodRef = useRef(null); // 🔥 REF PARA GRACIA ANTES DE PROCESAR DESCONEXIÓN
   const lastDisconnectedParticipantSidRef = useRef(null); // 🔥 REF PARA RASTREAR ÚLTIMO PARTICIPANTE DESCONECTADO
+  const hasJoinedSessionRef = useRef(false); // 🔥 REF PARA SABER SI YA HUBO UNA SESIÓN ACTIVA (PAUSAS)
+  const sessionResumeSentRef = useRef(null); // 🔥 REF PARA EVITAR RESUMES REPETIDOS
+
+  const getPauseStorageKeys = (room) => {
+    if (!room) {
+      return null;
+    }
+    return {
+      pauseOffsetKey: `session_pause_offset_${room}`,
+      pauseStartKey: `session_pause_start_${room}`
+    };
+  };
+
+  const readNumberFromStorage = (key) => {
+    if (!key) {
+      return 0;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        return 0;
+      }
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const markPauseStartForRoom = (room) => {
+    const keys = getPauseStorageKeys(room);
+    if (!keys) {
+      return;
+    }
+    try {
+      if (!localStorage.getItem(keys.pauseStartKey)) {
+        localStorage.setItem(keys.pauseStartKey, Date.now().toString());
+      }
+    } catch (error) {
+      // Ignorar errores de acceso a storage
+    }
+  };
+
+  const commitPauseGapForRoom = (room) => {
+    const keys = getPauseStorageKeys(room);
+    if (!keys) {
+      return 0;
+    }
+    try {
+      const pausedAtRaw = localStorage.getItem(keys.pauseStartKey);
+      if (!pausedAtRaw) {
+        return readNumberFromStorage(keys.pauseOffsetKey);
+      }
+
+      const pausedAt = parseInt(pausedAtRaw, 10);
+      if (!Number.isFinite(pausedAt) || pausedAt <= 0) {
+        localStorage.removeItem(keys.pauseStartKey);
+        return readNumberFromStorage(keys.pauseOffsetKey);
+      }
+
+      const downtime = Math.max(0, Date.now() - pausedAt);
+      const prevOffset = readNumberFromStorage(keys.pauseOffsetKey);
+      const newOffset = prevOffset + downtime;
+      localStorage.setItem(keys.pauseOffsetKey, newOffset.toString());
+      localStorage.removeItem(keys.pauseStartKey);
+      return newOffset;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const clearPauseTrackingForRoom = (room) => {
+    const keys = getPauseStorageKeys(room);
+    if (!keys) {
+      return;
+    }
+    try {
+      localStorage.removeItem(keys.pauseOffsetKey);
+      localStorage.removeItem(keys.pauseStartKey);
+    } catch (error) {
+      // Ignorar errores de acceso a storage
+    }
+  };
+
+  const getTotalPauseMsForRoom = (room) => {
+    const keys = getPauseStorageKeys(room);
+    if (!keys) {
+      return 0;
+    }
+    const storedOffset = readNumberFromStorage(keys.pauseOffsetKey);
+    let activePause = 0;
+    try {
+      const pausedAtRaw = localStorage.getItem(keys.pauseStartKey);
+      if (pausedAtRaw) {
+        const pausedAt = parseInt(pausedAtRaw, 10);
+        if (Number.isFinite(pausedAt) && pausedAt > 0) {
+          activePause = Math.max(0, Date.now() - pausedAt);
+        }
+      }
+    } catch (error) {
+      activePause = 0;
+    }
+    return storedOffset + activePause;
+  };
+
+  const getRefreshGraceKey = (room) => {
+    if (!room) {
+      return null;
+    }
+    return `videochat_refresh_grace_${room}`;
+  };
+
+  const markRefreshGraceForRoom = (room) => {
+    const key = getRefreshGraceKey(room);
+    if (!key) {
+      return;
+    }
+    try {
+      localStorage.setItem(key, Date.now().toString());
+    } catch (error) {
+      // Ignorar errores de acceso a storage
+    }
+  };
+
+  const getRefreshGraceRemainingMs = (room, graceMs = 60000) => {
+    const key = getRefreshGraceKey(room);
+    if (!key) {
+      return 0;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        return 0;
+      }
+      const timestamp = parseInt(raw, 10);
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        localStorage.removeItem(key);
+        return 0;
+      }
+      const elapsed = Date.now() - timestamp;
+      if (elapsed >= graceMs) {
+        localStorage.removeItem(key);
+        return 0;
+      }
+      return graceMs - elapsed;
+    } catch (error) {
+      return 0;
+    }
+  };
+
+  const isRefreshGraceActive = (room, graceMs = 60000) => {
+    return getRefreshGraceRemainingMs(room, graceMs) > 0;
+  };
+
+  const sendSessionConsumptionState = useCallback(async (action, room, useKeepalive = false) => {
+    if (!room || !API_BASE_URL) {
+      return;
+    }
+
+    const authToken = localStorage.getItem('token');
+    if (!authToken) {
+      return;
+    }
+
+    const endpoint = action === 'resume'
+      ? `${API_BASE_URL}/api/livekit/resume-session`
+      : `${API_BASE_URL}/api/livekit/pause-session`;
+
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ room_name: room }),
+        keepalive: !!useKeepalive
+      });
+    } catch (error) {
+      // Silenciar errores de red durante unload
+    }
+  }, [API_BASE_URL]);
 
   // Estados de controles
   // 🔥 CÁMARA: Para modelo siempre encendida, para cliente apagada por defecto
@@ -1095,6 +1277,11 @@ function VideoChatClientInner() {
       USER_CACHE.delete(cacheKey);
     }
     
+    const activeRoom = roomName || activeRoomNameRef.current || localStorage.getItem('roomName');
+    if (activeRoom) {
+      clearPauseTrackingForRoom(activeRoom);
+    }
+
     setOtherUser(null);
     setIsDetectingUser(true);
   };
@@ -1470,6 +1657,7 @@ function VideoChatClientInner() {
   const balanceIntervalRef = useRef(null);
   const isLoadingBalanceRef = useRef(false);
   const hasLoadedBalanceRef = useRef(false); // 🔥 REF PARA EVITAR CARGAS DUPLICADAS DE BALANCE
+  const balanceInitializedRef = useRef(false); // 🔥 REF PARA SABER CUANDO TENEMOS DATOS REALES DE SALDO
   const loadUserBalanceRef = useRef(null); // 🔥 REF PARA loadUserBalance (evitar loops)
   
   // 🔥 ACTUALIZAR REF CUANDO loadUserBalance CAMBIE
@@ -1593,6 +1781,7 @@ function VideoChatClientInner() {
       console.log('💰 [BALANCE] Cliente detectado, permitiendo recarga de balances');
       // Resetear el flag para permitir recarga
       hasLoadedBalanceRef.current = false;
+      balanceInitializedRef.current = false;
     }
     
     // 🔥 Si userData.id no está disponible, intentar cargar el usuario primero
@@ -1685,6 +1874,7 @@ function VideoChatClientInner() {
               
               setUserBalance(coinsData.total_coins || 0);
               setRemainingMinutes(coinsData.remaining_minutes || 0);
+              balanceInitializedRef.current = true;
 
               // 🔥 OPTIMIZADO: El modal y desconexión automática se manejan en el useEffect de monitoreo
               // Aquí solo actualizamos los estados, el useEffect detectará los cambios y mostrará el modal
@@ -1752,6 +1942,7 @@ function VideoChatClientInner() {
           // 🔥 RESETEAR FLAG SI HAY ERROR PARA PERMITIR REINTENTO
           if (result && result.success === false) {
             hasLoadedBalanceRef.current = false;
+            balanceInitializedRef.current = false;
             // Reintentar después de un delay si falla
             setTimeout(() => {
               if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
@@ -1768,6 +1959,7 @@ function VideoChatClientInner() {
           console.warn('⚠️ [Balance] Error cargando saldo de regalos:', err);
           // 🔥 RESETEAR FLAG EN CASO DE ERROR PARA PERMITIR REINTENTO
           hasLoadedBalanceRef.current = false;
+          balanceInitializedRef.current = false;
           // Reintentar después de un delay
           setTimeout(() => {
             if (loadUserBalanceRef.current && typeof loadUserBalanceRef.current === 'function') {
@@ -2435,6 +2627,16 @@ function VideoChatClientInner() {
       return;
     }
 
+    // Evitar falsos positivos antes de tener datos reales del backend
+    if (!balanceInitializedRef.current) {
+      return;
+    }
+
+    // Evitar advertencias/cierre durante refresh reciente
+    if (isRefreshGraceActive(roomName)) {
+      return;
+    }
+
     let autoEndTimeout = null;
 
     // 🔥 MOSTRAR MODAL DE SALDO BAJO CUANDO QUEDAN 2 MINUTOS O MENOS (incluyendo 0)
@@ -2458,27 +2660,7 @@ function VideoChatClientInner() {
         // en el código de verificación de remainingMinutes > 2
       }, 3000); // Verificar cada 3 segundos
       
-      // 🔥 TIMEOUT DE 1 MINUTO (60 SEGUNDOS): Si el usuario no recarga, colgar automáticamente
-      const timeoutDuration = 60000; // 1 minuto para recargar
-      lowBalanceAutoEndTimeoutRef.current = setTimeout(() => {
-        // Verificar nuevamente el balance antes de colgar
-        const currentMinutes = remainingMinutes || 0;
-        if (currentMinutes <= 2 && !hasAutoEndedRef.current) {
-          console.warn('⏰ [BALANCE] Tiempo agotado para recargar - Colgando automáticamente', {
-            remainingMinutes: currentMinutes,
-            userBalance
-          });
-          hasAutoEndedRef.current = true;
-          setShowLowBalanceModal(false);
-          // Limpiar intervalo
-          if (lowBalanceCheckIntervalRef.current) {
-            clearInterval(lowBalanceCheckIntervalRef.current);
-            lowBalanceCheckIntervalRef.current = null;
-          }
-          addNotification('warning', '⏰ Tiempo agotado', 'No se detectó recarga. La llamada se cerrará automáticamente.', 5000);
-          finalizarChat(true);
-        }
-      }, timeoutDuration);
+      // 🔥 DESACTIVADO: No colgar automáticamente por saldo bajo
     }
     
     // 🔥 RESETEAR MODAL Y TIMEOUT SI EL SALDO AUMENTA A MÁS DE 2 MINUTOS (usuario recargó)
@@ -4947,6 +5129,9 @@ useEffect(() => {
     return;
   }
 
+  // ✅ AJUSTAR PAUSAS PENDIENTES (por ejemplo, recargas)
+  commitPauseGapForRoom(roomName);
+
   // ✅ CLAVE ÚNICA ABSOLUTA POR SALA
   const UNIQUE_KEY = `DEDUCTION_${roomName}_${Date.now()}`;
   const GLOBAL_LOCK = `LOCK_${roomName}`;
@@ -4966,7 +5151,38 @@ useEffect(() => {
 
   // ✅ VARIABLES DE CONTROL ESTRICTAS
   let isSystemActive = true;
-  let lastDeductedMinute = 0; // Minuto último descontado
+  const LAST_DEDUCTED_KEY = `last_deducted_minute_${roomName}`;
+
+  const readLastDeductedMinute = () => {
+    try {
+      const storedValue = localStorage.getItem(LAST_DEDUCTED_KEY);
+      if (!storedValue) {
+        return 0;
+      }
+      const parsed = parseInt(storedValue, 10);
+      return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    } catch (error) {
+      console.warn('⚠️ [VideoChat-CLIENTE] No se pudo leer el último minuto descontado', error);
+      return 0;
+    }
+  };
+
+  let lastDeductedMinute = readLastDeductedMinute();
+
+  const persistLastDeductedMinute = (value) => {
+    const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+    lastDeductedMinute = safeValue;
+    try {
+      localStorage.setItem(LAST_DEDUCTED_KEY, safeValue.toString());
+    } catch (error) {
+      console.warn('⚠️ [VideoChat-CLIENTE] No se pudo guardar el último minuto descontado', error);
+    }
+  };
+
+  logDeduction('📦 Estado inicial de minutos descontados', {
+    lastDeductedMinute,
+    storageKey: LAST_DEDUCTED_KEY
+  });
 
   // ✅ TIEMPO DE INICIO DE SESIÓN
   const getSessionStart = () => {
@@ -4985,6 +5201,9 @@ useEffect(() => {
   };
 
   const sessionStartTime = getSessionStart();
+  const getPauseOffsetMs = () => {
+    return Math.max(0, getTotalPauseMsForRoom(roomName));
+  };
 
   const getCoinsForMinuteIndex = (minuteIndex) => {
     if (minuteIndex <= 10) return 7;
@@ -5003,6 +5222,11 @@ useEffect(() => {
 
   // ✅ FUNCIÓN DE DESCUENTO CON VALIDACIÓN MÚLTIPLE
   const applySecureDeduction = async (amount, reason, minutesToDeduct = 1) => {
+    if (isRefreshGraceActive(roomName)) {
+      logDeduction('⏸️ Descuento omitido por gracia de refresh', { reason, amount });
+      return false;
+    }
+
     // Verificar que el sistema sigue activo
     if (!isSystemActive) {
       logDeduction('🛑 Sistema inactivo, cancelando descuento', { reason, amount });
@@ -5144,7 +5368,8 @@ useEffect(() => {
 
   // ✅ FUNCIÓN PARA OBTENER TIEMPO TRANSCURRIDO
   const getElapsedSeconds = () => {
-    return Math.floor((Date.now() - sessionStartTime) / 1000);
+    const pauseOffsetMs = getPauseOffsetMs();
+    return Math.max(0, Math.floor((Date.now() - sessionStartTime - pauseOffsetMs) / 1000));
   };
 
   // ✅ FUNCIÓN PARA OBTENER MINUTOS COMPLETOS TRANSCURRIDOS
@@ -5178,7 +5403,7 @@ useEffect(() => {
       
       applySecureDeduction(coinsToDeduct, `minute_${completedMinutes}`, minutesToDeduct).then(success => {
         if (success) {
-          lastDeductedMinute = completedMinutes;
+          persistLastDeductedMinute(completedMinutes);
         }
       });
     }
@@ -5207,7 +5432,7 @@ useEffect(() => {
         
         const success = await applySecureDeduction(coinsToDeduct, `minute_${currentCompletedMinutes}`, minutesToDeduct);
         if (success) {
-          lastDeductedMinute = currentCompletedMinutes;
+          persistLastDeductedMinute(currentCompletedMinutes);
         }
       }
     }, 60000); // Verificar cada 60 segundos (1 minuto)
@@ -5252,13 +5477,20 @@ useEffect(() => {
 // 3️⃣ EFECTO SEPARADO PARA LIMPIEZA FINAL
 useEffect(() => {
   return () => {
-    if (roomName) {
-      // Limpiar localStorage
-      localStorage.removeItem(`session_start_${roomName}`);
+    const cleanupRoom = roomName || localStorage.getItem('roomName');
+    if (cleanupRoom) {
+      const callEndedManually = localStorage.getItem('call_ended_manually') === 'true';
+
+      if (callEndedManually) {
+        // Limpiar localStorage solo si la llamada terminó realmente
+        localStorage.removeItem(`session_start_${cleanupRoom}`);
+        localStorage.removeItem(`last_deducted_minute_${cleanupRoom}`);
+        clearPauseTrackingForRoom(cleanupRoom);
+      }
       
       // Limpiar todos los locks de esta sala
       Object.keys(window).forEach(key => {
-        if (key.includes(`LOCK_${roomName}`) || key.includes(`DEDUCTION_${roomName}`)) {
+        if (key.includes(`LOCK_${cleanupRoom}`) || key.includes(`DEDUCTION_${cleanupRoom}`)) {
           window[key] = null;
           delete window[key];
         }
@@ -6057,7 +6289,7 @@ useEffect(() => {
       }
     } else if (hadRemoteParticipantsRef.current && currentRemoteCount === 0) {
       // 🔥 TIMEOUT DE SEGURIDAD: Si antes había participantes remotos y ahora no hay ninguno
-      // y no se está procesando una desconexión, iniciar timeout de 5 segundos (reducido)
+      // y no se está procesando una desconexión, iniciar timeout de 8 segundos para dar margen a reconexiones
       // Solo crear el timeout si no existe ya uno activo
       if (!soloParticipantTimeoutRef.current && 
           !isDisconnectingRef.current && 
@@ -6065,7 +6297,7 @@ useEffect(() => {
           !modeloDisconnectedRef.current) {
         // Solo loggear una vez para evitar spam en consola
         if (!timeoutLoggedRef.current) {
-          console.log('⚠️ [VideoChat] Detectado: no hay participantes remotos pero antes había. Iniciando timeout de seguridad (5s)');
+          console.log('⚠️ [VideoChat] Detectado: no hay participantes remotos pero antes había. Iniciando timeout de seguridad (8s)');
           timeoutLoggedRef.current = true;
         }
         
@@ -6162,7 +6394,7 @@ useEffect(() => {
           } else {
             console.log('⏸️ [VideoChat] Timeout cancelado - ya hay participantes o se está desconectando');
           }
-        }, 5000); // 5 segundos de timeout (reducido para desconexión más rápida)
+        }, 8000); // 8 segundos de timeout para evitar falsos positivos
       }
     }
 
@@ -6460,6 +6692,59 @@ useEffect(() => {
     }
   }, [roomName, connected]); // 🔥 REMOVIDO isMonitoringBalance de dependencias para evitar loop
 
+  useEffect(() => {
+    if (!roomName) {
+      return;
+    }
+
+    if (connected) {
+      hasJoinedSessionRef.current = true;
+      commitPauseGapForRoom(roomName);
+    } else if (hasJoinedSessionRef.current) {
+      markPauseStartForRoom(roomName);
+    }
+  }, [connected, roomName]);
+
+  useEffect(() => {
+    if (!roomName || !connected || userData?.role !== 'cliente') {
+      return;
+    }
+
+    if (sessionResumeSentRef.current === roomName) {
+      return;
+    }
+
+    sessionResumeSentRef.current = roomName;
+    sendSessionConsumptionState('resume', roomName);
+  }, [connected, roomName, userData?.role, sendSessionConsumptionState]);
+
+  useEffect(() => {
+    if (!roomName) {
+      return;
+    }
+
+    const handleUnloadPause = (event) => {
+      const isCallActive = hasJoinedSessionRef.current || localStorage.getItem('videochatActive') || localStorage.getItem('inCall');
+
+      if (isCallActive) {
+        markPauseStartForRoom(roomName);
+      }
+      markRefreshGraceForRoom(roomName);
+      if (userData?.role === 'cliente') {
+        sendSessionConsumptionState('pause', roomName, true);
+      }
+
+    };
+
+    window.addEventListener('beforeunload', handleUnloadPause);
+    window.addEventListener('pagehide', handleUnloadPause);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnloadPause);
+      window.removeEventListener('pagehide', handleUnloadPause);
+    };
+  }, [roomName, userData?.role, sendSessionConsumptionState]);
+
   // 🔥 INICIALIZAR START TIME CUANDO HAY roomName
   useEffect(() => {
     if (!roomName) {
@@ -6486,9 +6771,10 @@ useEffect(() => {
   useEffect(() => {
     const tick = () => {
       if (!tiempoStartRef.current) return;
-      const elapsed = Math.max(0, Math.floor((Date.now() - tiempoStartRef.current) / 1000));
-      setTiempo((prev) => (elapsed >= prev ? elapsed : prev));
       const activeRoomName = activeRoomNameRef.current;
+      const pauseMs = getTotalPauseMsForRoom(activeRoomName);
+      const elapsed = Math.max(0, Math.floor((Date.now() - tiempoStartRef.current - pauseMs) / 1000));
+      setTiempo((prev) => (elapsed >= prev ? elapsed : prev));
       if (activeRoomName && elapsed - lastTiempoPersistRef.current >= 5) {
         localStorage.setItem(`videochat_tiempo_${activeRoomName}`, elapsed.toString());
         lastTiempoPersistRef.current = elapsed;
@@ -7317,9 +7603,9 @@ const checkBalanceRealTime = useCallback(async () => {
               // 🔥 GUARDAR SID DEL PARTICIPANTE DESCONECTADO
               lastDisconnectedParticipantSidRef.current = participant?.sid;
               
-              // 🔥 PERIODO DE GRACIA: Esperar 3 segundos antes de procesar la desconexión
+              // 🔥 PERIODO DE GRACIA: Esperar 6 segundos antes de procesar la desconexión
               // Esto permite que el participante se reconecte si es un problema temporal
-              console.log('⏱️ [VideoChat] Iniciando periodo de gracia de 3 segundos antes de procesar desconexión');
+              console.log('⏱️ [VideoChat] Iniciando periodo de gracia de 6 segundos antes de procesar desconexión');
               
               participantDisconnectGracePeriodRef.current = setTimeout(() => {
                 participantDisconnectGracePeriodRef.current = null;
@@ -7432,7 +7718,7 @@ const checkBalanceRealTime = useCallback(async () => {
                     roomState: currentRoom?.state
                   });
                 }
-              }, 3000); // 3 segundos de periodo de gracia
+              }, 6000); // 6 segundos de periodo de gracia
             }}
             onTrackPublished={(pub, participant) => {
               console.log('📹 [VideoChat-CLIENTE] Track publicado:', {

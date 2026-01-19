@@ -73,3 +73,4 @@ Debería mostrar `500M` para ambos.
 
 Mientras no configures estos límites en php.ini, **los videos no se podrán subir** porque PHP rechaza la petición antes de que llegue al código de Laravel.
 
+

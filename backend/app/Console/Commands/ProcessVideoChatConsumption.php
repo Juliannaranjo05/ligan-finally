@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\VideoChatSession;
 use App\Models\ChatSession;
+use App\Models\UserOnlineStatus;
 use App\Http\Controllers\VideoChatCoinController;
 use App\Http\Controllers\SessionEarningsController;
 use Illuminate\Support\Facades\Log;
@@ -281,6 +282,40 @@ class ProcessVideoChatConsumption extends Command
             'room_name' => $session->room_name,
             'debug_mode' => $this->debugMode
         ]);
+
+        // 🔥 0. VERIFICAR HEARTBEAT ACTIVO (EVITAR DESCUENTOS TRAS REFRESH)
+        $userStatus = UserOnlineStatus::where('user_id', $session->user_id)->first();
+        $isRecentlyActive = $userStatus && $userStatus->last_seen && $userStatus->last_seen->gte(now()->subSeconds(45));
+        $isInVideochat = $userStatus && in_array($userStatus->activity_type, ['videochat', 'videochat_client'], true);
+
+        if (!$isRecentlyActive || !$isInVideochat) {
+            $result['skip_reason'] = 'heartbeat_inactive';
+
+            if ($this->debugMode) {
+                $this->comment("   ⏸️ Heartbeat inactivo o fuera de videochat - omitiendo consumo");
+            }
+
+            Log::info('⏸️ Heartbeat inactivo - desactivando consumo', [
+                'session_id' => $session->id,
+                'user_id' => $session->user_id,
+                'last_seen' => $userStatus->last_seen ?? null,
+                'activity_type' => $userStatus->activity_type ?? null
+            ]);
+
+            try {
+                $session->update([
+                    'is_consuming' => false,
+                    'updated_at' => now()
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudo desactivar is_consuming por heartbeat', [
+                    'session_id' => $session->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            return $result;
+        }
 
         // 🔥 1. CALCULAR TIEMPO DESDE ÚLTIMO CONSUMO
         $lastConsumption = $session->last_consumption_at ?? $session->started_at;

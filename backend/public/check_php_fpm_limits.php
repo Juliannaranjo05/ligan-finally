@@ -15,3 +15,4 @@ echo json_encode([
     'sapi_name' => php_sapi_name(),
 ], JSON_PRETTY_PRINT);
 
+

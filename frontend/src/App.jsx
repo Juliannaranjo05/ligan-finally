@@ -109,6 +109,7 @@ function App() {
       });
     };
   }, []);
+
   useUserLanguage();
   return (
     <BrowserRouter>
